@@ -1,54 +1,193 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&display=swap');
 
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply font-sans text-gray-600 bg-ey-white antialiased;
+  :root {
+    /* ── Light palette ───────────────────────────────────────────────── */
+    --bg:          #F7F6F3;
+    --surface:     #FFFFFF;
+    --surface-alt: #F0EFE9;
+    --navy:        #0F1E3D;
+    --navy-mid:    #1B2E52;
+    --gold:        #E8A900;
+    --gold-bright: #FFD100;
+    --gold-light:  #FFF3CC;
+
+    /* ── Text ─────────────────────────────────────────────────────────── */
+    --t0: #0F172A;
+    --t1: #64748B;
+    --t2: #94A3B8;
+
+    /* ── Borders ──────────────────────────────────────────────────────── */
+    --border:       #E2E8F0;
+    --border-light: #F1F0EA;
+
+    /* ── Semantic ─────────────────────────────────────────────────────── */
+    --success:    #16A34A;
+    --success-bg: #DCFCE7;
+    --warning:    #D97706;
+    --warning-bg: #FEF3C7;
+    --error:      #DC2626;
+    --error-bg:   #FEE2E2;
+    --info:       #2563EB;
+    --info-bg:    #DBEAFE;
+
+    /* ── shadcn CSS-variable system (light) ──────────────────────────── */
+    --background:            42 43% 96%;
+    --foreground:            220 50% 10%;
+    --card:                  0 0% 100%;
+    --card-foreground:       220 50% 10%;
+    --popover:               0 0% 100%;
+    --popover-foreground:    220 50% 10%;
+    --primary:               217 75% 16%;
+    --primary-foreground:    48 100% 50%;
+    --secondary:             40 25% 94%;
+    --secondary-foreground:  220 50% 10%;
+    --muted:                 40 25% 94%;
+    --muted-foreground:      215 16% 47%;
+    --accent:                40 25% 94%;
+    --accent-foreground:     220 50% 10%;
+    --destructive:           0 72% 51%;
+    --destructive-foreground:0 0% 100%;
+    --border:                214 32% 91%;
+    --input:                 214 32% 91%;
+    --ring:                  48 100% 50%;
+    --radius:                0.5rem;
   }
 
   * {
+    @apply border-border;
     box-sizing: border-box;
+    margin: 0;
+    padding: 0;
   }
+
+  html, body, #root {
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    font-family: 'DM Sans', sans-serif;
+    background: var(--bg);
+    color: var(--t0);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  /* ── Scrollbar ──────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
 }
 
 @layer components {
-  /* Focus ring — EY Yellow, keyboard-only via :focus-visible */
-  .focus-ring {
-    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ey-yellow focus-visible:ring-offset-2;
-  }
-
-  /* EY Yellow primary button */
+  /* Navy primary button — gold text */
   .btn-primary {
-    @apply bg-ey-yellow text-gray-900 font-semibold text-sm px-4 py-2 rounded
-           hover:bg-yellow-hover active:bg-yellow-active
-           disabled:bg-gray-200 disabled:text-gray-400 disabled:cursor-not-allowed
-           transition-colors duration-150 focus-ring;
+    @apply inline-flex items-center gap-1.5 font-semibold text-sm px-4 py-2 rounded cursor-pointer transition-all duration-150;
+    background: #0F1E3D;
+    color: #FFD100;
+    border: none;
   }
+  .btn-primary:hover { background: #1B2E52; }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  /* Gold action button — navy text (for run/submit actions) */
+  .btn-gold {
+    @apply inline-flex items-center gap-1.5 font-semibold text-sm px-4 py-2 rounded cursor-pointer transition-all duration-150;
+    background: #FFD100;
+    color: #0F1E3D;
+    border: none;
+  }
+  .btn-gold:hover { background: #E8A900; }
+  .btn-gold:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Secondary / ghost button */
   .btn-secondary {
-    @apply bg-white text-gray-600 font-medium text-sm px-4 py-2 rounded
-           border border-gray-300
-           hover:bg-gray-100 hover:text-gray-800
-           disabled:opacity-50 disabled:cursor-not-allowed
-           transition-colors duration-150 focus-ring;
+    @apply inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded transition-all duration-150;
+    background: transparent;
+    color: #334155;
+    border: 1px solid #E2E8F0;
   }
+  .btn-secondary:hover { background: #F0EFE9; color: #0F172A; }
+  .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  /* Standard card */
+  /* Standard light card */
   .card {
-    @apply bg-white border border-gray-300 rounded shadow-card p-4;
+    border-radius: 12px;
+    background: #FFFFFF;
+    border: 1px solid #E2E8F0;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+    padding: 20px;
   }
 
-  /* Stat value — JetBrains Mono */
+  /* Stat value — Lora serif, navy */
   .stat-value {
-    @apply font-mono text-stat-lg font-bold text-gray-800;
+    font-family: 'Lora', serif;
+    font-size: 36px;
+    font-weight: 600;
+    line-height: 1;
+    color: #0F1E3D;
+    font-variant-numeric: tabular-nums;
   }
 
-  /* Label (uppercase, tracked) */
-  .label-uppercase {
-    @apply text-label font-medium text-gray-500 uppercase tracking-wide;
+  /* Label — uppercase, tracked */
+  .label-caps {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
   }
+
+  .label-uppercase {
+    font-size: 11px;
+    font-weight: 600;
+    color: #94A3B8;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .mono {
+    font-family: 'DM Sans', sans-serif;
+  }
+}
+
+@layer utilities {
+  /* Fade-in — matches reference .fade-in */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .fade-in { animation: fadeIn 0.3s ease both; }
+
+  /* Slide-in — matches reference .slide-in */
+  @keyframes slideIn {
+    from { opacity: 0; transform: translateX(-10px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+  .slide-in { animation: slideIn 0.25s ease both; }
+
+  /* Shimmer for skeleton loaders */
+  @keyframes shimmer {
+    0%   { background-position: -800px 0; }
+    100% { background-position:  800px 0; }
+  }
+  .animate-shimmer {
+    background: linear-gradient(90deg, #F3F4F6 0, #E5E7EB 50%, #F3F4F6 100%);
+    background-size: 800px 100%;
+    animation: shimmer 1.6s infinite;
+  }
+
+  /* Fade-up */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up { animation: fadeUp 0.25s cubic-bezier(0.4,0,0.2,1) both; }
 }

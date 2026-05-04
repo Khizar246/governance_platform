@@ -1,84 +1,198 @@
 import type { Config } from 'tailwindcss'
+import animate from 'tailwindcss-animate'
 
 const config: Config = {
+  darkMode: ['class'],
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   theme: {
     extend: {
       colors: {
-        // ── EY Brand ──────────────────────────────────────────────────────────
-        'ey-yellow':  '#FFE600',
-        'ey-black':   '#2E2E38',
-        'ey-white':   '#F6F6FA',
-
-        // ── Yellow interactive states ─────────────────────────────────────────
-        'yellow-hover':  '#E6CF00',
-        'yellow-active': '#CCBA00',
-
-        // ── Gray scale ────────────────────────────────────────────────────────
-        gray: {
-          900: '#1A1A24',
-          800: '#2E2E38',
-          700: '#3D3D47',
-          600: '#555563',
-          500: '#747480',
-          400: '#9E9EA8',
-          300: '#C4C4CD',
-          200: '#E0E0E6',
-          100: '#F0F0F4',
-          50:  '#F6F6FA',
+        // ── shadcn CSS-variable system ────────────────────────────────────────
+        border:      'hsl(var(--border))',
+        input:       'hsl(var(--input))',
+        ring:        'hsl(var(--ring))',
+        background:  'hsl(var(--background))',
+        foreground:  'hsl(var(--foreground))',
+        primary: {
+          DEFAULT:    'hsl(var(--primary))',
+          foreground: 'hsl(var(--primary-foreground))',
+        },
+        secondary: {
+          DEFAULT:    'hsl(var(--secondary))',
+          foreground: 'hsl(var(--secondary-foreground))',
+        },
+        destructive: {
+          DEFAULT:    'hsl(var(--destructive))',
+          foreground: 'hsl(var(--destructive-foreground))',
+        },
+        muted: {
+          DEFAULT:    'hsl(var(--muted))',
+          foreground: 'hsl(var(--muted-foreground))',
+        },
+        accent: {
+          DEFAULT:    'hsl(var(--accent))',
+          foreground: 'hsl(var(--accent-foreground))',
+        },
+        popover: {
+          DEFAULT:    'hsl(var(--popover))',
+          foreground: 'hsl(var(--popover-foreground))',
+        },
+        card: {
+          DEFAULT:    'hsl(var(--card))',
+          foreground: 'hsl(var(--card-foreground))',
         },
 
-        // ── Semantic ─────────────────────────────────────────────────────────
-        success:       '#2D8C3C',
-        'success-light': '#E8F5E9',
-        warning:       '#D4880F',
-        'warning-light': '#FFF8E1',
-        error:         '#C4314B',
-        'error-light': '#FDEDEF',
-        info:          '#2E6ED9',
-        'info-light':  '#E3F2FD',
+        // ── Light reference palette ───────────────────────────────────────────
+        navy:         '#0F1E3D',
+        'navy-mid':   '#1B2E52',
+        'navy-light': '#2D4270',
+        gold:         '#E8A900',
+        'gold-bright':'#FFD100',
+        'gold-light': '#FFF3CC',
+
+        // ── EY brand (gold = goldBright from reference) ───────────────────────
+        'ey-yellow':        '#FFD100',
+        'ey-yellow-hover':  '#E8A900',
+        'ey-yellow-subtle': 'rgba(255,209,0,0.12)',
+        'ey-yellow-glow':   'rgba(255,209,0,0.24)',
+
+        // ── Standard gray scale (light) ───────────────────────────────────────
+        gray: {
+          50:  '#F9FAFB',
+          100: '#F3F4F6',
+          200: '#E5E7EB',
+          300: '#D1D5DB',
+          400: '#9CA3AF',
+          500: '#6B7280',
+          600: '#4B5563',
+          700: '#374151',
+          800: '#1F2937',
+          900: '#111827',
+        },
+
+        // ── Semantic — actual light colors ────────────────────────────────────
+        success:         '#16A34A',
+        'success-bg':    '#DCFCE7',
+        'success-light': '#DCFCE7',
+        warning:         '#D97706',
+        'warning-bg':    '#FEF3C7',
+        'warning-light': '#FEF3C7',
+        error:           '#DC2626',
+        'error-bg':      '#FEE2E2',
+        'error-light':   '#FEE2E2',
+        info:            '#2563EB',
+        'info-bg':       '#DBEAFE',
+        'info-light':    '#DBEAFE',
+
+        green: {
+          50:  '#F0FDF4',
+          100: '#DCFCE7',
+          200: '#BBF7D0',
+          300: '#86EFAC',
+          400: '#4ADE80',
+          500: '#22C55E',
+          600: '#16A34A',
+          700: '#15803D',
+        },
+        red: {
+          50:  '#FFF1F2',
+          100: '#FEE2E2',
+          200: '#FECACA',
+          300: '#FCA5A5',
+          400: '#F87171',
+          500: '#EF4444',
+          600: '#DC2626',
+          700: '#B91C1C',
+        },
+        blue: {
+          50:  '#EFF6FF',
+          100: '#DBEAFE',
+          200: '#BFDBFE',
+          300: '#93C5FD',
+          400: '#60A5FA',
+          500: '#3B82F6',
+          600: '#2563EB',
+          700: '#1D4ED8',
+        },
+        amber: {
+          50:  '#FFFBEB',
+          100: '#FEF3C7',
+          200: '#FDE68A',
+          300: '#FCD34D',
+          400: '#FBBF24',
+          500: '#F59E0B',
+          600: '#D97706',
+          700: '#B45309',
+        },
+        yellow: {
+          50:  '#FEFCE8',
+          100: '#FEF9C3',
+          300: '#FDE047',
+          400: '#FACC15',
+          500: '#FFD100',
+          600: '#E8A900',
+        },
       },
 
       fontFamily: {
-        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
-        mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace'],
+        sans:  ['DM Sans', 'system-ui', 'sans-serif'],
+        serif: ['Lora', 'Georgia', 'serif'],
+        mono:  ['DM Sans', 'Consolas', 'monospace'],
       },
 
       fontSize: {
-        'page-title':    ['20px', { lineHeight: '1.3', fontWeight: '700' }],
-        'section-header':['16px', { lineHeight: '1.3', fontWeight: '600' }],
-        'card-title':    ['15px', { lineHeight: '1.3', fontWeight: '600' }],
-        'body':          ['14px', { lineHeight: '1.5', fontWeight: '400' }],
-        'body-sm':       ['13px', { lineHeight: '1.5', fontWeight: '400' }],
-        'label':         ['12px', { lineHeight: '1.4', fontWeight: '500', letterSpacing: '0.5px' }],
-        'stat-lg':       ['24px', { lineHeight: '1.2', fontWeight: '700' }],
-        'stat-sm':       ['18px', { lineHeight: '1.2', fontWeight: '600' }],
-        'badge':         ['11px', { lineHeight: '1.4', fontWeight: '500' }],
+        'display':    ['28px', { lineHeight: '1.2', fontWeight: '600', letterSpacing: '-0.01em' }],
+        'page-title': ['22px', { lineHeight: '1.2', fontWeight: '600', letterSpacing: '-0.01em' }],
+        'section':    ['16px', { lineHeight: '1.4', fontWeight: '600' }],
+        'card-title': ['14px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '-0.01em' }],
+        'body':       ['13px', { lineHeight: '1.5', fontWeight: '400' }],
+        'body-sm':    ['12px', { lineHeight: '1.5', fontWeight: '400' }],
+        'label':      ['11px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '0.08em' }],
+        'stat-lg':    ['36px', { lineHeight: '1.1', fontWeight: '600', letterSpacing: '-0.01em' }],
+        'stat-sm':    ['22px', { lineHeight: '1.2', fontWeight: '600' }],
+        'badge':      ['10.5px', { lineHeight: '1.4', fontWeight: '600', letterSpacing: '0.04em' }],
       },
 
       borderRadius: {
-        sm: '4px',
+        sm:      '6px',
         DEFAULT: '8px',
-        lg: '12px',
+        md:      '8px',
+        lg:      '12px',
+        xl:      '16px',
       },
 
       boxShadow: {
-        card: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-        'card-hover': '0 4px 12px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04)',
-        dropdown: '0 8px 24px rgba(0,0,0,0.12)',
+        sm:           '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        md:           '0 4px 6px rgba(0,0,0,0.07), 0 2px 4px rgba(0,0,0,0.06)',
+        lg:           '0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.05)',
+        xl:           '0 20px 25px rgba(0,0,0,0.10), 0 10px 10px rgba(0,0,0,0.04)',
+        card:         '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
+        'card-hover': '0 4px 16px rgba(0,0,0,0.10), 0 2px 4px rgba(0,0,0,0.06)',
+        dropdown:     '0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.05)',
       },
 
       transitionDuration: {
         DEFAULT: '150ms',
-        hover: '200ms',
+        hover:   '200ms',
       },
 
-      spacing: {
-        '4.5': '18px',
+      keyframes: {
+        shimmer: {
+          '0%':   { backgroundPosition: '-800px 0' },
+          '100%': { backgroundPosition: '800px 0' },
+        },
+        fadeUp: {
+          from: { opacity: '0', transform: 'translateY(8px)' },
+          to:   { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
+      animation: {
+        shimmer:   'shimmer 1.6s infinite',
+        'fade-up': 'fadeUp 0.25s cubic-bezier(0.4,0,0.2,1) both',
       },
     },
   },
-  plugins: [],
+  plugins: [animate],
 }
 
 export default config

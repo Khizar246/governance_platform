@@ -6,14 +6,44 @@ interface PageHeaderProps {
   subtitle: string
 }
 
-/** Compact page header — icon + title | subtitle. 48px tall with bottom border. */
 export default function PageHeader({ icon, title, subtitle }: PageHeaderProps) {
   return (
-    <div className="flex items-center gap-3 mb-6 pb-3 border-b border-gray-200 h-12 shrink-0">
-      <span className="text-gray-600 shrink-0">{icon}</span>
-      <span className="text-xl font-bold text-gray-800 leading-tight">{title}</span>
-      <span className="text-gray-300 select-none">|</span>
-      <span className="text-sm text-gray-500 truncate">{subtitle}</span>
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+        marginBottom: 28,
+      }}
+    >
+      <div
+        style={{
+          width: 40, height: 40,
+          borderRadius: 10,
+          background: '#0F1E3D',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+          color: '#FFD100',
+        }}
+      >
+        {icon}
+      </div>
+      <div>
+        <h2
+          style={{
+            fontFamily: "'Lora', serif",
+            fontSize: 22,
+            fontWeight: 600,
+            color: '#0F1E3D',
+            lineHeight: 1.2,
+          }}
+        >
+          {title}
+        </h2>
+        <p style={{ fontSize: 12.5, color: '#64748B', marginTop: 2 }}>{subtitle}</p>
+      </div>
     </div>
   )
 }

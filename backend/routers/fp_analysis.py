@@ -21,7 +21,7 @@ from models.fp_analysis import FPRunConfig, FPSheetSummary, FPAnalysisSummary
 from services.job_manager import job_manager
 from shared.validators import validate_upload
 from engines.fp_analysis_engine import (
-    load_sod_file, load_fp_database, validate_sod, run_analysis, export_results,
+    load_sod_file, load_fp_database, validate_sod, validate_fp, run_analysis, export_results,
     DETAILS_SHEET, VIOLATION_SHEETS, SHEET_LABELS,
 )
 
@@ -183,6 +183,13 @@ async def run(job_id: str, config: FPRunConfig):
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": errs[0], "code": "VALIDATION_ERROR", "details": errs},
+        )
+
+    ok, err = validate_fp(fp_db_data, config.mode)
+    if not ok:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": err, "code": "VALIDATION_ERROR", "details": [err]},
         )
 
     threading.Thread(

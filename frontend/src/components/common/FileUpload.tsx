@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react'
-import { Upload, CheckCircle, XCircle, X, Loader2, File } from 'lucide-react'
+import { useCallback, useRef } from 'react'
+import { useDropzone } from 'react-dropzone'
+import { Upload, CheckCircle2, XCircle, X, FileText } from 'lucide-react'
 import { clsx } from 'clsx'
 import { formatFileSize } from '../../utils/formatters'
 import { ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB } from '../../utils/constants'
@@ -26,7 +27,12 @@ interface FileUploadProps {
   onRemove: () => void
 }
 
-/** Drag-and-drop file upload zone with 5 visual states. */
+const DROPZONE_ACCEPT = {
+  'text/csv': ['.csv'],
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
+  'application/vnd.ms-excel': ['.xls'],
+}
+
 export default function FileUpload({
   label,
   accept = ALLOWED_EXTENSIONS.join(','),
@@ -39,115 +45,136 @@ export default function FileUpload({
   onUpload,
   onRemove,
 }: FileUploadProps) {
-  const inputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
+  const retryRef = useRef<HTMLInputElement>(null)
 
-  const handleFile = (file: File) => {
-    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
-    if (!ALLOWED_EXTENSIONS.includes(ext as typeof ALLOWED_EXTENSIONS[number])) {
-      return
-    }
-    if (file.size > maxSizeMB * 1024 * 1024) {
-      return
-    }
-    onUpload(file)
-  }
+  const onDrop = useCallback(
+    (accepted: File[]) => { if (accepted[0]) onUpload(accepted[0]) },
+    [onUpload],
+  )
 
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault()
-    setDragging(false)
-    const file = e.dataTransfer.files[0]
-    if (file) handleFile(file)
-  }
+  const { getRootProps, getInputProps, isDragActive } = useDropzone({
+    onDrop,
+    accept: DROPZONE_ACCEPT,
+    maxSize: maxSizeMB * 1024 * 1024,
+    multiple: false,
+  })
 
+  /* ── SUCCESS ─────────────────────────────────────── */
   if (status === 'success' && fileInfo) {
     return (
-      <div className="border border-success/40 bg-success-light/30 rounded-lg p-4">
+      <div className="fade-in border border-green-200 bg-green-50 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <CheckCircle size={18} className="text-success mt-0.5 shrink-0" />
+          <CheckCircle2 size={18} className="text-green-600 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-800 truncate">{fileInfo.name}</p>
+            <p className="text-sm font-semibold text-gray-800 truncate">{fileInfo.name}</p>
             <p className="text-[13px] text-gray-500 mt-0.5">
               {fileInfo.rows != null && `${fileInfo.rows.toLocaleString()} rows · `}
-              {fileInfo.columns != null && `${fileInfo.columns} columns · `}
+              {fileInfo.columns != null && `${fileInfo.columns} cols · `}
               {formatFileSize(fileInfo.size)}
             </p>
           </div>
           <button
             onClick={onRemove}
-            className="text-gray-400 hover:text-error transition-colors duration-150 p-0.5 rounded"
-            title="Remove file"
+            className="text-gray-400 hover:text-red-500 transition-colors duration-150 p-0.5 rounded shrink-0"
+            title="Remove"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       </div>
     )
   }
 
+  /* ── ERROR ───────────────────────────────────────── */
   if (status === 'error') {
     return (
-      <div className="border border-error/40 bg-error-light/30 rounded-lg p-4">
+      <div className="fade-in border border-red-200 bg-red-50 rounded-lg p-4">
         <div className="flex items-start gap-3">
-          <XCircle size={18} className="text-error mt-0.5 shrink-0" />
-          <div className="flex-1">
-            <p className="text-sm font-medium text-error">Upload failed</p>
-            {error && <p className="text-[13px] text-error/80 mt-0.5">{error}</p>}
+          <XCircle size={18} className="text-red-500 mt-0.5 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-red-600">Upload failed</p>
+            {error && <p className="text-[13px] text-red-500 mt-0.5 break-words">{error}</p>}
           </div>
-          <button className="btn-secondary text-xs py-1 px-2" onClick={() => inputRef.current?.click()}>
+          <button
+            onClick={() => retryRef.current?.click()}
+            className="text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-300 hover:border-gray-400 bg-white px-2.5 py-1 rounded transition-colors duration-150 shrink-0"
+          >
             Retry
           </button>
+          <input
+            ref={retryRef}
+            type="file"
+            accept={accept}
+            className="hidden"
+            onChange={(e) => { if (e.target.files?.[0]) onUpload(e.target.files[0]) }}
+          />
         </div>
-        <input ref={inputRef} type="file" accept={accept} className="hidden" onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }} />
       </div>
     )
   }
 
+  /* ── UPLOADING ───────────────────────────────────── */
   if (status === 'uploading') {
     return (
-      <div className="border border-gray-300 rounded-lg p-4">
-        <div className="flex items-center gap-3 mb-2">
-          <Loader2 size={16} className="text-ey-yellow animate-spin shrink-0" />
-          <span className="text-sm text-gray-600">Uploading… {progress}%</span>
+      <div className="fade-in border border-gray-200 bg-white rounded-lg p-4">
+        <div className="flex items-center gap-2.5 mb-2.5">
+          <FileText size={15} className="text-gray-400 shrink-0" />
+          <span className="text-sm text-gray-700 truncate flex-1">
+            {fileInfo?.name ?? `Uploading ${label}…`}
+          </span>
+          <span className="text-[12px] text-gray-400 tabular-nums shrink-0">{progress}%</span>
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-1 overflow-hidden">
+        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
           <div
-            className="h-full bg-ey-yellow transition-all duration-200"
-            style={{ width: `${progress}%` }}
+            className="h-full rounded-full transition-[width] duration-300 ease-out"
+            style={{ width: `${progress}%`, background: '#FFD100' }}
           />
         </div>
         {fileInfo && (
-          <p className="text-[13px] text-gray-400 mt-1.5 truncate">{fileInfo.name} · {formatFileSize(fileInfo.size)}</p>
+          <p className="text-[12px] text-gray-400 mt-1.5">{formatFileSize(fileInfo.size)}</p>
         )}
       </div>
     )
   }
 
-  // Idle state
+  /* ── IDLE / DRAGGING ─────────────────────────────── */
   return (
     <div
+      {...getRootProps()}
       className={clsx(
-        'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-150',
-        dragging
-          ? 'border-ey-yellow bg-[rgba(255,230,0,0.04)]'
-          : 'border-gray-300 hover:border-gray-400 bg-gray-50',
+        'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-150 outline-none',
+        isDragActive
+          ? 'border-[#E8A900] bg-[#FFF3CC]'
+          : 'border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50',
       )}
-      onClick={() => inputRef.current?.click()}
-      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-      onDragLeave={() => setDragging(false)}
-      onDrop={handleDrop}
     >
-      <Upload size={24} className="text-gray-400 mx-auto mb-2" />
-      <p className="text-sm font-medium text-gray-600">Upload {label}</p>
-      <p className="text-[13px] text-gray-400 mt-0.5">Drag &amp; drop or click to browse</p>
-      {hint && <p className="text-[12px] text-gray-400 mt-1">{hint}</p>}
-      <input
-        ref={inputRef}
-        type="file"
-        accept={accept}
-        className="hidden"
-        onChange={(e) => { if (e.target.files?.[0]) handleFile(e.target.files[0]) }}
-      />
+      <input {...getInputProps()} />
+
+      <div
+        style={{ width: 36, height: 36, background: '#F0EFE9', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}
+      >
+        <Upload
+          size={18}
+          className={clsx(
+            'transition-colors duration-150',
+            isDragActive ? 'text-[#E8A900]' : 'text-gray-400',
+          )}
+        />
+      </div>
+
+      <p className={clsx(
+        'text-sm font-medium transition-colors duration-150',
+        isDragActive ? 'text-gray-800' : 'text-gray-600',
+      )}>
+        {isDragActive ? 'Drop to upload' : `Upload ${label}`}
+      </p>
+
+      {!isDragActive && (
+        <>
+          <p className="text-[13px] text-gray-400 mt-0.5">Drag &amp; drop or click to browse</p>
+          {hint && <p className="text-[12px] text-gray-400 mt-1">{hint}</p>}
+        </>
+      )}
     </div>
   )
 }

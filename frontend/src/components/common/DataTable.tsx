@@ -8,9 +8,15 @@ import {
   flexRender,
   type ColumnDef,
   type SortingState,
+  type ColumnFiltersState,
 } from '@tanstack/react-table'
-import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Database } from 'lucide-react'
 import { clsx } from 'clsx'
+import { TableHead, TableRow, TableCell } from '@/components/ui/table'
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
+import { Skeleton } from '@/components/ui/skeleton'
+
+const SKELETON_ROWS = 8
 
 interface DataTableProps<T> {
   data: T[]
@@ -19,32 +25,26 @@ interface DataTableProps<T> {
   emptyMessage?: string
   /** Max height for the scrollable body (enables sticky header). Default 520px. */
   maxHeight?: string
+  isLoading?: boolean
 }
 
-/** Full-featured sortable/filterable/paginated data table using TanStack Table v8.
- *
- *  - Sticky header within the scrollable container
- *  - Zebra striping: white / gray-100 alternating rows
- *  - Global search filter
- *  - Pagination: 25 / 50 / 100 page sizes
- *  - Min column width 100 px; long text truncates with native title tooltip
- */
 export default function DataTable<T>({
   data,
   columns,
   defaultPageSize = 50,
   emptyMessage = 'No data to display',
   maxHeight = '520px',
+  isLoading = false,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
-  const [globalFilter, setGlobalFilter] = useState('')
+  const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter },
+    state: { sorting, columnFilters },
     onSortingChange: setSorting,
-    onGlobalFilterChange: setGlobalFilter,
+    onColumnFiltersChange: setColumnFilters,
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getFilteredRowModel: getFilteredRowModel(),
@@ -58,109 +58,167 @@ export default function DataTable<T>({
   const end = Math.min(start + pageSize - 1, total)
 
   return (
-    <div className="flex flex-col gap-3">
-      {/* ── Global filter ── */}
-      <div className="flex justify-end">
-        <input
-          value={globalFilter}
-          onChange={(e) => setGlobalFilter(e.target.value)}
-          placeholder="Search all columns…"
-          className="text-sm border border-gray-300 rounded px-3 py-1.5 w-64 focus:outline-none focus:border-ey-yellow"
-        />
-      </div>
+    <TooltipProvider delayDuration={300}>
+      <div className="flex flex-col gap-3">
 
-      {/* ── Table with scrollable body and sticky header ── */}
-      <div
-        className="overflow-auto border border-gray-200 rounded"
-        style={{ maxHeight }}
-      >
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            {table.getHeaderGroups().map((hg) => (
-              <tr key={hg.id}>
-                {hg.headers.map((header) => (
-                  <th
-                    key={header.id}
-                    style={{ minWidth: 100 }}
-                    className={clsx(
-                      // Sticky — sticks to top of THIS scrollable container
-                      'sticky top-0 z-10',
-                      'bg-gray-50 border-b border-gray-200',
-                      'px-3 py-2.5 text-left text-[12px] font-medium text-gray-500',
-                      'uppercase tracking-wide whitespace-nowrap select-none',
-                      header.column.getCanSort() && 'cursor-pointer hover:text-gray-700',
-                    )}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    <span className="flex items-center gap-1">
-                      {flexRender(header.column.columnDef.header, header.getContext())}
-                      {header.column.getCanSort() && (
-                        <span className="text-gray-400 shrink-0">
-                          {header.column.getIsSorted() === 'asc' ? (
-                            <ChevronUp size={12} />
-                          ) : header.column.getIsSorted() === 'desc' ? (
-                            <ChevronDown size={12} />
-                          ) : (
-                            <ChevronsUpDown size={12} />
-                          )}
-                        </span>
-                      )}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            ))}
-          </thead>
+        {/* ── Scrollable table ── */}
+        <div
+          className="overflow-auto rounded-lg border border-gray-200"
+          style={{ maxHeight }}
+        >
+          <table className="w-full text-sm">
 
-          <tbody>
-            {table.getRowModel().rows.length === 0 ? (
-              <tr>
-                <td
-                  colSpan={columns.length}
-                  className="text-center text-sm text-gray-400 py-12"
-                >
-                  {emptyMessage}
-                </td>
-              </tr>
-            ) : (
-              table.getRowModel().rows.map((row, i) => (
-                <tr
-                  key={row.id}
-                  className={clsx(
-                    'border-b border-gray-100 hover:bg-gray-200 transition-colors duration-75',
-                    i % 2 === 0 ? 'bg-white' : 'bg-gray-100',
-                  )}
-                >
-                  {row.getVisibleCells().map((cell) => {
-                    const raw = String(cell.getValue() ?? '')
-                    return (
-                      <td
-                        key={cell.id}
-                        className="px-3 py-2 text-[13px] text-gray-600 max-w-[300px] truncate"
-                        title={raw}
+            {/* ── Sticky header ── */}
+            <thead>
+              {table.getHeaderGroups().map((hg) => (
+                <TableRow key={hg.id} className="hover:bg-transparent">
+                  {hg.headers.map((header) => (
+                    <TableHead
+                      key={header.id}
+                      style={{ minWidth: 120 }}
+                      className="sticky top-0 z-10 h-auto bg-gray-50 border-b border-gray-200 px-3 pt-2.5 pb-1.5 align-top"
+                    >
+                      {/* Column label + sort arrow */}
+                      <div
+                        className={clsx(
+                          'flex items-center gap-1 select-none whitespace-nowrap',
+                          'text-[11px] font-semibold text-gray-500 uppercase tracking-[0.05em]',
+                          header.column.getCanSort() && 'cursor-pointer hover:text-gray-700',
+                          header.column.getCanFilter() ? 'mb-1.5' : '',
+                        )}
+                        onClick={header.column.getToggleSortingHandler()}
                       >
-                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                      </td>
-                    )
-                  })}
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+                        {flexRender(header.column.columnDef.header, header.getContext())}
+                        {header.column.getCanSort() && (
+                          <span className="text-gray-400 shrink-0">
+                            {header.column.getIsSorted() === 'asc' ? (
+                              <ChevronUp size={11} />
+                            ) : header.column.getIsSorted() === 'desc' ? (
+                              <ChevronDown size={11} />
+                            ) : (
+                              <ChevronsUpDown size={11} />
+                            )}
+                          </span>
+                        )}
+                      </div>
 
-      {/* ── Pagination bar ── */}
-      {total > 0 && (
-        <div className="flex items-center justify-between text-sm text-gray-500">
+                      {/* Per-column filter input */}
+                      {header.column.getCanFilter() && !isLoading && (
+                        <input
+                          value={(header.column.getFilterValue() as string) ?? ''}
+                          onChange={(e) => header.column.setFilterValue(e.target.value)}
+                          placeholder="Filter…"
+                          onClick={(e) => e.stopPropagation()}
+                          className={clsx(
+                            'w-full h-6 rounded border border-gray-200 bg-white',
+                            'px-2 text-[11px] text-gray-700 placeholder-gray-400',
+                            'focus:outline-none focus:border-ey-yellow transition-colors',
+                          )}
+                        />
+                      )}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              ))}
+            </thead>
+
+            {/* ── Body ── */}
+            <tbody>
+
+              {/* Skeleton rows while loading */}
+              {isLoading &&
+                Array.from({ length: SKELETON_ROWS }).map((_, ri) => (
+                  <TableRow
+                    key={`sk-${ri}`}
+                    className={clsx(
+                      'border-b border-gray-100 hover:bg-transparent',
+                      ri % 2 === 0 ? 'bg-white' : 'bg-gray-50',
+                    )}
+                  >
+                    {columns.map((_, ci) => (
+                      <TableCell key={ci} className="px-3 py-2.5">
+                        <Skeleton
+                          className="h-3.5 rounded"
+                          style={{ width: `${45 + ((ri * 7 + ci * 13) % 45)}%` }}
+                        />
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+
+              {/* Empty state */}
+              {!isLoading && table.getRowModel().rows.length === 0 && (
+                <TableRow className="hover:bg-transparent">
+                  <TableCell colSpan={columns.length} className="py-16 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <Database size={36} strokeWidth={1.5} className="text-gray-300" />
+                      <div className="space-y-1">
+                        <p className="text-[13px] font-medium text-gray-500">{emptyMessage}</p>
+                        <p className="text-xs text-gray-400">Try adjusting the column filters above</p>
+                      </div>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              )}
+
+              {/* Data rows — zebra + hover */}
+              {!isLoading &&
+                table.getRowModel().rows.map((row, i) => (
+                  <TableRow
+                    key={row.id}
+                    className={clsx(
+                      'border-b border-gray-100 transition-colors duration-75',
+                      i % 2 === 0 ? 'bg-white hover:bg-gray-100' : 'bg-gray-50 hover:bg-gray-100',
+                    )}
+                  >
+                    {row.getVisibleCells().map((cell) => {
+                      const raw = String(cell.getValue() ?? '')
+                      return (
+                        <TableCell
+                          key={cell.id}
+                          className="px-3 py-2 text-[13px] text-gray-700 max-w-[240px]"
+                        >
+                          {raw.length > 30 ? (
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <span className="block truncate cursor-default">
+                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs break-words text-xs">
+                                {raw}
+                              </TooltipContent>
+                            </Tooltip>
+                          ) : (
+                            <span className="block truncate">
+                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                            </span>
+                          )}
+                        </TableCell>
+                      )
+                    })}
+                  </TableRow>
+                ))}
+
+            </tbody>
+          </table>
+        </div>
+
+        {/* ── Pagination bar ── */}
+        <div className="flex items-center justify-between text-[13px] text-gray-500">
           <span>
-            Showing {start.toLocaleString()}–{end.toLocaleString()} of {total.toLocaleString()}
+            {isLoading
+              ? 'Loading…'
+              : total === 0
+              ? 'No results'
+              : `Showing ${start.toLocaleString()}–${end.toLocaleString()} of ${total.toLocaleString()} rows`}
           </span>
           <div className="flex items-center gap-2">
             <select
               value={pageSize}
               onChange={(e) => table.setPageSize(Number(e.target.value))}
-              className="border border-gray-300 rounded px-2 py-1 text-sm focus:outline-none focus:border-ey-yellow"
+              disabled={isLoading}
+              className="border border-gray-200 rounded px-2 py-1 text-[13px] text-gray-600 bg-white focus:outline-none focus:border-ey-yellow disabled:opacity-50"
             >
               {[25, 50, 100].map((sz) => (
                 <option key={sz} value={sz}>{sz} / page</option>
@@ -168,24 +226,25 @@ export default function DataTable<T>({
             </select>
             <button
               onClick={() => table.previousPage()}
-              disabled={!table.getCanPreviousPage()}
-              className="px-2 py-1 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100 transition-colors"
+              disabled={!table.getCanPreviousPage() || isLoading}
+              className="px-2.5 py-1 border border-gray-200 rounded text-gray-600 disabled:opacity-40 hover:bg-gray-100 transition-colors"
             >
               ←
             </button>
-            <span className="px-1 tabular-nums">
-              {pageIndex + 1} / {table.getPageCount() || 1}
+            <span className="tabular-nums min-w-[3rem] text-center">
+              {isLoading ? '–' : `${pageIndex + 1} / ${table.getPageCount() || 1}`}
             </span>
             <button
               onClick={() => table.nextPage()}
-              disabled={!table.getCanNextPage()}
-              className="px-2 py-1 border border-gray-300 rounded disabled:opacity-40 hover:bg-gray-100 transition-colors"
+              disabled={!table.getCanNextPage() || isLoading}
+              className="px-2.5 py-1 border border-gray-200 rounded text-gray-600 disabled:opacity-40 hover:bg-gray-100 transition-colors"
             >
               →
             </button>
           </div>
         </div>
-      )}
-    </div>
+
+      </div>
+    </TooltipProvider>
   )
 }

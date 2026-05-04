@@ -109,15 +109,25 @@ def load_sod_file(file_bytes: bytes, file_name: str) -> EngineResult:
                         return EngineResult(
                             success=False,
                             errors=[
-                                f"'{DETAILS_SHEET}' sheet is missing expected columns: {missing}. "
-                                f"Found: {list(df_pd.columns)}"
+                                f"SOD file sheet '{DETAILS_SHEET}' is missing required columns: "
+                                f"{missing}. Found: {list(df_pd.columns)}"
                             ],
                         )
                     df_pd = df_pd.rename(columns=DETAILS_COL_MAP)
+                elif key in VIOLATION_SHEETS:
+                    missing_cols = REQUIRED_COLS[key] - set(df_pd.columns)
+                    if missing_cols:
+                        return EngineResult(
+                            success=False,
+                            errors=[
+                                f"SOD file sheet '{key}' is missing required columns: "
+                                f"{sorted(missing_cols)}. Found: {list(df_pd.columns)}"
+                            ],
+                        )
                 result[key] = _upper(pl.from_pandas(df_pd)).unique()
         return EngineResult(success=True, data=result)
     except Exception as exc:
-        return EngineResult(success=False, errors=[f"Error loading '{file_name}': {exc}"])
+        return EngineResult(success=False, errors=[f"Could not read SOD Analysis file '{file_name}': {exc}"])
 
 
 def load_fp_database(file_bytes: bytes, file_name: str) -> EngineResult:
@@ -138,16 +148,37 @@ def load_fp_database(file_bytes: bytes, file_name: str) -> EngineResult:
                         f"Found: {xls.sheet_names}"
                     ],
                 )
+            _na_req = {"PRIVILEGE_DISPLAY_NAME", "FALSE POSITIVE REASON"}
+            _wa_req = {"WORK_AREA_PRIVILEGE"}
             for sheet in required_sheets:
                 df_pd = pd.read_excel(
                     xls, sheet_name=sheet, dtype=str, keep_default_na=False
                 )
-                df = pl.from_pandas(df_pd)
-                df = df.rename({c: c.strip().upper() for c in df.columns})
-                result[sheet] = _upper(df)
+                df = _upper(pl.from_pandas(df_pd).rename({c: c.strip().upper() for c in df_pd.columns}))
+                if sheet == "No_action_Privileges":
+                    missing_cols = _na_req - set(df.columns)
+                    if missing_cols:
+                        return EngineResult(
+                            success=False,
+                            errors=[
+                                f"FP Database sheet 'No_action_Privileges' is missing required columns: "
+                                f"{sorted(missing_cols)}. Found: {list(df.columns)}"
+                            ],
+                        )
+                elif sheet == "WorkArea_Privileges":
+                    missing_cols = _wa_req - set(df.columns)
+                    if missing_cols:
+                        return EngineResult(
+                            success=False,
+                            errors=[
+                                f"FP Database sheet 'WorkArea_Privileges' is missing required column "
+                                f"'WORK_AREA_PRIVILEGE'. Found: {list(df.columns)}"
+                            ],
+                        )
+                result[sheet] = df
         return EngineResult(success=True, data=result)
     except Exception as exc:
-        return EngineResult(success=False, errors=[f"FP Database error in '{file_name}': {exc}"])
+        return EngineResult(success=False, errors=[f"Could not read FP Database file '{file_name}': {exc}"])
 
 
 # ── Validation ────────────────────────────────────────────────────────────────
@@ -159,14 +190,24 @@ def validate_sod(
     """Validate that DETAILS_SHEET and all selected violation sheets exist with required columns."""
     errors: list[str] = []
     if DETAILS_SHEET not in sod:
-        errors.append(f"Missing sheet: '{DETAILS_SHEET}'")
+        errors.append(f"SOD file is missing required sheet: '{DETAILS_SHEET}'")
+    else:
+        missing_cols = REQUIRED_COLS[DETAILS_SHEET] - set(sod[DETAILS_SHEET].columns)
+        if missing_cols:
+            errors.append(
+                f"SOD file sheet '{DETAILS_SHEET}' is missing required columns: "
+                f"{sorted(missing_cols)}"
+            )
     for s in selected:
         if s not in sod:
-            errors.append(f"Missing sheet: '{s}'")
+            errors.append(f"SOD file is missing sheet: '{s}'")
         elif s in REQUIRED_COLS:
             missing_cols = REQUIRED_COLS[s] - set(sod[s].columns)
             if missing_cols:
-                errors.append(f"'{s}' is missing required columns: {missing_cols}")
+                errors.append(
+                    f"SOD file sheet '{s}' is missing required columns: "
+                    f"{sorted(missing_cols)}"
+                )
     return len(errors) == 0, errors
 
 

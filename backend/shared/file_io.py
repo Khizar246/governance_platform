@@ -70,7 +70,7 @@ def load_csv_to_polars(
                 io.StringIO(text),
                 infer_schema_length=10_000,
                 ignore_errors=True,
-                null_values=["", "NULL", "null", "N/A", "n/a", "NA"],
+                null_values=["", "N/A", "n/a", "NA"],
             )
             logger.debug("Loaded '%s' as CSV with encoding=%s, shape=%s", filename, encoding, df.shape)
             return _normalise_polars(df)
@@ -105,7 +105,7 @@ def load_excel_to_polars(
             "io": io.BytesIO(file_bytes),
             "dtype": str,
             "keep_default_na": False,
-            "na_values": ["", "NULL", "null", "N/A", "n/a", "NA"],
+            "na_values": ["", "N/A", "n/a", "NA"],
         }
         if sheet_name is not None:
             kwargs["sheet_name"] = sheet_name
@@ -154,7 +154,7 @@ def load_csv_to_pandas(
                 io.StringIO(text),
                 dtype=str,
                 keep_default_na=False,
-                na_values=["", "NULL", "null", "N/A", "n/a", "NA"],
+                na_values=["", "N/A", "n/a", "NA"],
             )
             logger.debug("Loaded '%s' as CSV/Pandas with encoding=%s, shape=%s", filename, encoding, df.shape)
             return _normalise_pandas(df)
@@ -182,7 +182,7 @@ def load_excel_to_pandas(
             "io": io.BytesIO(file_bytes),
             "dtype": str,
             "keep_default_na": False,
-            "na_values": ["", "NULL", "null", "N/A", "n/a", "NA"],
+            "na_values": ["", "N/A", "n/a", "NA"],
         }
         if sheet_name is not None:
             kwargs["sheet_name"] = sheet_name

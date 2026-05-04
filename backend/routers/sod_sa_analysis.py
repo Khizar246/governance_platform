@@ -100,10 +100,10 @@ def _run_thread(
         summary = SODSASummary(
             analysis_type=analysis_type,
             violations=ViolationCounts(
-                role_sod=role_sod.height,
-                role_sa=role_sa.height,
-                user_sod=user_sod.height,
-                user_sa=user_sa.height,
+                role_sod=role_sod.select("ROLE_NAME").unique().height if role_sod.height > 0 else 0,
+                role_sa=role_sa.select("ROLE_NAME").unique().height if role_sa.height > 0 else 0,
+                user_sod=user_sod.select("USER_NAME").unique().height if user_sod.height > 0 else 0,
+                user_sa=user_sa.select("USER_NAME").unique().height if user_sa.height > 0 else 0,
             ),
             total_roles_analyzed=total_roles,
             total_users_analyzed=total_users,

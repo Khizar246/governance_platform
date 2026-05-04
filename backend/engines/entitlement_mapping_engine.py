@@ -107,10 +107,10 @@ def run_mapping(
         _cb(5, f"Indexing {len(client_df):,} client rows and {len(ey_df):,} EY rows…")
 
         # Locate columns case-insensitively (file_io normalises values but not names)
-        c_ent_col  = _find_col(client_df, "Access Entitlement Name")
-        c_priv_col = _find_col(client_df, "Access Point Code")
-        e_ent_col  = _find_col(ey_df, "Access Entitlement Name")
-        e_priv_col = _find_col(ey_df, "Access Point Code")
+        c_ent_col  = _find_col(client_df, "Entitlement Name")
+        c_priv_col = _find_col(client_df, "Privilege Code")
+        e_ent_col  = _find_col(ey_df, "Entitlement Name")
+        e_priv_col = _find_col(ey_df, "Privilege Code")
 
         # Group privileges per entitlement — groupby+set auto-deduplicates
         client_groups: dict[str, set] = (

@@ -8,10 +8,10 @@ interface BadgeProps {
 }
 
 const VARIANT_CLASSES: Record<BadgeVariant, string> = {
-  success: 'bg-success-light text-success',
-  warning: 'bg-warning-light text-warning',
-  error:   'bg-error-light text-error',
-  info:    'bg-info-light text-info',
+  success: 'bg-success-bg text-success',
+  warning: 'bg-warning-bg text-warning',
+  error:   'bg-error-bg text-error',
+  info:    'bg-info-bg text-info',
   neutral: 'bg-gray-100 text-gray-500',
 }
 

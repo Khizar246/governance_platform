@@ -26,7 +26,7 @@ from engines.entitlement_mapping_engine import run_mapping
 router = APIRouter(prefix="/api/entitlement-mapping", tags=["Entitlement Mapping"])
 logger = logging.getLogger("governance_platform.entitlement_mapping")
 
-_REQUIRED_COLS = {"Access Entitlement Name", "Access Point Code"}
+_REQUIRED_COLS = {"Entitlement Name", "Privilege Name", "Privilege Code"}
 
 
 def _build_preview(df: pd.DataFrame, filename: str) -> FilePreview:
