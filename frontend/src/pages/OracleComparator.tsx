@@ -278,7 +278,6 @@ export default function OracleComparator() {
                     'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
                     'bg-white border border-gray-200 border-l-[3px] shadow-sm',
                     'focus:outline-none hover:shadow-md transition-shadow duration-150',
-                    analysisType === id ? 'ring-2 ring-ey-yellow/60 shadow-md' : '',
                   )}
                 >
                   {recommended && (

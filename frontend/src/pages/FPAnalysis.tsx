@@ -222,7 +222,6 @@ export default function FPAnalysis() {
                     'flex flex-col text-left p-6 rounded-xl cursor-pointer',
                     'bg-white border border-gray-200 border-l-[3px] shadow-sm',
                     'focus:outline-none hover:shadow-md transition-shadow duration-150',
-                    mode === id ? 'ring-2 ring-ey-yellow/60 shadow-md' : '',
                   )}
                 >
                   <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
