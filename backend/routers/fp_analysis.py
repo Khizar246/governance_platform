@@ -30,6 +30,13 @@ logger = logging.getLogger("governance_platform.fp_analysis")
 
 _XLSX_EXTS = {".xlsx", ".xls"}
 
+# Columns exposed per sheet type through the paginated results endpoint
+_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME", "FP?", "Reason"]
+_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME", "USER_NAME", "FP?", "Reason"]
+
+# Per-sheet result rows keyed by job_id; cleared on DELETE
+_result_dfs: dict[str, dict[str, list[dict]]] = {}
+
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
     return FilePreview(
@@ -57,6 +64,17 @@ def _run_thread(
             return
 
         results_dfs: dict[str, pl.DataFrame] = result.data
+
+        # Cache per-sheet rows (selected columns only) for paginated access
+        cache: dict[str, list[dict]] = {}
+        for _sheet in VIOLATION_SHEETS:
+            if _sheet not in results_dfs or results_dfs[_sheet].height == 0:
+                continue
+            _df = results_dfs[_sheet]
+            _cols = _USER_COLS if "USER" in _sheet else _ROLE_COLS
+            _available = [c for c in _cols if c in _df.columns]
+            cache[_sheet] = _df.select(_available).to_dicts()
+        _result_dfs[job_id] = cache
 
         sheet_summaries = []
         for sheet in VIOLATION_SHEETS:
@@ -229,8 +247,69 @@ async def download(job_id: str):
     )
 
 
+@router.get("/summary/{job_id}")
+async def summary(job_id: str):
+    """Per-sheet summary stats derived from the cached result rows."""
+    if job_id not in _result_dfs:
+        job_manager.get_job(job_id)  # raises 404 if job is gone entirely
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
+        )
+    sheets: dict[str, dict] = {}
+    for sheet, rows in _result_dfs[job_id].items():
+        sheets[sheet] = {
+            "total": len(rows),
+            "false_positive_count": sum(1 for r in rows if r.get("FP?") == "YES"),
+            "single_leg_count":     sum(1 for r in rows if r.get("FP?") == "SL"),
+            "true_conflict_count":  sum(1 for r in rows if r.get("FP?") == "True Conflict"),
+        }
+    return {"sheets": sheets}
+
+
+@router.get("/results/{job_id}")
+async def results_page(
+    job_id: str,
+    sheet: str,
+    page: int = 1,
+    page_size: int = 50,
+    search: str = "",
+    fp_filter: str = "",
+):
+    """Paginated, filtered rows for a single violation sheet."""
+    if job_id not in _result_dfs:
+        job_manager.get_job(job_id)  # raises 404 if job is gone entirely
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
+        )
+    sheet_cache = _result_dfs[job_id]
+    if sheet not in sheet_cache:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": f"Sheet '{sheet}' was not analyzed.", "code": "NOT_FOUND", "details": []},
+        )
+
+    rows: list[dict] = sheet_cache[sheet]
+
+    if search:
+        q = search.lower()
+        _search_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME", "USER_NAME"]
+        rows = [r for r in rows if any(q in str(r.get(c, "")).lower() for c in _search_cols)]
+
+    if fp_filter:
+        rows = [r for r in rows if r.get("FP?", "") == fp_filter]
+
+    total = len(rows)
+    page_size = max(1, min(page_size, 200))
+    page = max(1, page)
+    start = (page - 1) * page_size
+    return {"data": rows[start: start + page_size], "total": total, "page": page, "page_size": page_size, "sheet": sheet}
+
+
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
     job_manager.delete_job(job_id)
+    _result_dfs.pop(job_id, None)
     return {"message": "Job deleted."}

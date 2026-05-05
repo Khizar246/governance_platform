@@ -1,10 +1,12 @@
 """Oracle Comparator API router (Tool 3).
 
 Endpoints:
-  POST /api/oracle-comparator/upload
-  POST /api/oracle-comparator/run/{job_id}
-  GET  /api/oracle-comparator/status/{job_id}
-  GET  /api/oracle-comparator/download/{job_id}
+  POST   /api/oracle-comparator/upload
+  POST   /api/oracle-comparator/run/{job_id}
+  GET    /api/oracle-comparator/status/{job_id}
+  GET    /api/oracle-comparator/summary/{job_id}
+  GET    /api/oracle-comparator/results/{job_id}
+  GET    /api/oracle-comparator/download/{job_id}
   DELETE /api/oracle-comparator/job/{job_id}
 """
 
@@ -14,7 +16,7 @@ import threading
 from typing import Optional
 
 import polars as pl
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
@@ -27,6 +29,9 @@ from engines.oracle_comparator_engine import run_analysis, generate_report
 
 router = APIRouter(prefix="/api/oracle-comparator", tags=["Oracle Comparator"])
 logger = logging.getLogger("governance_platform.oracle_comparator")
+
+# { job_id: { "1to2": { comp_type: [rows] }, "2to1": { comp_type: [rows] } } }
+_result_data: dict[str, dict[str, dict[str, list[dict]]]] = {}
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -62,6 +67,11 @@ def _run_thread(
             return
 
         results_1to2, results_2to1 = result.data
+
+        _result_data[job_id] = {
+            "1to2": {ct: df.to_dicts() for ct, df in results_1to2.items() if df is not None},
+            "2to1": {ct: df.to_dicts() for ct, df in results_2to1.items() if df is not None},
+        }
 
         report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
         if not report_result.success:
@@ -226,8 +236,62 @@ async def download(job_id: str):
     )
 
 
+@router.get("/summary/{job_id}")
+async def summary(job_id: str):
+    job = job_manager.get_job(job_id)
+    if job.status != JobStatus.COMPLETE:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Analysis not complete.", "code": "NOT_READY", "details": []},
+        )
+    return job.results
+
+
+@router.get("/results/{job_id}")
+async def results_page(
+    job_id: str,
+    direction: str = Query(..., description="'1to2' or '2to1'"),
+    comparison_type: str = Query(..., description="'duty_role', 'privilege', or 'dsp'"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=500),
+    status_filter: Optional[str] = Query(None, description="Filter by Status: 'exists' or 'missing'"),
+    search: Optional[str] = Query(None, description="Text search across all columns"),
+):
+    if job_id not in _result_data:
+        return JSONResponse(
+            status_code=404,
+            content={"error": True, "message": "Results not found. The job may have expired.", "code": "NOT_FOUND", "details": []},
+        )
+    if direction not in ("1to2", "2to1"):
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "direction must be '1to2' or '2to1'.", "code": "VALIDATION_ERROR", "details": []},
+        )
+
+    rows: list[dict] = _result_data[job_id].get(direction, {}).get(comparison_type, [])
+
+    if status_filter:
+        sf = status_filter.lower()
+        rows = [r for r in rows if sf in str(r.get("Status", "")).lower()]
+
+    if search:
+        s = search.lower()
+        rows = [r for r in rows if any(s in str(v).lower() for v in r.values())]
+
+    total = len(rows)
+    start = (page - 1) * page_size
+
+    return {
+        "rows": rows[start : start + page_size],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
+
+
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
+    _result_data.pop(job_id, None)
     job_manager.delete_job(job_id)
     return {"message": "Job deleted."}

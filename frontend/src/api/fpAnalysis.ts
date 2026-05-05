@@ -35,3 +35,26 @@ export async function downloadResults(jobId: string, filename: string): Promise<
 export async function cancelJob(jobId: string): Promise<void> {
   await api.delete(`/api/fp-analysis/job/${jobId}`)
 }
+
+export interface SheetResultsResponse {
+  data: Record<string, unknown>[]
+  total: number
+  page: number
+  page_size: number
+  sheet: string
+}
+
+export async function getSheetResults(
+  jobId: string,
+  sheet: string,
+  page: number,
+  pageSize: number,
+  search: string,
+  fpFilter: string,
+): Promise<SheetResultsResponse> {
+  const params = new URLSearchParams({ sheet, page: String(page), page_size: String(pageSize) })
+  if (search) params.set('search', search)
+  if (fpFilter) params.set('fp_filter', fpFilter)
+  const response = await api.get(`/api/fp-analysis/results/${jobId}?${params}`)
+  return response.data
+}

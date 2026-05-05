@@ -1,13 +1,34 @@
 # Python
 backend/venv/
-__pycache__/
+**/__pycache__/
 *.pyc
+*.pyo
+*.pyd
+
+# Backend runtime
+backend/logs/
+backend/temp/
 
 # Node
 frontend/node_modules/
 
-# Env files
+# Frontend build output
+frontend/dist/
+
+# Environment files
 .env
+.env.local
+.env.*.local
 
 # VS Code
 .vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editors
+.idea/
+*.swp
+*.swo

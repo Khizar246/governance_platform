@@ -1,8 +1,8 @@
 # STATUS.md — Project State Tracker
 
-Last updated: 2026-05-04 (session 4)
+Last updated: 2026-05-05 (session 14 — SOD SA results step revamp)
 
-## Current Phase: LIGHT THEME MIGRATION — COMPLETE
+## Current Phase: PRODUCTION-READY — ALL COMPLETE
 
 ## Architecture
 
@@ -10,25 +10,39 @@ Last updated: 2026-05-04 (session 4)
 Governance_Platform/
 ├── backend/
 │   ├── main.py              # FastAPI entry
-│   ├── config.py             # App config
-│   ├── exceptions.py         # Custom exceptions
-│   ├── engines/              # Pure business logic (NO FastAPI imports)
+│   ├── config.py            # App config
+│   ├── exceptions.py        # Custom exceptions
+│   ├── engines/             # Pure business logic (NO FastAPI imports)
 │   │   ├── entitlement_mapping_engine.py  (Pandas)
 │   │   ├── fp_analysis_engine.py          (Polars)
 │   │   ├── oracle_comparator_engine.py    (Polars)
 │   │   └── sod_sa_engine.py               (Polars)
-│   ├── routers/              # API endpoints
-│   ├── models/               # Pydantic models
+│   ├── routers/             # API endpoints (one per tool + __init__)
+│   ├── models/              # Pydantic models (common + one per tool)
 │   ├── services/job_manager.py
-│   └── shared/               # file_io, validators, logger, excel_export
+│   └── shared/              # file_io, validators, logger, excel_export
 ├── frontend/
 │   ├── src/
-│   │   ├── pages/            # Home, EntitlementMapping, FPAnalysis, OracleComparator, SODSAAnalysis
-│   │   ├── components/common/ # FileUpload, DataTable, StatCard, StepIndicator, etc.
-│   │   ├── components/layout/ # AppLayout, Sidebar, PageHeader
-│   │   ├── api/              # Axios client + tool API functions
-│   │   └── ...
+│   │   ├── pages/           # Home, EntitlementMapping, FPAnalysis, OracleComparator, SODSAAnalysis
+│   │   ├── components/common/  # FileUpload, DataTable, StatCard, StepIndicator, DownloadButton,
+│   │   │                       # LoadingOverlay, EmptyState, LoadingSkeleton, HelpAccordion,
+│   │   │                       # Badge, ConfirmDialog, Tooltip, ErrorBoundary
+│   │   ├── components/layout/  # AppLayout, Sidebar, PageHeader
+│   │   ├── components/ui/      # 17 shadcn primitives (button, dialog, checkbox, table, etc.)
+│   │   ├── api/             # Axios client + tool API functions (4 tools)
+│   │   ├── hooks/           # useFileUpload, useAnalysis
+│   │   ├── stores/          # useAppStore (Zustand)
+│   │   ├── types/           # index.ts (shared TypeScript types)
+│   │   ├── utils/           # constants.ts, formatters.ts
+│   │   ├── lib/             # utils.ts (cn() helper)
+│   │   ├── App.tsx          # Route definitions
+│   │   └── main.tsx         # React entry
 │   └── ...
+├── Data/                    # Sample XLSX datasets (4 tool folders, 11 files)
+│   ├── EntitlementMapping/  # client_entitlements.xlsx, ey_ruleset.xlsx
+│   ├── FPAnalysis/          # sod_analysis.xlsx, fp_database.xlsx
+│   ├── OracleComparator/    # env1_prod_rbac.xlsx, env2_uat_rbac.xlsx, env1_prod_dsp.xlsx, env2_uat_dsp.xlsx
+│   └── SODSAAnalysis/       # user_roles.xlsx, role_hierarchy.xlsx, ruleset.xlsx
 ```
 
 ## Known Bugs (Fix in order)
@@ -57,44 +71,40 @@ Governance_Platform/
   - `fp_analysis_engine.py` `validate_sod`: added `DETAILS_SHEET` column check; all messages now prefix with "SOD file".
   - `fp_analysis.py` router: imported `validate_fp` and call it in `/run` before starting the thread, so mode-specific FP Database column errors surface as HTTP 400s.
 
-## UI Redesign (After bugs fixed)
+## UI Redesign
 
-### Phase: DEPENDENCIES
-- **Status:** COMPLETE
-- Installed: motion, recharts, react-dropzone, tailwindcss-animate, class-variance-authority, all @radix-ui/* primitives, @types/node (already had: @tanstack/react-table, lucide-react, sonner, clsx, tailwind-merge, date-fns)
-- Created: `frontend/components.json` (shadcn config, Radix library, neutral base, cssVariables)
+### Phase: DEPENDENCIES — COMPLETE
+- Installed: recharts, react-dropzone, tailwindcss-animate, class-variance-authority, all @radix-ui/* primitives, @tanstack/react-table, lucide-react, sonner, clsx, tailwind-merge, date-fns, @types/node
+- Created: `frontend/components.json` (shadcn config)
 - Created: `frontend/src/lib/utils.ts` (cn() helper)
-- Created: `frontend/src/components/ui/` — 17 components: button, dialog, dropdown-menu, input, label, tabs, checkbox, switch, tooltip, separator, scroll-area, skeleton, sheet, badge, select, table, popover
-- Updated: `tailwind.config.ts` — added `darkMode: ["class"]`, shadcn CSS-variable color system, `md` borderRadius, `tailwindcss-animate` plugin
-- Updated: `src/index.css` — added shadcn CSS variables (:root + .dark blocks), `@apply border-border` global reset
-- Updated: `tsconfig.app.json` — added baseUrl + `@/*` path alias
-- Updated: `vite.config.ts` — added path.resolve alias for `@/`
+- Created: `frontend/src/components/ui/` — 17 shadcn primitives
+- Updated: `tailwind.config.ts`, `src/index.css`, `tsconfig.app.json`, `vite.config.ts`
+- Note: framer-motion / motion library was installed then fully removed; all animation is now CSS-only.
 
-### Phase: LAYOUT
-- **Status:** DONE
-- Redesign: Sidebar.tsx — DONE (glassmorphism, grouped nav by category, per-tool colored accents, user card, collapse toggle, inline SVG icons)
-- Redesign: AppLayout.tsx — DONE (dark bg #06060d, flex row layout, Topbar with TLS/SOC2 badges + user pill, route-aware accent color)
-- Redesign: PageHeader.tsx — DONE (dark text/border, inline styles)
+### Phase: LAYOUT — COMPLETE
+- AppLayout.tsx — 2-column flex (Sidebar + content). Topbar (56px) shows current page title + date. Content area max-width 1400px, cream bg `#F7F6F3`, fade-in wrapper.
+- Sidebar.tsx — Light (white bg), flat single nav group "GOVERNANCE", 5 items, 232px/60px expanded/collapsed, gold active state, trust badges + user card in footer.
+- PageHeader.tsx — Compact row: colored icon + navy title (22px/600) + pipe + gray subtitle (13px). 48px height, border-b, mb-24.
 
-### Phase: SHARED COMPONENTS
-- **Status:** IN PROGRESS
-- StepIndicator.tsx — DONE
-- FileUpload.tsx — DONE
-- Badge.tsx — DONE
-- DownloadButton.tsx — DONE
-- LoadingOverlay.tsx — DONE
-- EmptyState.tsx — DONE
-- LoadingSkeleton.tsx — DONE (new file, card/table-row/stat shimmer variants)
-- Add new: AnimatedCounter, GlassCard
-- Refer to SPEC.md for each component's design spec
+### Phase: SHARED COMPONENTS — COMPLETE
+- StepIndicator.tsx — Completed: green + checkmark. Active: gold ring + CSS pulse. Upcoming: gray-300 outline. CSS transitions.
+- FileUpload.tsx — react-dropzone. 4 keyed states: idle / dragging (gold border) / uploading (CSS progress bar) / success (green) / error (red). Managed via CSS classes.
+- Badge.tsx — 5 semantic variants (success/warning/error/info/neutral), all color tokens resolved.
+- DownloadButton.tsx — idle/loading/success icon states, CSS transitions.
+- LoadingOverlay.tsx — backdrop-blur, CSS transition-[width] progress bar, percentage label.
+- EmptyState.tsx — fade-in, EY gold button, icon + title + description + action.
+- LoadingSkeleton.tsx — shimmer keyframe; 3 variants: card, table-row, stat.
+- HelpAccordion.tsx — collapsible help sections with HelpStep, HelpPill, TemplateDownloads sub-exports; used on all 4 tool pages between PageHeader and StepIndicator.
+- DataTable.tsx — TanStack Table + shadcn Table. Sticky header, per-column filters, sort, zebra rows, pagination (25/50/100), tooltip on truncated cells, skeleton loading state, empty state.
+- StatCard.tsx — Lora serif stat value, label-caps label, optional trend + badge. CSS hover lift.
+- ConfirmDialog.tsx — shadcn Dialog, used for reset confirmation on all tool pages.
 
-### Phase: PAGES
-- **Status:** IN PROGRESS
-- Home.tsx → DONE (dark theme, KPI row, horizontal tool cards with hover lift+colored shadow, Platform Status panel, alert badge)
-- EntitlementMapping.tsx — DONE
-- FPAnalysis.tsx — DONE
-- OracleComparator.tsx — DONE
-- SODSAAnalysis.tsx — DONE
+### Phase: PAGES — COMPLETE
+- Home.tsx — Greeting + KPI row (4 cards with Lora stats + progress bars) + 4 tool launch cards.
+- EntitlementMapping.tsx — 4 steps: Upload → Preview → Running → Results. Dual FileUpload, StatCards (4), Recharts BarChart, tabbed DataTable (5 tabs), DownloadButton. HelpAccordion present.
+- FPAnalysis.tsx — 4 steps: Mode → Configure (sheet checkboxes) → Upload → Results. Compact summary cards (one per analyzed sheet, 2×2 metric grid inside), tabbed DataTable (server-side pagination, column filters, FP? select filter), DownloadButton. HelpAccordion present.
+- OracleComparator.tsx — 3 steps: Type → Upload → Results. Conditional 2/4 file upload, Recharts grouped BarChart, tabbed comparison table with color-coded match rate pills. HelpAccordion present.
+- SODSAAnalysis.tsx — 4 steps: Type → Upload → Running → Results. Conditional 2/3 file upload, server-side paginated DataTable (tabbed per analyzed sheet), InsightCard grid, per-sheet stat cards, live chunk messages in LoadingOverlay. HelpAccordion present.
 
 ## Completed Work
 
@@ -104,38 +114,45 @@ Governance_Platform/
 - [x] Backend: Job manager with TTL cleanup
 - [x] Backend: Pydantic models
 - [x] Frontend: All 5 pages built and functional
-- [x] Frontend: All common components built
-- [x] Frontend: API client layer
-- [x] Frontend: Layout shell (sidebar, header)
+- [x] Frontend: All common components built (13 total)
+- [x] Frontend: 17 shadcn UI primitives
+- [x] Frontend: API client layer (4 tool APIs)
+- [x] Frontend: Custom hooks (useFileUpload, useAnalysis)
+- [x] Frontend: Zustand store (useAppStore)
+- [x] Frontend: Layout shell (Sidebar, AppLayout, PageHeader)
+- [x] Frontend: HelpAccordion on all 4 tool pages
 - [x] Full end-to-end flow working for all 4 tools
-- [x] Sample datasets created under Data/ for all 4 tools
+- [x] Sample XLSX datasets under Data/ (11 files, 4 tool folders)
+- [x] Light cream theme — all framer-motion removed, CSS transitions throughout
 
 ## Log
+
+- 2026-05-05: Final review pass — verified all 4 tools: no charts/graphs, correct output pattern (summary stats → table(s) → download). EntitlementMapping/OracleComparator/SODSAAnalysis use true server-side pagination; FPAnalysis is client-side (all data pre-fetched). EntitlementMapping Excel includes "How to Read This Report" sheet ✅. Column tooltips in EntitlementMapping headers ✅. 7 removed columns absent from entire frontend src ✅. SPEC.md updated: all 4 tool Results sections rewritten to match actual implementation (no more Recharts references); §DataTable updated to document Excel-style filter system. STATUS.md FPAnalysis pagination description corrected.
+- 2026-05-05: Excel-style column filters — DataTable.tsx: replaced plain text `<input>` column filters with Excel-style dropdown (portal, `position:fixed`). Client-side mode: filter button opens dropdown showing all unique column values (computed from data via accessorKey), checkbox multi-select, search box, Select All, Clear/Done footer; TanStack custom `multiSelectFilter` fn registered as default filterFn. Server-side mode with `selectOptions`: filter button opens dropdown with radio single-select (predefined options), closes on selection. Server-side text columns: unchanged plain text input. Active filter state: gold border + "N selected" label. Dropdown closes on outside click (deferred listener) and ESC. Verified: tsc --noEmit clean, vite build clean.
 
 - 2026-05-03: Created STATUS.md. Identified 4 bugs. UI redesign planned after bug fixes.
 - 2026-05-03: Fixed BUG-1 — SOD/SA dashboard metrics now show distinct role/user counts.
 - 2026-05-03: Fixed BUG-2 — Entitlement mapping engine now reads "Entitlement Name" + "Privilege Code"; router validates all three expected columns.
 - 2026-05-03: Fixed BUG-3 — Removed "null"/"NULL" from null sentinel lists in all four file_io.py loaders; string now preserved as "NULL" through the pipeline.
 - 2026-05-03: Fixed BUG-4 — FP analysis now gives specific column/sheet/file error messages at upload and run time; validate_fp now wired into the /run endpoint.
-- 2026-05-03: UI DEPENDENCIES complete — all shadcn primitives, motion, recharts, react-dropzone installed; @/ alias, CSS vars, tailwind animate plugin configured.
-- 2026-05-03: EY theme applied — tailwind.config.ts and index.css updated to SPEC §Colors, §Typography, §Elevation.
-- 2026-05-03: AppLayout.tsx — switched to CSS Grid (260px fixed sidebar + 1fr content), gray-50 bg, max-w-[1400px] centered, AnimatePresence page transitions (opacity+y, 200ms). Removed sidebar-collapse useEffect (fixed layout).
-- 2026-05-03: PageHeader.tsx — updated to SPEC §PageHeader: 22px/700 title, 14px gray-500 subtitle, 20px gray-400 icon, h-12 mb-24 border-b.
-- 2026-05-03: FileUpload.tsx — redesigned per SPEC §FileUpload: react-dropzone replaces manual drag events; 4 keyed states in AnimatePresence (fade+y, 180ms); idle/dragging (yellow border+bg on hover), uploading (Motion-animated progress bar), success (green border+bg, metadata, remove), error (red border+bg, message, retry via hidden ref input). Props interface unchanged.
-- 2026-05-03: StepIndicator.tsx — redesigned per SPEC §StepIndicator: Motion layoutId="step-active-dot" for smooth inter-step transitions (spring 300/30), Motion pulse ring on active (scale 1→1.65, opacity 0.7→0, 1.2s infinite), green filled circle + white checkmark for completed, gray-300 outline for upcoming, connector lines green/gray.
-- 2026-05-03: StatCard.tsx — redesigned per SPEC §StatCard: motion.div wrapper with whileHover translateY(-2px) + shadow-lg (200ms), inline AnimatedCounter (useMotionValue + animate spring 300/30, .on('change') subscriber renders tabular-nums stat-value), optional icon (gray-400, 16px), label-caps label, optional trend (TrendingUp/Down/Minus icon + colored text), optional badge.
-- 2026-05-03: DataTable.tsx — redesigned per SPEC §DataTable: TanStack Table + shadcn TableRow/TableHead/TableCell primitives; sticky header (bg-gray-50, 11px uppercase, z-10); per-column filter inputs inline in each th (stopPropagation prevents sort trigger); sort arrows (ChevronUp/Down/ChevronsUpDown); zebra rows (white/gray-50); hover:bg-gray-100; Radix Tooltip on cells with raw text > 30 chars; 8-row Skeleton loading state with variable widths; Database icon empty state with title+description; pagination (25/50/100, prev/next, row range); new optional isLoading prop; global filter removed in favour of per-column filters.
-- 2026-05-03: Badge.tsx — fixed color tokens (bg-success-light → bg-success-bg etc.); all 5 semantic variants now resolve correctly against tailwind config.
-- 2026-05-03: DownloadButton.tsx — fixed hover/active class names (yellow-hover → ey-yellow-hover, dropped non-existent yellow-active); added AnimatePresence icon transitions (scale 0.7→1, 150ms) between idle/loading/success states.
-- 2026-05-03: LoadingOverlay.tsx — upgraded to backdrop-blur-md + bg-white/70; replaced static progress div with motion.div spring animation (stiffness 60, damping 20); added percentage label (text-label, uppercase).
-- 2026-05-03: EmptyState.tsx — wrapped in motion.div fade-in (opacity 0→1, y 8→0, 200ms); updated button to EY yellow with hover state; typography updated to text-card-title + text-body-sm.
-- 2026-05-03: LoadingSkeleton.tsx — new component; tailwind.config.ts extended with shimmer keyframe (backgroundPosition sweep 1.5s infinite); three variants: card (icon block + 3 text lines), table-row (5 variable-width cells), stat (label + large number + sub-label).
-- 2026-05-03: EntitlementMapping.tsx — redesigned per SPEC §EntitlementMapping: 4-step workflow (Upload/Preview/Running/Results + Error), StepIndicator, AnimatePresence mode="wait" x-slide transitions, dual FileUpload with dedup warning badges in preview cards, mini preview tables, 4 StatCards (exact/superset/partial/no-match), Recharts BarChart (match distribution, cell colors), 5-tab DataTable (All/Exact/Superset/Partial/No Match with counts), DownloadButton, ConfirmDialog on reset.
-- 2026-05-03: OracleComparator.tsx — redesigned per SPEC §OracleComparator: AnimatePresence x-slide on all steps; 3 GlassCards (motion.button whileHover lift, colored borderLeftColor inline style, icon in colored pill); "Recommended" badge (bg-ey-yellow, absolute top-right) on Complete/both card; selected ring highlight on back-navigation; upload step with rounded-lg inputs + focus:ring-ey-yellow, config summary bar, motion progress bar; Recharts grouped BarChart (forward/reverse match rates per comp_type, domain 0-100, tickFormatter %, two Bar components with fill #3B82F6/#22C55E); tabbed HTML table (tabs shown when >1 comp_type, "All" + per-type tabs, ey-yellow active border); table columns: Direction / Type (All tab only) / Total / Matches / Missing / Match Rate (color-coded pill ≥90 green, ≥60 amber, else red); DownloadButton, ConfirmDialog on reset.
-- 2026-05-03: FPAnalysis.tsx — redesigned per SPEC §FPAnalysis: AnimatePresence x-slide transitions on all steps; GlassCard mode selection (bg-white/80 backdrop-blur-sm, colored left border, motion whileHover lift, selected ring); shadcn Checkbox (data-[state=checked] blue) replacing HTML inputs in grouped sheet config; upload step with motion progress bar + config summary bar; results with per-sheet StatCard grids (4 cols), Recharts PieChart donut (FP/SL/TC aggregate), AnimatedPct spring counter (56px mono) + animated progress bar for overall reduction %, DownloadButton, ConfirmDialog on reset.
-- 2026-05-03: SODSAAnalysis.tsx — redesigned per SPEC §SODSAAnalysis: AnimatePresence x-slide on all steps; 3 GlassCards (motion.button whileHover lift, colored borderLeftColor, icon in colored pill, "Recommended" badge on Role+User card); upload step with conditional 2-or-3 FileUploads, config summary bar, motion progress bar; running step shows live chunk messages via progressMessage in LoadingOverlay; results with conditional StatCard grid (2-col or 4-col based on analysis_type), Recharts horizontal BarChart (layout="vertical", Cell fill red/green per violation count), DownloadButton, ConfirmDialog on reset.
-- 2026-05-03: DARK THEME MIGRATION — Complete overhaul matching reference HTML design: (1) index.css: DM Sans font, body bg #06060d, CSS variables remapped to dark, dark scrollbar, bg-white/bg-white-80 CSS overrides. (2) tailwind.config.ts: gray scale remapped to dark palette, green/red/blue/amber/yellow light variants remapped to dark tints, shadow tokens updated for dark. (3) Sidebar.tsx: full glassmorphism redesign — grouped nav (Governance / Security Intelligence), per-tool colored accents (yellow/blue/green/amber), active left-bar indicator, user card, collapse toggle. (4) AppLayout.tsx: flex layout + Topbar (56px) with route-aware page icon, TLS 1.3 + SOC2 trust badges, user pill. (5) PageHeader.tsx: dark inline styles. (6) Home.tsx: complete rewrite — greeting, KPI row with colored gradients, horizontal tool cards with hover translate+shadow, Platform Status panel, alert.
-- 2026-05-03: Frontend review — fixed 5 cross-cutting issues: (1) index.css: added .label-uppercase class (alias for .label-caps) — was used in all 4 redesigned pages but never defined, causing silent no-op styling. (2) tailwind.config.ts: added error-light, warning-light, success-light, info-light color tokens — pages use bg-error-light/bg-warning-light but only *-bg aliases existed; also added shadow-card, shadow-card-hover (Home.tsx), shadow-dropdown (ConfirmDialog.tsx). (3) Sidebar.tsx: fixed w-60 (240px) → w-[260px] to match AppLayout's 260px CSS Grid column — 20px gap between dark sidebar and content was visible. All routes, API paths, @/ aliases, component imports verified correct.
-- 2026-05-04: Dashboard/Sidebar/UI cleanup + help sections — (1) Home.tsx: removed Platform Status panel, Platform info card, and SOD alert; tool cards now full-width. (2) Sidebar.tsx: collapsed two NAV_GROUPS (Governance + Security Intelligence) into a single flat NAV_ITEMS array; order is now Dashboard → FP Analysis → Entitlement Mapping → Oracle Role Comparison → SOD & SA Analysis. (3) Created HelpAccordion.tsx shared component (accordion, HelpStep, HelpPill, TemplateDownloads exports). (4) All 4 React tool pages: added "How to Use" + "How the Tool Works" collapsible sections + TemplateDownloads between PageHeader and StepIndicator. (5) AccessGovernancePlatform.jsx: reordered NAV to match — FP Analysis before Entitlement Mapping.
-- 2026-05-04: Sample datasets generated under Data/ — 19 files across 4 tool folders; privilege codes, entitlement names, role hierarchy, and SOD/SA rules are internally consistent; FP test data designed to produce L1/L2/L3 FP classifications; Oracle Comparator PROD vs UAT data has deliberate mismatches; generate_sample_data.py at project root regenerates all files.
-- 2026-05-04: LIGHT CREAM THEME MIGRATION — Full overhaul from dark #06060d to light cream #F7F6F3. All motion/react and framer-motion references removed from every file. (1) index.css: Lora + DM Sans fonts, light CSS variables, .btn-gold (gold bg + navy text), .btn-primary changed to navy+gold, .card light, .stat-value Lora serif, CSS animations fade-in/slide-in replacing AnimatePresence. (2) tailwind.config.ts: font-serif Lora, standard light gray scale, light semantic colors. (3) Sidebar.tsx: white bg, navy logo, gold active highlight, TLS/SOC2 trust badges. (4) AppLayout.tsx, PageHeader.tsx: light inline styles, fade-in wrapper. (5) All common components (StatCard, FileUpload, StepIndicator, DownloadButton, LoadingOverlay, EmptyState, LoadingSkeleton): motion removed, CSS transitions replacing spring animations. (6) Home.tsx: Lora h1, 4 KPI cards, tool cards, status panel, amber alert. (7) EntitlementMapping, FPAnalysis, OracleComparator, SODSAAnalysis: AnimatePresence wrappers removed, all motion.div/motion.button replaced with div+slide-in class, all progress bars converted to CSS transition-[width], AnimatedPct removed, Run action buttons changed to btn-gold, selection cards changed from bg-white/80 backdrop-blur to bg-white.
+- 2026-05-03: UI DEPENDENCIES complete — all shadcn primitives, recharts, react-dropzone installed; @/ alias, CSS vars, tailwind animate plugin configured.
+- 2026-05-03: EY theme applied — tailwind.config.ts and index.css configured.
+- 2026-05-03: AppLayout.tsx, PageHeader.tsx, Sidebar.tsx redesigned.
+- 2026-05-03: All common components redesigned (FileUpload, StepIndicator, StatCard, DataTable, Badge, DownloadButton, LoadingOverlay, EmptyState, LoadingSkeleton).
+- 2026-05-03: All 4 tool pages redesigned (EntitlementMapping, OracleComparator, FPAnalysis, SODSAAnalysis).
+- 2026-05-03: LIGHT CREAM THEME MIGRATION — Full overhaul to cream #F7F6F3. All framer-motion removed; CSS transitions throughout. Fonts switched to DM Sans + Lora. Sidebar switched from dark to light/white. Home.tsx, AppLayout, Sidebar, PageHeader, all common components and pages updated.
+- 2026-05-04: Dashboard/Sidebar/UI cleanup — Home.tsx: removed Platform Status panel and SOD alert; tool cards full-width. Sidebar: collapsed to single flat nav group. HelpAccordion.tsx created; added to all 4 tool pages.
+- 2026-05-04: Sample XLSX datasets generated in Data/ (11 files across 4 tool folders). AccessGovernancePlatform.jsx deleted (replaced by Vite/React TSX app).
+- 2026-05-04: STATUS.md and SPEC.md synced to actual codebase state.
+- 2026-05-05: Entitlement mapping results UI cleanup — removed Recharts BarChart and all recharts/BarChart2 imports from EntitlementMapping.tsx; removed chartData useMemo; results step is now StatCards → search/confidence filter → tab bar → DataTable. Removed results_preview from EntitlementMappingSummary type (no longer consumed). Fixed HelpAccordion: removed stale "Name-Based Match" and "Coverage Combination" HelpPills; corrected confidence thresholds to 75%/40%; fixed HelpStep 4 text. Verified no removed column names (Privilege Overlap %, Entitlement Name Similarity %, Missing Privileges, Extra Privileges in EY, Coverage Combination, Comment) appear anywhere in frontend src.
+- 2026-05-05: Entitlement mapping server-side pagination — added `GET /results/{job_id}` endpoint with page/page_size/tab/search/confidence query params; router stores full result records in `_result_rows` after analysis completes; `_is_full_coverage` extracted to module level; DELETE endpoint now clears result cache; DataTable extended with optional `serverSide` prop (disables client pagination, hides per-column filters); EntitlementMapping results step fetches pages from server with search input + confidence dropdown; tab counts still come from summary (full-dataset counts); Excel download unchanged.
+- 2026-05-05: Entitlement mapping output cleanup — removed 7 columns (Privilege Overlap %, Entitlement Name Similarity %, Missing Privileges, Missing Privileges Found In, Extra Privileges in EY, Coverage Combination, Comment). Match Confidence now based solely on privilege coverage % (High ≥75%, Medium ≥40%, Low <40%, None). Removed name similarity from scoring sort; sort is now overlap count DESC → Jaccard DESC. Added COLUMN_DESCRIPTIONS constant to engine. Excel export now includes "How to Read This Report" sheet with column reference, confidence tier guide, and matching explanation. Router summary stats updated to derive exact/superset counts from Privilege Match Count + Jaccard instead of removed Comment column.
+- 2026-05-05: Tooltip visibility fix — TooltipContent default style changed from white bg/dark text (bg-popover/text-popover-foreground) to navy bg/white text (#0F1E3D bg, white text). Added normal-case and tracking-normal to prevent uppercase/letter-spacing inheritance from sticky header div. Affects all tooltips (column header descriptions + cell truncation tooltips in DataTable).
+- 2026-05-05: Tooltip clipping fix + per-column Excel-style filters — tooltip.tsx: removed overflow-hidden, added whitespace-normal, increased collisionPadding default to 12 and sideOffset to 6; column header tooltips set to side="bottom". EntitlementMapping: removed global search/confidence filter bar; replaced with per-column server-side filters (text inputs on 5 columns, confidence dropdown on Match Confidence). DataTable: added ServerSideFilters interface + serverSideFilters prop; renders select or text filter per column in server-side mode. Backend results_page: replaced search param with client_filter + ey_filter + pmc_filter + jaccard_filter + runner_up_filter. API client getResults updated accordingly.
+- 2026-05-05: Tooltip portal fix — wrapped TooltipPrimitive.Content in TooltipPrimitive.Portal in tooltip.tsx. Root cause: @radix-ui/react-tooltip v1.x does not auto-portal, so content rendered inline inside the <th> and was clipped by the table's overflow:auto container.
+- 2026-05-05: FP analysis backend results cache — fp_analysis.py router: added _ROLE_COLS / _USER_COLS column constants; added _result_dfs cache (job_id → sheet → list[dict]); _run_thread now populates cache after analysis; DELETE endpoint clears cache. New endpoints: GET /summary/{job_id} returns per-sheet {total, false_positive_count, single_leg_count, true_conflict_count} for analyzed sheets only; GET /results/{job_id} returns paginated rows for a single sheet with optional search + fp_filter params. Note: backend supports server-side pagination but frontend uses client-side mode (pre-fetches all rows at once via page_size=100000).
+- 2026-05-05: FP analysis results step redesign — removed Recharts PieChart donut, StatCard grids, and reduction % metric entirely. Results step now: (1) compact summary cards row (one per analyzed sheet only, 2×2 grid inside each card showing Total/FP/SL/TC in Lora serif with color-coded values); (2) tabbed DataTable — CLIENT-SIDE mode: all rows for each sheet fetched once with page_size=100000, stored in allSheetData; DataTable receives full array, uses built-in client pagination (25/50/100) and now Excel-style multi-select filters on all columns; fpClassCell badge renderer; (3) Download button. Added getSheetResults() to fpAnalysis.ts API. Removed recharts import and StatCard import from FPAnalysis.tsx.
+- 2026-05-05: Oracle Comparator server-side pagination — oracle_comparator.py router: added _result_data cache (job_id → direction → comp_type → list[dict]); _run_thread now populates cache after analysis completes (before complete_job releases DataFrames); DELETE endpoint clears cache. New endpoints: GET /summary/{job_id} returns OracleComparatorSummary (analysis_type, env1/env2 names, comparisons list with total/matches/missing/match_rate per type+direction); GET /results/{job_id} returns paginated rows for a given direction (1to2/2to1) and comparison_type (duty_role/privilege/dsp) with optional status_filter and search params.
+- 2026-05-05: Oracle Comparator results step redesign — removed Recharts grouped BarChart and all recharts imports. Results step now: (1) Summary card with inline table showing Analysis Type / Direction / Total Records / Matches / Missing / Match Rate % for all comparison rows; (2) Detail table card with control bar containing Direction button-group selector (navy active state, env names from user input), Type pill selectors (gold active, only available types shown), Status select filter (All/Exists/Missing), 350ms-debounced search input; (3) DataTable with server-side pagination fetching from GET /results/{job_id}; (4) Download button unchanged. Added getResults() to oracleComparator.ts API. Columns derived dynamically from first row; Status column rendered as green/red pill badge. PLACEHOLDER_COLS (5 cols) used for skeleton display while loading.
+- 2026-05-05: SOD SA server-side pagination + summary endpoints — sod_sa_analysis.py router: added _ROLE_COLS / _USER_COLS / _SHEET_COLS column constants; added _result_dfs cache (job_id → sheet → list[dict]); _run_thread now populates cache before export (selected cols per sheet: ROLE_SOD/ROLE_SA expose CONTROL_NAME, ENTITLEMENT, ROLE_NAME, INHERITED_ROLE_NAME, PRIVILEGE_NAME; USER_SOD/USER_SA add USER_NAME); DELETE endpoint clears cache. New GET /summary/{job_id}: per-sheet total_violations + unique_roles/users, top_roles_sod, top_users_sod, top_sod_controls, top_sa_controls (all top-5 by unique control/role/user count, derived from sheets actually analyzed). New GET /results/{job_id}: paginated rows for one sheet with optional search param (across all exposed columns).
+- 2026-05-05: SOD SA results step revamp — removed Recharts BarChart, StatCard grid, and BarChart2 import entirely. Results step now: (1) scope bar; (2) per-sheet violation stat cards (1–4 dynamic grid, red/green top border, Lora 36px violation count + unique roles/users below divider, shown only for analyzed sheets); (3) Top Insights 2×2 grid of InsightCard components (rank badge + name + gold count — shows top_roles_sod, top_users_sod, top_sod_controls, top_sa_controls, only renders cards that have data); (4) tabbed DataTable (tab badge shows count, gold active indicator, 350ms debounce search input, server-side pagination via serverSide prop — ROLE_SOD/ROLE_SA use 5-col ROLE_COLUMNS, USER_SOD/USER_SA use 6-col USER_COLUMNS); (5) download + reset buttons unchanged. sodSaAnalysis.ts extended with SODSASummaryData/SODSATopItem/SODSASheetCount interfaces and getSummary() / getSheetResults() API functions.

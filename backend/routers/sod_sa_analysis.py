@@ -4,12 +4,15 @@ Endpoints:
   POST /api/sod-sa/upload
   POST /api/sod-sa/run/{job_id}
   GET  /api/sod-sa/status/{job_id}
+  GET  /api/sod-sa/summary/{job_id}
+  GET  /api/sod-sa/results/{job_id}
   GET  /api/sod-sa/download/{job_id}
   DELETE /api/sod-sa/job/{job_id}
 """
 
 import logging
 import threading
+from collections import defaultdict
 from typing import Optional
 
 import polars as pl
@@ -29,6 +32,19 @@ from engines.sod_sa_engine import (
 
 router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
 logger = logging.getLogger("governance_platform.sod_sa")
+
+# Columns exposed per sheet through the paginated results endpoint
+_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME"]
+_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME", "USER_NAME"]
+_SHEET_COLS = {
+    "ROLE_SOD": _ROLE_COLS,
+    "ROLE_SA":  _ROLE_COLS,
+    "USER_SOD": _USER_COLS,
+    "USER_SA":  _USER_COLS,
+}
+
+# Per-sheet result rows keyed by job_id; cleared on DELETE
+_result_dfs: dict[str, dict[str, list[dict]]] = {}
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -96,6 +112,21 @@ def _run_thread(
             if user_role_df is not None and "USER_NAME" in user_role_df.columns
             else 0
         )
+
+        # Cache per-sheet rows (restricted columns) for paginated/summary access
+        cache: dict[str, list[dict]] = {}
+        for _sheet_name, _df in [
+            ("ROLE_SOD", role_sod),
+            ("ROLE_SA",  role_sa),
+            ("USER_SOD", user_sod),
+            ("USER_SA",  user_sa),
+        ]:
+            if _df.height == 0:
+                continue
+            _cols = _SHEET_COLS[_sheet_name]
+            _available = [c for c in _cols if c in _df.columns]
+            cache[_sheet_name] = _df.select(_available).to_dicts()
+        _result_dfs[job_id] = cache
 
         summary = SODSASummary(
             analysis_type=analysis_type,
@@ -291,8 +322,98 @@ async def download(job_id: str):
     )
 
 
+@router.get("/summary/{job_id}")
+async def summary(job_id: str):
+    """Per-sheet counts and top-5 rankings derived from cached result rows."""
+    if job_id not in _result_dfs:
+        job_manager.get_job(job_id)  # raises 404 if job is gone entirely
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
+        )
+
+    cache = _result_dfs[job_id]
+
+    def _top5(rows: list[dict], group_col: str, count_col: str) -> list[dict]:
+        """Count unique count_col values per group_col; return top 5 descending."""
+        groups: dict[str, set] = defaultdict(set)
+        for r in rows:
+            g = r.get(group_col)
+            c = r.get(count_col)
+            if g and c:
+                groups[g].add(c)
+        ranked = sorted(groups.items(), key=lambda x: len(x[1]), reverse=True)
+        return [{"name": k, "count": len(v)} for k, v in ranked[:5]]
+
+    sheet_counts: dict[str, dict] = {}
+    for sheet, rows in cache.items():
+        entry: dict = {"total_violations": len(rows)}
+        if rows:
+            if "ROLE_NAME" in rows[0]:
+                entry["unique_roles"] = len({r["ROLE_NAME"] for r in rows if r.get("ROLE_NAME")})
+            if "USER_NAME" in rows[0]:
+                entry["unique_users"] = len({r["USER_NAME"] for r in rows if r.get("USER_NAME")})
+        sheet_counts[sheet] = entry
+
+    result: dict = {"sheet_counts": sheet_counts}
+
+    if "ROLE_SOD" in cache:
+        result["top_roles_sod"]  = _top5(cache["ROLE_SOD"], "ROLE_NAME",    "CONTROL_NAME")
+        result["top_sod_controls"] = _top5(cache["ROLE_SOD"], "CONTROL_NAME", "ROLE_NAME")
+
+    if "USER_SOD" in cache:
+        result["top_users_sod"] = _top5(cache["USER_SOD"], "USER_NAME", "CONTROL_NAME")
+        if "top_sod_controls" not in result:
+            result["top_sod_controls"] = _top5(cache["USER_SOD"], "CONTROL_NAME", "USER_NAME")
+
+    if "ROLE_SA" in cache:
+        result["top_sa_controls"] = _top5(cache["ROLE_SA"], "CONTROL_NAME", "ROLE_NAME")
+
+    if "USER_SA" in cache and "top_sa_controls" not in result:
+        result["top_sa_controls"] = _top5(cache["USER_SA"], "CONTROL_NAME", "USER_NAME")
+
+    return result
+
+
+@router.get("/results/{job_id}")
+async def results_page(
+    job_id: str,
+    sheet: str,
+    page: int = 1,
+    page_size: int = 50,
+    search: str = "",
+):
+    """Paginated, filtered rows for a single violation sheet."""
+    if job_id not in _result_dfs:
+        job_manager.get_job(job_id)  # raises 404 if job is gone entirely
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
+        )
+
+    cache = _result_dfs[job_id]
+    if sheet not in cache:
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": f"Sheet '{sheet}' was not analyzed.", "code": "NOT_FOUND", "details": []},
+        )
+
+    rows: list[dict] = cache[sheet]
+
+    if search:
+        q = search.lower()
+        rows = [r for r in rows if any(q in str(r.get(c, "")).lower() for c in _SHEET_COLS.get(sheet, []))]
+
+    total = len(rows)
+    page_size = max(1, min(page_size, 200))
+    page = max(1, page)
+    start = (page - 1) * page_size
+    return {"data": rows[start: start + page_size], "total": total, "page": page, "page_size": page_size, "sheet": sheet}
+
+
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
     job_manager.delete_job(job_id)
+    _result_dfs.pop(job_id, None)
     return {"message": "Job deleted."}

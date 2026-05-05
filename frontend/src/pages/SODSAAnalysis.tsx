@@ -2,30 +2,37 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { clsx } from 'clsx'
 import {
   Shield, AlertCircle, CheckCircle2, RefreshCw, X,
-  Users, Layers, BarChart2, Info,
+  Users, Layers, Info, Search,
 } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip as RechartsTooltip, Cell, ResponsiveContainer,
-} from 'recharts'
+import type { ColumnDef } from '@tanstack/react-table'
 import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
-import StatCard from '../components/common/StatCard'
+import DataTable from '../components/common/DataTable'
 import LoadingOverlay from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob } from '../api/sodSaAnalysis'
+import {
+  uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
+  getSummary, getSheetResults,
+} from '../api/sodSaAnalysis'
+import type { SODSASummaryData, SODSATopItem } from '../api/sodSaAnalysis'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { SODSASummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 
 type Step = 'type' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'role' | 'user' | 'both'
+type SODRow = Record<string, unknown>
 
 const STEPS = ['Analysis Type', 'Upload Files', 'Processing', 'Results']
 const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 2, results: 3, error: 0 }
+
+const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
+const SHEET_LABELS: Record<string, string> = {
+  ROLE_SOD: 'Role SoD', ROLE_SA: 'Role SA', USER_SOD: 'User SoD', USER_SA: 'User SA',
+}
 
 const TYPE_CARDS = [
   {
@@ -63,6 +70,57 @@ const TYPE_CARDS = [
   },
 ]
 
+// ── Column definitions ─────────────────────────────────────────────────────────
+
+const ROLE_COLUMNS: ColumnDef<SODRow>[] = [
+  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
+  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
+  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+]
+
+const USER_COLUMNS: ColumnDef<SODRow>[] = [
+  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
+  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
+  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+  { id: 'USER_NAME',           accessorKey: 'USER_NAME',           header: 'User Name' },
+]
+
+// ── Insight card ───────────────────────────────────────────────────────────────
+
+function InsightCard({ title, items }: { title: string; items: SODSATopItem[] }) {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
+        <span className="text-[10.5px] font-semibold text-gray-500 uppercase tracking-[0.08em]">{title}</span>
+      </div>
+      <div className="divide-y divide-gray-50">
+        {items.map((item, i) => (
+          <div key={i} className="flex items-center gap-3 px-4 py-2.5">
+            <span
+              className="flex items-center justify-center shrink-0 rounded text-[10px] font-bold text-white"
+              style={{ width: 18, height: 18, minWidth: 18, background: '#0F1E3D' }}
+            >
+              {i + 1}
+            </span>
+            <span className="text-[12.5px] text-gray-700 flex-1 truncate min-w-0" title={item.name}>
+              {item.name}
+            </span>
+            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, fontWeight: 700, color: '#EAB308', flexShrink: 0 }}>
+              {item.count}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
 export default function SODSAAnalysis() {
   const [step, setStep] = useState<Step>('type')
   const [analysisType, setAnalysisType] = useState<AnalysisType | null>(null)
@@ -79,6 +137,17 @@ export default function SODSAAnalysis() {
   const [uploadError, setUploadError] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
 
+  // Results step state
+  const [sodSaSummaryData, setSodSaSummaryData] = useState<SODSASummaryData | null>(null)
+  const [activeTab, setActiveTab] = useState('')
+  const [tableRows, setTableRows] = useState<SODRow[]>([])
+  const [tablePage, setTablePage] = useState(1)
+  const [tablePageSize, setTablePageSize] = useState(50)
+  const [tableTotal, setTableTotal] = useState(0)
+  const [tableLoading, setTableLoading] = useState(false)
+  const [tableSearch, setTableSearch] = useState('')
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
   const canRun =
@@ -87,6 +156,7 @@ export default function SODSAAnalysis() {
     (!needsUserRole || userRoleFile !== null) &&
     !isUploading
 
+  // ── Poll for job completion ──────────────────────────────────────────────────
   useEffect(() => {
     if (step !== 'running' || !jobId) return
     const interval = setInterval(async () => {
@@ -110,10 +180,63 @@ export default function SODSAAnalysis() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
+  // ── Debounce search (resets page on fire) ────────────────────────────────────
+  useEffect(() => {
+    const t = setTimeout(() => { setDebouncedSearch(tableSearch); setTablePage(1) }, 350)
+    return () => clearTimeout(t)
+  }, [tableSearch])
+
+  // ── Fetch summary data when results first appear ─────────────────────────────
+  useEffect(() => {
+    if (step !== 'results' || !jobId) return
+    let cancelled = false
+    getSummary(jobId)
+      .then(data => {
+        if (cancelled) return
+        setSodSaSummaryData(data)
+        const firstId = ALL_SHEET_IDS.find(id => data.sheet_counts[id])
+        if (firstId) setActiveTab(firstId)
+      })
+      .catch(() => { /* no-op — summary panel stays hidden */ })
+    return () => { cancelled = true }
+  }, [step, jobId])
+
+  // ── Fetch paginated table rows ───────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 'results' || !jobId || !activeTab) return
+    let cancelled = false
+    setTableLoading(true)
+    getSheetResults(jobId, activeTab, tablePage, tablePageSize, debouncedSearch)
+      .then(res => {
+        if (cancelled) return
+        setTableRows(res.data)
+        setTableTotal(res.total)
+        setTableLoading(false)
+      })
+      .catch(() => { if (!cancelled) setTableLoading(false) })
+    return () => { cancelled = true }
+  }, [step, jobId, activeTab, tablePage, tablePageSize, debouncedSearch])
+
+  // ── Derived ──────────────────────────────────────────────────────────────────
+  const analyzedSheetIds = useMemo(
+    () => ALL_SHEET_IDS.filter(id => sodSaSummaryData?.sheet_counts[id]),
+    [sodSaSummaryData],
+  )
+
+  const selectedCard = TYPE_CARDS.find(c => c.id === analysisType)
+
+  // ── Handlers ─────────────────────────────────────────────────────────────────
   const handleSelectType = useCallback((t: AnalysisType) => {
     setAnalysisType(t)
     if (t === 'role') setUserRoleFile(null)
     setStep('upload')
+  }, [])
+
+  const handleTabChange = useCallback((tab: string) => {
+    setActiveTab(tab)
+    setTablePage(1)
+    setTableSearch('')
+    setDebouncedSearch('')
   }, [])
 
   const handleRunAnalysis = useCallback(async () => {
@@ -173,24 +296,18 @@ export default function SODSAAnalysis() {
     setErrors([])
     setUploadError('')
     setConfirmReset(false)
+    setSodSaSummaryData(null)
+    setActiveTab('')
+    setTableRows([])
+    setTablePage(1)
+    setTablePageSize(50)
+    setTableTotal(0)
+    setTableLoading(false)
+    setTableSearch('')
+    setDebouncedSearch('')
   }, [jobId])
 
-  const chartData = useMemo(() => {
-    if (!summary) return []
-    const items: { name: string; count: number }[] = []
-    if (summary.analysis_type !== 'user') {
-      items.push({ name: 'SOD Roles', count: summary.violations.role_sod })
-      items.push({ name: 'SA Roles',  count: summary.violations.role_sa })
-    }
-    if (summary.analysis_type !== 'role') {
-      items.push({ name: 'SOD Users', count: summary.violations.user_sod })
-      items.push({ name: 'SA Users',  count: summary.violations.user_sa })
-    }
-    return items
-  }, [summary])
-
-  const selectedCard = TYPE_CARDS.find(c => c.id === analysisType)
-
+  // ── Render ───────────────────────────────────────────────────────────────────
   return (
     <div>
       <PageHeader
@@ -222,297 +339,347 @@ export default function SODSAAnalysis() {
 
       <div className="relative">
 
-          {/* ── Step 0: Analysis Type ─────────────────────────────────────── */}
-          {step === 'type' && (
-            <div className="slide-in grid grid-cols-3 gap-4">
-              {TYPE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, meta, recommended }) => (
-                <button
-                  key={id}
-                  onClick={() => handleSelectType(id)}
-                  style={{ borderLeftColor: accentColor }}
-                  className={clsx(
-                    'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
-                    'bg-white border border-gray-200 border-l-[3px] shadow-sm',
-                    'focus:outline-none hover:shadow-md transition-shadow duration-150',
-                    analysisType === id ? 'ring-2 ring-ey-yellow/60 shadow-md' : '',
-                  )}
-                >
-                  {recommended && (
-                    <span className="absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-ey-yellow text-gray-900 leading-none">
-                      Recommended
-                    </span>
-                  )}
-                  <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
-                    <Icon size={20} className={iconColor} strokeWidth={1.5} />
-                  </div>
-                  <h3 className="text-[15px] font-semibold text-gray-800 mb-2">{title}</h3>
-                  <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
-                  <div className="flex items-center justify-between mt-4">
-                    <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{meta}</span>
-                    <span className="text-[13px] text-gray-400">Select →</span>
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* ── Step 1: Upload Files ──────────────────────────────────────── */}
-          {step === 'upload' && analysisType && (
-            <div className="slide-in space-y-5">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="label-uppercase mb-2">Role Hierarchy Report</p>
-                  <FileUpload
-                    label="Role Hierarchy CSV / XLSX"
-                    hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
-                    status={roleHierarchyFile ? 'success' : 'idle'}
-                    fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
-                    onUpload={setRoleHierarchyFile}
-                    onRemove={() => setRoleHierarchyFile(null)}
-                  />
-                </div>
-                <div>
-                  <p className="label-uppercase mb-2">SOD SA Ruleset</p>
-                  <FileUpload
-                    label="Ruleset XLSX"
-                    accept=".xlsx,.xls"
-                    hint="Must contain SoD Ruleset, SA Ruleset, Entitlement to Privilege sheets"
-                    status={rulesetFile ? 'success' : 'idle'}
-                    fileInfo={rulesetFile ? { name: rulesetFile.name, size: rulesetFile.size } : null}
-                    onUpload={setRulesetFile}
-                    onRemove={() => setRulesetFile(null)}
-                  />
-                </div>
-              </div>
-
-              {needsUserRole && (
-                <div>
-                  <p className="label-uppercase mb-2">
-                    User Role Membership
-                    <span className="ml-2 text-[11px] text-error normal-case font-normal">(required for user analysis)</span>
-                  </p>
-                  <FileUpload
-                    label="User Role CSV / XLSX"
-                    hint="Columns: User Name, Assigned Role Name"
-                    status={userRoleFile ? 'success' : 'idle'}
-                    fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
-                    onUpload={setUserRoleFile}
-                    onRemove={() => setUserRoleFile(null)}
-                  />
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
-                <span>
-                  <span className="font-medium">Analysis Type:</span>{' '}
-                  {selectedCard?.title}
-                </span>
-                <button
-                  className="ml-auto text-[#3B82F6] hover:underline text-[12px]"
-                  onClick={() => setStep('type')}
-                >
-                  Change
-                </button>
-              </div>
-
-              {isUploading && (
-                <div>
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>Validating files and ruleset structure…</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-300 ease-out"
-                      style={{ width: `${uploadProgress}%`, background: '#EAB308' }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
-                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                  <span className="flex-1">{uploadError}</span>
-                  <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-2">
-                <button className="btn-secondary" onClick={() => setStep('type')}>← Change Type</button>
-                <button
-                  className="btn-gold"
-                  disabled={!canRun || isUploading}
-                  onClick={handleRunAnalysis}
-                >
-                  {isUploading ? 'Uploading…' : 'Run Analysis →'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Processing ────────────────────────────────────────── */}
-          {step === 'running' && (
-            <div className="slide-in relative min-h-[320px]">
-              <LoadingOverlay
-                message={progressMessage || 'Detecting SOD & SA violations…'}
-                progress={progress}
-              />
-            </div>
-          )}
-
-          {/* ── Step 3: Results ───────────────────────────────────────────── */}
-          {step === 'results' && summary && (
-            <div className="slide-in space-y-5">
-              {/* Scope summary bar */}
-              <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
-                <CheckCircle2 size={14} className="text-success shrink-0" />
-                <span className="font-medium">
-                  {summary.analysis_type === 'role'
-                    ? 'Role Analysis'
-                    : summary.analysis_type === 'user'
-                    ? 'User Analysis'
-                    : 'Role + User (Full)'}
-                </span>
-                {summary.total_roles_analyzed > 0 && (
-                  <span className="text-gray-400">· {summary.total_roles_analyzed.toLocaleString()} roles</span>
+        {/* ── Step 0: Analysis Type ──────────────────────────────────────── */}
+        {step === 'type' && (
+          <div className="slide-in grid grid-cols-3 gap-4">
+            {TYPE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, meta, recommended }) => (
+              <button
+                key={id}
+                onClick={() => handleSelectType(id)}
+                style={{ borderLeftColor: accentColor }}
+                className={clsx(
+                  'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
+                  'bg-white border border-gray-200 border-l-[3px] shadow-sm',
+                  'focus:outline-none hover:shadow-md transition-shadow duration-150',
+                  analysisType === id ? 'ring-2 ring-ey-yellow/60 shadow-md' : '',
                 )}
-                {summary.total_users_analyzed > 0 && (
-                  <span className="text-gray-400">· {summary.total_users_analyzed.toLocaleString()} users</span>
+              >
+                {recommended && (
+                  <span className="absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-ey-yellow text-gray-900 leading-none">
+                    Recommended
+                  </span>
                 )}
-              </div>
-
-              {/* StatCards */}
-              <div className={clsx(
-                'grid gap-4',
-                summary.analysis_type === 'both' ? 'grid-cols-4' : 'grid-cols-2',
-              )}>
-                {summary.analysis_type !== 'user' && (
-                  <>
-                    <StatCard
-                      value={summary.violations.role_sod}
-                      label="SOD Role Violations"
-                      badge={{
-                        text: summary.violations.role_sod > 0 ? 'Violations Found' : 'Clean',
-                        variant: summary.violations.role_sod > 0 ? 'error' : 'success',
-                      }}
-                    />
-                    <StatCard
-                      value={summary.violations.role_sa}
-                      label="SA Role Violations"
-                      badge={{
-                        text: summary.violations.role_sa > 0 ? 'Violations Found' : 'Clean',
-                        variant: summary.violations.role_sa > 0 ? 'error' : 'success',
-                      }}
-                    />
-                  </>
-                )}
-                {summary.analysis_type !== 'role' && (
-                  <>
-                    <StatCard
-                      value={summary.violations.user_sod}
-                      label="SOD User Violations"
-                      badge={{
-                        text: summary.violations.user_sod > 0 ? 'Violations Found' : 'Clean',
-                        variant: summary.violations.user_sod > 0 ? 'error' : 'success',
-                      }}
-                    />
-                    <StatCard
-                      value={summary.violations.user_sa}
-                      label="SA User Violations"
-                      badge={{
-                        text: summary.violations.user_sa > 0 ? 'Violations Found' : 'Clean',
-                        variant: summary.violations.user_sa > 0 ? 'error' : 'success',
-                      }}
-                    />
-                  </>
-                )}
-              </div>
-
-              {/* Horizontal BarChart */}
-              <div className="card">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart2 size={16} className="text-gray-400" />
-                  <span className="text-card-title">Violation Breakdown</span>
-                  <span className="ml-auto text-body-sm text-gray-400">Distinct entities with violations</span>
+                <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
+                  <Icon size={20} className={iconColor} strokeWidth={1.5} />
                 </div>
-                <ResponsiveContainer width="100%" height={chartData.length * 52 + 16}>
-                  <BarChart
-                    layout="vertical"
-                    data={chartData}
-                    barSize={20}
-                    margin={{ top: 4, right: 48, left: 0, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E4E4E7" horizontal={false} />
-                    <XAxis
-                      type="number"
-                      tick={{ fontSize: 11, fill: '#A1A1AA' }}
-                      axisLine={false}
-                      tickLine={false}
-                      allowDecimals={false}
-                    />
-                    <YAxis
-                      type="category"
-                      dataKey="name"
-                      width={88}
-                      tick={{ fontSize: 12, fill: '#71717A' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{ background: '#fff', border: '1px solid #E4E4E7', borderRadius: 6, fontSize: 13 }}
-                      formatter={(v: number) => [v.toLocaleString(), 'Violations']}
-                      cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                    />
-                    <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                      {chartData.map((entry, idx) => (
-                        <Cell key={idx} fill={entry.count > 0 ? '#EF4444' : '#22C55E'} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
+                <h3 className="text-[15px] font-semibold text-gray-800 mb-2">{title}</h3>
+                <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
+                <div className="flex items-center justify-between mt-4">
+                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{meta}</span>
+                  <span className="text-[13px] text-gray-400">Select →</span>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
 
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  className="btn-secondary flex items-center gap-2"
-                  onClick={() => setConfirmReset(true)}
-                >
-                  <RefreshCw size={14} /> Start New Analysis
-                </button>
-                <DownloadButton
-                  onClick={async () => {
-                    const now = new Date()
-                    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-                    return downloadResults(jobId!, `SOD_SA_Analysis_${summary.analysis_type}_${ts}.xlsx`)
-                  }}
+        {/* ── Step 1: Upload Files ───────────────────────────────────────── */}
+        {step === 'upload' && analysisType && (
+          <div className="slide-in space-y-5">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="label-uppercase mb-2">Role Hierarchy Report</p>
+                <FileUpload
+                  label="Role Hierarchy CSV / XLSX"
+                  hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
+                  status={roleHierarchyFile ? 'success' : 'idle'}
+                  fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
+                  onUpload={setRoleHierarchyFile}
+                  onRemove={() => setRoleHierarchyFile(null)}
+                />
+              </div>
+              <div>
+                <p className="label-uppercase mb-2">SOD SA Ruleset</p>
+                <FileUpload
+                  label="Ruleset XLSX"
+                  accept=".xlsx,.xls"
+                  hint="Must contain SoD Ruleset, SA Ruleset, Entitlement to Privilege sheets"
+                  status={rulesetFile ? 'success' : 'idle'}
+                  fileInfo={rulesetFile ? { name: rulesetFile.name, size: rulesetFile.size } : null}
+                  onUpload={setRulesetFile}
+                  onRemove={() => setRulesetFile(null)}
                 />
               </div>
             </div>
-          )}
 
-          {/* ── Error ─────────────────────────────────────────────────────── */}
-          {step === 'error' && (
-            <div className="slide-in">
-              <div className="card border-error/30 bg-error-light/20">
-                <div className="flex gap-3">
-                  <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-error mb-1">Analysis Failed</p>
-                    {errors.map((e, i) => (
-                      <p key={i} className="text-[13px] text-error/80">{e}</p>
+            {needsUserRole && (
+              <div>
+                <p className="label-uppercase mb-2">
+                  User Role Membership
+                  <span className="ml-2 text-[11px] text-error normal-case font-normal">(required for user analysis)</span>
+                </p>
+                <FileUpload
+                  label="User Role CSV / XLSX"
+                  hint="Columns: User Name, Assigned Role Name"
+                  status={userRoleFile ? 'success' : 'idle'}
+                  fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
+                  onUpload={setUserRoleFile}
+                  onRemove={() => setUserRoleFile(null)}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+              <span>
+                <span className="font-medium">Analysis Type:</span>{' '}
+                {selectedCard?.title}
+              </span>
+              <button
+                className="ml-auto text-[#3B82F6] hover:underline text-[12px]"
+                onClick={() => setStep('type')}
+              >
+                Change
+              </button>
+            </div>
+
+            {isUploading && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Validating files and ruleset structure…</span>
+                  <span>{uploadProgress}%</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%`, background: '#EAB308' }}
+                  />
+                </div>
+              </div>
+            )}
+
+            {uploadError && (
+              <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span className="flex-1">{uploadError}</span>
+                <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <button className="btn-secondary" onClick={() => setStep('type')}>← Change Type</button>
+              <button
+                className="btn-gold"
+                disabled={!canRun || isUploading}
+                onClick={handleRunAnalysis}
+              >
+                {isUploading ? 'Uploading…' : 'Run Analysis →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Processing ─────────────────────────────────────────── */}
+        {step === 'running' && (
+          <div className="slide-in relative min-h-[320px]">
+            <LoadingOverlay
+              message={progressMessage || 'Detecting SOD & SA violations…'}
+              progress={progress}
+            />
+          </div>
+        )}
+
+        {/* ── Step 3: Results ────────────────────────────────────────────── */}
+        {step === 'results' && summary && (
+          <div className="slide-in space-y-5">
+
+            {/* Scope bar */}
+            <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+              <CheckCircle2 size={14} className="text-success shrink-0" />
+              <span className="font-medium">
+                {summary.analysis_type === 'role'
+                  ? 'Role Analysis'
+                  : summary.analysis_type === 'user'
+                  ? 'User Analysis'
+                  : 'Role + User (Full)'}
+              </span>
+              {summary.total_roles_analyzed > 0 && (
+                <span className="text-gray-400">· {summary.total_roles_analyzed.toLocaleString()} roles analyzed</span>
+              )}
+              {summary.total_users_analyzed > 0 && (
+                <span className="text-gray-400">· {summary.total_users_analyzed.toLocaleString()} users analyzed</span>
+              )}
+            </div>
+
+            {/* Per-sheet violation stat cards */}
+            {sodSaSummaryData && analyzedSheetIds.length > 0 && (
+              <div className={clsx(
+                'grid gap-4',
+                analyzedSheetIds.length === 1 && 'grid-cols-1',
+                analyzedSheetIds.length === 2 && 'grid-cols-2',
+                analyzedSheetIds.length === 3 && 'grid-cols-3',
+                analyzedSheetIds.length >= 4 && 'grid-cols-4',
+              )}>
+                {analyzedSheetIds.map(id => {
+                  const sc = sodSaSummaryData.sheet_counts[id]
+                  const isUser = id.startsWith('USER')
+                  const uniqueCount = isUser ? (sc.unique_users ?? 0) : (sc.unique_roles ?? 0)
+                  const uniqueLabel = isUser ? 'Unique Users' : 'Unique Roles'
+                  const hasViolations = sc.total_violations > 0
+                  return (
+                    <div
+                      key={id}
+                      className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm"
+                      style={{ borderTopWidth: 3, borderTopColor: hasViolations ? '#DC2626' : '#16A34A' }}
+                    >
+                      <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em] mb-2">
+                        {SHEET_LABELS[id]}
+                      </div>
+                      <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, fontWeight: 700, lineHeight: 1, color: hasViolations ? '#DC2626' : '#16A34A', marginBottom: 4 }}>
+                        {sc.total_violations.toLocaleString()}
+                      </div>
+                      <div className="text-[11.5px] text-gray-400 mb-4">violation records</div>
+                      <div className="border-t border-gray-100 pt-3">
+                        <div className="text-[10px] text-gray-400 uppercase tracking-[0.06em] mb-1">{uniqueLabel}</div>
+                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#0F1E3D' }}>
+                          {uniqueCount.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+
+            {/* Top Insights */}
+            {(() => {
+              if (!sodSaSummaryData) return null
+              const insightItems: { title: string; items: SODSATopItem[] }[] = [
+                ...(sodSaSummaryData.top_roles_sod?.length ? [{ title: 'Top 5 Roles with Most SOD Conflicts', items: sodSaSummaryData.top_roles_sod! }] : []),
+                ...(sodSaSummaryData.top_users_sod?.length ? [{ title: 'Top 5 Users with Most SOD Conflicts', items: sodSaSummaryData.top_users_sod! }] : []),
+                ...(sodSaSummaryData.top_sod_controls?.length ? [{ title: 'Top 5 SOD Controls with Most Roles in Violation', items: sodSaSummaryData.top_sod_controls! }] : []),
+                ...(sodSaSummaryData.top_sa_controls?.length ? [{ title: 'Top 5 SA Controls with Most Roles in Violation', items: sodSaSummaryData.top_sa_controls! }] : []),
+              ]
+              if (insightItems.length === 0) return null
+              return (
+                <div>
+                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em] mb-3">Top Insights</div>
+                  <div className="grid grid-cols-2 gap-4">
+                    {insightItems.map(({ title, items }) => (
+                      <InsightCard key={title} title={title} items={items} />
                     ))}
                   </div>
                 </div>
-                <div className="flex gap-3 mt-4">
-                  <button className="btn-primary" onClick={handleTryAgain}>Try Again</button>
-                  <button className="btn-secondary" onClick={handleReset}>← Start Over</button>
+              )
+            })()}
+
+            {/* Tabbed DataTable */}
+            {sodSaSummaryData && analyzedSheetIds.length > 0 && (
+              <div className="card p-0 overflow-hidden">
+                {/* Tab bar */}
+                <div className="flex border-b border-gray-200 bg-white">
+                  {analyzedSheetIds.map(id => {
+                    const count = sodSaSummaryData.sheet_counts[id]?.total_violations ?? 0
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => handleTabChange(id)}
+                        className={clsx(
+                          'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
+                          activeTab === id
+                            ? 'border-[#EAB308] text-[#0F1E3D] font-semibold'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                        )}
+                      >
+                        {SHEET_LABELS[id]}
+                        <span className={clsx(
+                          'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
+                          activeTab === id ? 'bg-[#EAB308]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
+                        )}>
+                          {count.toLocaleString()}
+                        </span>
+                      </button>
+                    )
+                  })}
+                </div>
+
+                {/* Search + table */}
+                <div className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <div className="relative max-w-sm">
+                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={tableSearch}
+                        onChange={e => setTableSearch(e.target.value)}
+                        placeholder="Search across all columns…"
+                        className="pl-8 pr-3 py-1.5 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#EAB308]/50 w-64"
+                      />
+                    </div>
+                    {tableSearch && (
+                      <button
+                        onClick={() => setTableSearch('')}
+                        className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={12} /> Clear
+                      </button>
+                    )}
+                    {tableTotal > 0 && (
+                      <span className="ml-auto text-[12px] text-gray-400">
+                        {tableTotal.toLocaleString()} rows
+                      </span>
+                    )}
+                  </div>
+
+                  <DataTable
+                    data={tableRows}
+                    columns={activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS}
+                    isLoading={tableLoading}
+                    emptyMessage="No violations found"
+                    maxHeight="460px"
+                    defaultPageSize={tablePageSize}
+                    serverSide={{
+                      total: tableTotal,
+                      page: tablePage,
+                      pageSize: tablePageSize,
+                      onPageChange: setTablePage,
+                      onPageSizeChange: (size) => { setTablePageSize(size); setTablePage(1) },
+                    }}
+                  />
                 </div>
               </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                className="btn-secondary flex items-center gap-2"
+                onClick={() => setConfirmReset(true)}
+              >
+                <RefreshCw size={14} /> Start New Analysis
+              </button>
+              <DownloadButton
+                onClick={async () => {
+                  const now = new Date()
+                  const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+                  return downloadResults(jobId!, `SOD_SA_Analysis_${summary.analysis_type}_${ts}.xlsx`)
+                }}
+              />
             </div>
-          )}
+          </div>
+        )}
+
+        {/* ── Error ──────────────────────────────────────────────────────── */}
+        {step === 'error' && (
+          <div className="slide-in">
+            <div className="card border-error/30 bg-error-light/20">
+              <div className="flex gap-3">
+                <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-error mb-1">Analysis Failed</p>
+                  {errors.map((e, i) => (
+                    <p key={i} className="text-[13px] text-error/80">{e}</p>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button className="btn-primary" onClick={handleTryAgain}>Try Again</button>
+                <button className="btn-secondary" onClick={handleReset}>← Start Over</button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 

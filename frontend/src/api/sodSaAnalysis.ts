@@ -5,6 +5,33 @@ export interface SODSARunConfig {
   analysis_type: 'role' | 'user' | 'both'
 }
 
+export interface SODSASheetCount {
+  total_violations: number
+  unique_roles?: number
+  unique_users?: number
+}
+
+export interface SODSATopItem {
+  name: string
+  count: number
+}
+
+export interface SODSASummaryData {
+  sheet_counts: Record<string, SODSASheetCount>
+  top_roles_sod?: SODSATopItem[]
+  top_users_sod?: SODSATopItem[]
+  top_sod_controls?: SODSATopItem[]
+  top_sa_controls?: SODSATopItem[]
+}
+
+export interface SODSASheetPage {
+  data: Record<string, unknown>[]
+  total: number
+  page: number
+  page_size: number
+  sheet: string
+}
+
 export async function uploadFiles(
   roleHierarchy: File,
   ruleset: File,
@@ -26,6 +53,24 @@ export async function runAnalysis(jobId: string, config: SODSARunConfig): Promis
 
 export async function getStatus(jobId: string): Promise<JobResponse> {
   const response = await api.get(`/api/sod-sa/status/${jobId}`)
+  return response.data
+}
+
+export async function getSummary(jobId: string): Promise<SODSASummaryData> {
+  const response = await api.get(`/api/sod-sa/summary/${jobId}`)
+  return response.data
+}
+
+export async function getSheetResults(
+  jobId: string,
+  sheet: string,
+  page: number,
+  pageSize: number,
+  search: string,
+): Promise<SODSASheetPage> {
+  const params: Record<string, string | number> = { sheet, page, page_size: pageSize }
+  if (search) params.search = search
+  const response = await api.get(`/api/sod-sa/results/${jobId}`, { params })
   return response.data
 }
 

@@ -9,8 +9,8 @@ Behavioral guidelines for Claude Code. Read STATUS.md before every task.
 Enterprise access governance platform. React + TypeScript frontend, FastAPI + Python backend.
 
 EY-branded:
-- Yellow `#FFE600` accent
-- Dark sidebar `#1A1A24`
+- Gold `#FFD100` accent (buttons) + Navy `#0F1E3D` primary
+- Light sidebar, white background, cream `#F7F6F3` content area
 - Dense analytical layouts
 
 ---

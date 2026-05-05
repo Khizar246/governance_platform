@@ -1,12 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { clsx } from 'clsx'
-import { Link, AlertCircle, CheckCircle2, RefreshCw, X, BarChart2, Info, Layers } from 'lucide-react'
+import { Link, AlertCircle, CheckCircle2, RefreshCw, X, Info, Layers } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
-  ResponsiveContainer, Cell,
-} from 'recharts'
 import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
@@ -15,10 +11,46 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob } from '../api/entitlementMapping'
+import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults } from '../api/entitlementMapping'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { UploadResponse, EntitlementMappingSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
+
+const COLUMN_DESCRIPTIONS: Record<string, string> = {
+  'Client Entitlement': 'The entitlement name as defined in the client\'s access control system.',
+  'EY Entitlement Match': 'The best-matching EY standard entitlement, selected by overlap count then Jaccard similarity. \'—\' means no EY entitlement shares any privilege with this client entitlement.',
+  'Privilege Match Count': 'Number of client privileges found in the matched EY entitlement, expressed as matched/total — e.g. 3/5 means 3 of the client\'s 5 privileges were found in the EY entitlement.',
+  'Jaccard Similarity (%)': 'Overlap ÷ union of the two privilege sets. High Jaccard means the EY entitlement closely mirrors the client\'s scope. Low Jaccard means the EY entitlement contains many extra privileges.',
+  'Match Confidence': 'Tier based on client privilege coverage: High ≥ 75%, Medium 40–74%, Low < 40%, None = no shared privileges.',
+  'Runner-Up EY Entitlements': 'The 2nd and 3rd best EY candidates with their match counts and Jaccard scores. Useful when the best match is imperfect.',
+}
+
+const RESULT_COLUMNS: ColumnDef<Record<string, unknown>>[] = [
+  'Client Entitlement',
+  'EY Entitlement Match',
+  'Privilege Match Count',
+  'Jaccard Similarity (%)',
+  'Match Confidence',
+  'Runner-Up EY Entitlements',
+].map(key => ({
+  accessorKey: key,
+  header: () => (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="flex items-center gap-1 cursor-help">
+          {key}
+          <Info size={10} className="text-gray-400 shrink-0" />
+        </span>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-xs text-xs">{COLUMN_DESCRIPTIONS[key]}</TooltipContent>
+    </Tooltip>
+  ),
+  cell: (info: { getValue: () => unknown }) => {
+    const val = info.getValue()
+    return val === null || val === undefined ? '' : String(val)
+  },
+}))
 
 type Step = 'upload' | 'preview' | 'running' | 'results' | 'error'
 type TabId = 'all' | 'exact' | 'superset' | 'partial' | 'no_match'
@@ -49,6 +81,13 @@ export default function EntitlementMapping() {
   const [uploadError, setUploadError] = useState('')
   const [activeTab, setActiveTab] = useState<TabId>('all')
   const [confirmReset, setConfirmReset] = useState(false)
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [totalRows, setTotalRows] = useState(0)
+  const [tableRows, setTableRows] = useState<Record<string, unknown>[]>([])
+  const [isLoadingResults, setIsLoadingResults] = useState(false)
+  const [colFilters, setColFilters] = useState<Record<string, string>>({})
+  const [debouncedColFilters, setDebouncedColFilters] = useState<Record<string, string>>({})
 
   useEffect(() => {
     if (step !== 'running' || !jobId) return
@@ -74,6 +113,47 @@ export default function EntitlementMapping() {
     }, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [step, jobId])
+
+  // Debounce column filters before sending to server
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedColFilters(colFilters)
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(t)
+  }, [colFilters])
+
+  // Fetch paginated results from server whenever page/tab/filters change
+  useEffect(() => {
+    if (step !== 'results' || !jobId) return
+    let cancelled = false
+    const fetchPage = async () => {
+      setIsLoadingResults(true)
+      try {
+        const res = await getResults(jobId, {
+          page,
+          pageSize,
+          tab: activeTab,
+          clientFilter: debouncedColFilters['Client Entitlement'] ?? '',
+          eyFilter: debouncedColFilters['EY Entitlement Match'] ?? '',
+          confidence: debouncedColFilters['Match Confidence'] ?? '',
+          pmcFilter: debouncedColFilters['Privilege Match Count'] ?? '',
+          jaccardFilter: debouncedColFilters['Jaccard Similarity (%)'] ?? '',
+          runnerUpFilter: debouncedColFilters['Runner-Up EY Entitlements'] ?? '',
+        })
+        if (!cancelled) {
+          setTableRows(res.data)
+          setTotalRows(res.total)
+        }
+      } catch {
+        if (!cancelled) toast.error('Failed to load results page.')
+      } finally {
+        if (!cancelled) setIsLoadingResults(false)
+      }
+    }
+    fetchPage()
+    return () => { cancelled = true }
+  }, [step, jobId, page, pageSize, activeTab, debouncedColFilters])
 
   const handleUpload = useCallback(async () => {
     if (!clientFile || !eyFile) return
@@ -128,6 +208,13 @@ export default function EntitlementMapping() {
     setUploadError('')
     setActiveTab('all')
     setConfirmReset(false)
+    setPage(1)
+    setPageSize(50)
+    setTotalRows(0)
+    setTableRows([])
+    setIsLoadingResults(false)
+    setColFilters({})
+    setDebouncedColFilters({})
   }, [jobId])
 
   const tabCounts = useMemo<Record<TabId, number>>(() => {
@@ -139,49 +226,6 @@ export default function EntitlementMapping() {
       partial:  summary.partial_matches,
       no_match: summary.no_matches,
     }
-  }, [summary])
-
-  const filteredRows = useMemo(() => {
-    if (!summary?.results_preview) return []
-    const rows = summary.results_preview
-    switch (activeTab) {
-      case 'exact':
-        return rows.filter(r => String(r['Comment'] ?? '').toLowerCase().startsWith('exact match'))
-      case 'superset':
-        return rows.filter(r => String(r['Comment'] ?? '').toLowerCase().includes('superset'))
-      case 'no_match':
-        return rows.filter(r => String(r['EY Entitlement Match'] ?? '') === '—')
-      case 'partial':
-        return rows.filter(r => {
-          const match   = String(r['EY Entitlement Match'] ?? '')
-          const comment = String(r['Comment'] ?? '').toLowerCase()
-          return match !== '—' && !comment.startsWith('exact match') && !comment.includes('superset')
-        })
-      default:
-        return rows
-    }
-  }, [summary, activeTab])
-
-  const previewColumns = useMemo<ColumnDef<Record<string, unknown>>[]>(() => {
-    if (!summary?.results_preview?.length) return []
-    return Object.keys(summary.results_preview[0]).map(key => ({
-      accessorKey: key,
-      header: key,
-      cell: info => {
-        const val = info.getValue()
-        return val === null || val === undefined ? '' : String(val)
-      },
-    }))
-  }, [summary])
-
-  const chartData = useMemo(() => {
-    if (!summary) return []
-    return [
-      { name: 'Exact',    value: summary.exact_matches,   color: '#22C55E' },
-      { name: 'Superset', value: summary.supersets,        color: '#3B82F6' },
-      { name: 'Partial',  value: summary.partial_matches,  color: '#EAB308' },
-      { name: 'No Match', value: summary.no_matches,       color: '#EF4444' },
-    ]
   }, [summary])
 
   return (
@@ -197,15 +241,13 @@ export default function EntitlementMapping() {
           <HelpStep num={1} text="Prepare your Client Entitlement file — a CSV or XLSX with three required columns: Entitlement Name, Privilege Name, and Privilege Code. Each row represents one named privilege belonging to one entitlement." />
           <HelpStep num={2} text="Prepare your EY Ruleset file — a CSV or XLSX export from the EY entitlement library using the same three columns: Entitlement Name, Privilege Name, and Privilege Code." />
           <HelpStep num={3} text="Upload both files. The tool validates column names automatically and flags any missing required columns before running." />
-          <HelpStep num={4} text="Click Run Mapping. Results appear with a confidence score per match and a Coverage Combination suggestion when the best-matching rule does not fully cover all client privileges. Export before closing — results are not stored between sessions." />
+          <HelpStep num={4} text="Click Run Mapping. Results appear with a Match Confidence score (High/Medium/Low/None) for each row, plus up to two runner-up EY entitlements. Export before closing — results are not stored between sessions." />
         </HelpAccordion>
         <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The mapping engine applies four algorithms in sequence and combines their scores into a single confidence rating:</p>
-          <HelpPill label="Privilege Overlap" note="Counts the exact privilege code intersection between a client entitlement and an EY rule. A full overlap scores 100%." />
-          <HelpPill label="Jaccard Similarity" note="Measures the ratio of shared privileges to the union of both sets — penalises over-broad or over-narrow rules." />
-          <HelpPill label="Name-Based Match" note="Fuzzy string comparison on entitlement and rule names, used as a tiebreaker for near-equal Jaccard scores." />
-          <HelpPill label="Coverage Combination" note="When the best-matching rule covers only a subset of client privileges, the engine tests whether adding 1–2 runner-up rules achieves full coverage — reported as 'Rule A + Rule B' in the output." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Matches above 80% are flagged High Confidence, 50–80% Medium, below 50% Low. Low-confidence rows should be reviewed manually before use in a report.</p>
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The mapping engine scores every EY entitlement against each client entitlement using two criteria:</p>
+          <HelpPill label="Privilege Overlap Count" note="Primary sort — the number of client privilege codes found in an EY entitlement. Higher overlap ranks first." />
+          <HelpPill label="Jaccard Similarity" note="Tiebreaker — overlap divided by the union of both privilege sets. Penalises bloated EY entitlements that contain many extra privileges beyond what the client holds." />
+          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Match Confidence is based on privilege coverage: High ≥ 75%, Medium 40–74%, Low &lt; 40%, None = no shared privileges. Rows with Low or None confidence should be reviewed manually.</p>
         </HelpAccordion>
         <TemplateDownloads templates={[['Client Entitlement Template', 'CSV / XLSX'], ['EY Ruleset Template', 'CSV / XLSX']]} />
       </div>
@@ -400,58 +442,13 @@ export default function EntitlementMapping() {
                 />
               </div>
 
-              {/* Recharts BarChart — match distribution */}
-              <div className="card">
-                <div className="flex items-center gap-2 mb-4">
-                  <BarChart2 size={16} className="text-gray-400" />
-                  <span className="text-card-title">Match Distribution</span>
-                  <span className="ml-auto text-body-sm text-gray-400">
-                    {summary.total_mappings.toLocaleString()} total mappings
-                  </span>
-                </div>
-                <ResponsiveContainer width="100%" height={200}>
-                  <BarChart
-                    data={chartData}
-                    barSize={44}
-                    margin={{ top: 4, right: 8, left: -16, bottom: 0 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" stroke="#E4E4E7" vertical={false} />
-                    <XAxis
-                      dataKey="name"
-                      tick={{ fontSize: 12, fill: '#71717A' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <YAxis
-                      tick={{ fontSize: 11, fill: '#A1A1AA' }}
-                      axisLine={false}
-                      tickLine={false}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        background: '#fff',
-                        border: '1px solid #E4E4E7',
-                        borderRadius: 6,
-                        fontSize: 13,
-                      }}
-                      cursor={{ fill: 'rgba(0,0,0,0.03)' }}
-                    />
-                    <Bar dataKey="value" radius={[4, 4, 0, 0]}>
-                      {chartData.map((entry, index) => (
-                        <Cell key={index} fill={entry.color} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-
               {/* Tab bar */}
               <div className="border-b border-gray-200">
                 <nav className="-mb-px flex gap-0">
                   {TABS.map(({ id, label }) => (
                     <button
                       key={id}
-                      onClick={() => setActiveTab(id)}
+                      onClick={() => { setActiveTab(id); setPage(1) }}
                       className={clsx(
                         'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors duration-150',
                         activeTab === id
@@ -473,27 +470,26 @@ export default function EntitlementMapping() {
                 </nav>
               </div>
 
-              {/* DataTable */}
-              <div>
-                {filteredRows.length > 0 && previewColumns.length > 0 ? (
-                  <>
-                    <DataTable
-                      data={filteredRows}
-                      columns={previewColumns}
-                      defaultPageSize={25}
-                      maxHeight="400px"
-                      emptyMessage="No results in this category"
-                    />
-                    <p className="text-[12px] text-gray-400 mt-2">
-                      Showing first {summary.results_preview.length} rows. Download the full report for complete results.
-                    </p>
-                  </>
-                ) : (
-                  <div className="text-center text-sm text-gray-400 py-10 border border-gray-200 rounded">
-                    No results in this category
-                  </div>
-                )}
-              </div>
+              {/* DataTable — server-side paginated with per-column filters */}
+              <DataTable
+                data={tableRows}
+                columns={RESULT_COLUMNS}
+                maxHeight="400px"
+                emptyMessage="No results in this category"
+                isLoading={isLoadingResults}
+                serverSide={{
+                  total: totalRows,
+                  page,
+                  pageSize,
+                  onPageChange: setPage,
+                  onPageSizeChange: (s) => { setPageSize(s); setPage(1) },
+                }}
+                serverSideFilters={{
+                  values: colFilters,
+                  onChange: (col, val) => setColFilters(prev => ({ ...prev, [col]: val })),
+                  selectOptions: { 'Match Confidence': ['High', 'Medium', 'Low', 'None'] },
+                }}
+              />
 
               {/* Actions */}
               <div className="flex items-center justify-between pt-1">

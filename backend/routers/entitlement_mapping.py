@@ -21,12 +21,25 @@ from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStat
 from services.job_manager import job_manager
 from shared.file_io import load_csv_to_pandas, load_excel_to_pandas
 from shared.validators import validate_upload
-from engines.entitlement_mapping_engine import run_mapping
+from engines.entitlement_mapping_engine import run_mapping, COLUMN_DESCRIPTIONS
 
 router = APIRouter(prefix="/api/entitlement-mapping", tags=["Entitlement Mapping"])
 logger = logging.getLogger("governance_platform.entitlement_mapping")
 
 _REQUIRED_COLS = {"Entitlement Name", "Privilege Name", "Privilege Code"}
+
+# Stores full result records per job_id for paginated access; cleared on DELETE.
+_result_rows: dict[str, list[dict]] = {}
+
+
+def _is_full_coverage(s: str) -> bool:
+    parts = str(s).split("/")
+    if len(parts) != 2:
+        return False
+    try:
+        return int(parts[0]) == int(parts[1]) and int(parts[1]) > 0
+    except ValueError:
+        return False
 
 
 def _build_preview(df: pd.DataFrame, filename: str) -> FilePreview:
@@ -60,9 +73,10 @@ def _run_thread(job_id: str, client_df: pd.DataFrame, ey_df: pd.DataFrame) -> No
 
         total = len(result_df)
         no_matches = int((result_df["EY Entitlement Match"] == "—").sum())
-        comment_col = result_df["Comment"].fillna("")
-        exact = int((comment_col == "Exact match").sum())
-        supersets = int(comment_col.str.contains("superset", na=False).sum())
+
+        full_cov = result_df["Privilege Match Count"].apply(_is_full_coverage)
+        exact = int((full_cov & (result_df["Jaccard Similarity (%)"] == "100%")).sum())
+        supersets = int((full_cov & (result_df["Jaccard Similarity (%)"] != "100%")).sum())
         partial = max(0, total - exact - supersets - no_matches)
 
         summary = {
@@ -73,6 +87,8 @@ def _run_thread(job_id: str, client_df: pd.DataFrame, ey_df: pd.DataFrame) -> No
             "no_matches": no_matches,
             "results_preview": result_df.head(20).fillna("").to_dict(orient="records"),
         }
+
+        _result_rows[job_id] = result_df.fillna("").to_dict(orient="records")
 
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
@@ -87,6 +103,68 @@ def _run_thread(job_id: str, client_df: pd.DataFrame, ey_df: pd.DataFrame) -> No
                     if len(result_df) else 0
                 )
                 ws.set_column(ci, ci, min(max(len(str(col)), max_len) + 3, 60))
+
+            # ── "How to Read This Report" sheet ───────────────────────────────
+            doc_ws = wb.add_worksheet("How to Read This Report")
+            doc_ws.set_column(0, 0, 28)
+            doc_ws.set_column(1, 1, 82)
+
+            sec_fmt  = wb.add_format({"bold": True, "font_size": 11})
+            wrap_fmt = wb.add_format({"text_wrap": True, "valign": "top"})
+            col_hdr  = wb.add_format({"bold": True, "bg_color": "#D7E4BC", "border": 1})
+
+            r = 0
+            doc_ws.write(r, 0, "About This Report", sec_fmt); r += 2
+
+            doc_ws.write(r, 0, "What this tool does", sec_fmt); r += 1
+            doc_ws.write(r, 0, (
+                "The Entitlement Mapping tool compares each client access entitlement "
+                "against EY's standard entitlement ruleset to find the closest match. "
+                "For each client entitlement it identifies which EY entitlement shares "
+                "the most privileges."
+            ), wrap_fmt)
+            doc_ws.set_row(r, 48); r += 2
+
+            doc_ws.write(r, 0, "How matching works", sec_fmt); r += 1
+            doc_ws.write(r, 0, (
+                "Candidates are ranked by (1) overlap count — the number of client "
+                "privileges found in the EY entitlement — as the primary criterion, "
+                "then (2) Jaccard similarity as a tiebreaker to penalise bloated EY "
+                "entitlements. When two EY entitlements cover the same client privileges, "
+                "the smaller, more focused one ranks higher."
+            ), wrap_fmt)
+            doc_ws.set_row(r, 60); r += 2
+
+            doc_ws.write(r, 0, "Match Confidence tiers", sec_fmt); r += 1
+            for tier, desc in [
+                ("High",   "75% or more of the client's privileges are covered."),
+                ("Medium", "40–74% of client privileges covered."),
+                ("Low",    "Fewer than 40% of client privileges covered."),
+                ("None",   "No client privilege exists anywhere in the EY ruleset."),
+            ]:
+                doc_ws.write(r, 0, tier)
+                doc_ws.write(r, 1, desc)
+                r += 1
+            r += 1
+
+            doc_ws.write(r, 0, "Runner-Up entitlements", sec_fmt); r += 1
+            doc_ws.write(r, 0, (
+                "The 2nd and 3rd best EY candidates are shown for each row. Useful "
+                "when the best match is imperfect: a runner-up may cover the privileges "
+                "the best match misses, and combining entitlements may achieve full coverage."
+            ), wrap_fmt)
+            doc_ws.set_row(r, 48); r += 2
+
+            doc_ws.write(r, 0, "Column Reference", sec_fmt); r += 1
+            doc_ws.write(r, 0, "Column", col_hdr)
+            doc_ws.write(r, 1, "Description", col_hdr)
+            r += 1
+            for col_name, col_desc in COLUMN_DESCRIPTIONS.items():
+                doc_ws.write(r, 0, col_name)
+                doc_ws.write(r, 1, col_desc, wrap_fmt)
+                doc_ws.set_row(r, 42)
+                r += 1
+
         buf.seek(0)
 
         job_manager.complete_job(job_id, summary, buf, output_filename("Entitlement_Mapping"))
@@ -197,8 +275,65 @@ async def download(job_id: str):
     )
 
 
+@router.get("/results/{job_id}")
+async def results_page(
+    job_id: str,
+    page: int = 1,
+    page_size: int = 50,
+    tab: str = "all",
+    client_filter: str = "",
+    ey_filter: str = "",
+    confidence: str = "",
+    pmc_filter: str = "",
+    jaccard_filter: str = "",
+    runner_up_filter: str = "",
+):
+    if job_id not in _result_rows:
+        job_manager.get_job(job_id)  # raises 404 if job is gone entirely
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
+        )
+
+    rows: list[dict] = _result_rows[job_id]
+
+    if tab == "exact":
+        rows = [r for r in rows if _is_full_coverage(r.get("Privilege Match Count", "")) and r.get("Jaccard Similarity (%)", "") == "100%"]
+    elif tab == "superset":
+        rows = [r for r in rows if _is_full_coverage(r.get("Privilege Match Count", "")) and r.get("Jaccard Similarity (%)", "") != "100%"]
+    elif tab == "no_match":
+        rows = [r for r in rows if r.get("EY Entitlement Match", "") == "—"]
+    elif tab == "partial":
+        rows = [r for r in rows if r.get("EY Entitlement Match", "") != "—" and not _is_full_coverage(r.get("Privilege Match Count", ""))]
+
+    if client_filter:
+        q = client_filter.lower()
+        rows = [r for r in rows if q in str(r.get("Client Entitlement", "")).lower()]
+    if ey_filter:
+        q = ey_filter.lower()
+        rows = [r for r in rows if q in str(r.get("EY Entitlement Match", "")).lower()]
+    if confidence:
+        rows = [r for r in rows if r.get("Match Confidence", "") == confidence]
+    if pmc_filter:
+        q = pmc_filter.lower()
+        rows = [r for r in rows if q in str(r.get("Privilege Match Count", "")).lower()]
+    if jaccard_filter:
+        q = jaccard_filter.lower()
+        rows = [r for r in rows if q in str(r.get("Jaccard Similarity (%)", "")).lower()]
+    if runner_up_filter:
+        q = runner_up_filter.lower()
+        rows = [r for r in rows if q in str(r.get("Runner-Up EY Entitlements", "")).lower()]
+
+    total = len(rows)
+    page_size = max(1, min(page_size, 200))
+    page = max(1, page)
+    start = (page - 1) * page_size
+    return {"data": rows[start: start + page_size], "total": total, "page": page, "page_size": page_size}
+
+
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
     job_manager.delete_job(job_id)
+    _result_rows.pop(job_id, None)
     return {"message": "Job deleted."}

@@ -50,3 +50,31 @@ export async function downloadResults(jobId: string, filename: string): Promise<
 export async function cancelJob(jobId: string): Promise<void> {
   await api.delete(`/api/oracle-comparator/job/${jobId}`)
 }
+
+export interface OracleResultsResponse {
+  rows: Record<string, unknown>[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export async function getResults(
+  jobId: string,
+  direction: '1to2' | '2to1',
+  compType: string,
+  page: number,
+  pageSize: number,
+  statusFilter?: string,
+  search?: string,
+): Promise<OracleResultsResponse> {
+  const params = new URLSearchParams({
+    direction,
+    comparison_type: compType,
+    page: String(page),
+    page_size: String(pageSize),
+  })
+  if (statusFilter) params.set('status_filter', statusFilter)
+  if (search) params.set('search', search)
+  const response = await api.get(`/api/oracle-comparator/results/${jobId}?${params}`)
+  return response.data
+}

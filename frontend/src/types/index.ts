@@ -56,7 +56,6 @@ export interface EntitlementMappingSummary {
   supersets: number
   partial_matches: number
   no_matches: number
-  results_preview: Record<string, unknown>[]
 }
 
 export interface FPSheetSummary {

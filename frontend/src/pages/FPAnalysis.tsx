@@ -1,26 +1,25 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { clsx } from 'clsx'
-import { Target, AlertCircle, RefreshCw, X, List, Package, PieChart as PieChartIcon, Info, Layers } from 'lucide-react'
+import { Target, AlertCircle, RefreshCw, X, List, Package, Info, Layers } from 'lucide-react'
 import { toast } from 'sonner'
-import {
-  PieChart, Pie, Cell, Tooltip as RechartsTooltip, ResponsiveContainer, Legend,
-} from 'recharts'
+import type { ColumnDef } from '@tanstack/react-table'
 import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
-import StatCard from '../components/common/StatCard'
+import DataTable from '../components/common/DataTable'
 import LoadingOverlay from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Badge from '../components/common/Badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob } from '../api/fpAnalysis'
+import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getSheetResults } from '../api/fpAnalysis'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { FPAnalysisSummary, FPSheetSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 
 type Step = 'mode' | 'sheets' | 'upload' | 'running' | 'results' | 'error'
 type Mode = 'privilege' | 'entitlement'
+type FPRow = Record<string, unknown>
 
 const STEPS = ['Mode', 'Configure', 'Upload', 'Results']
 const STEP_INDEX: Record<Step, number> = { mode: 0, sheets: 1, upload: 2, running: 2, results: 3, error: 0 }
@@ -57,6 +56,46 @@ const MODE_CARDS = [
   },
 ]
 
+// ── Column definitions ─────────────────────────────────────────────────────────
+
+function fpClassCell({ getValue }: { getValue: () => unknown }) {
+  const v = String(getValue() ?? '')
+  const cls =
+    v === 'YES'        ? 'bg-green-100 text-green-700'
+    : v === 'SL'       ? 'bg-yellow-100 text-yellow-700'
+    : v === 'True Conflict' ? 'bg-red-100 text-red-700'
+    : 'bg-gray-100 text-gray-500'
+  const label = v === 'YES' ? 'False Positive' : v || '—'
+  return (
+    <span className={`inline-flex px-2 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap ${cls}`}>
+      {label}
+    </span>
+  )
+}
+
+const ROLE_COLUMNS: ColumnDef<FPRow>[] = [
+  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
+  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
+  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+  { id: 'FP?', accessorFn: (row) => row['FP?'], header: 'Classification', cell: fpClassCell },
+  { id: 'Reason',              accessorKey: 'Reason',              header: 'Reason' },
+]
+
+const USER_COLUMNS: ColumnDef<FPRow>[] = [
+  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
+  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
+  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+  { id: 'USER_NAME',           accessorKey: 'USER_NAME',           header: 'User Name' },
+  { id: 'FP?', accessorFn: (row) => row['FP?'], header: 'Classification', cell: fpClassCell },
+  { id: 'Reason',              accessorKey: 'Reason',              header: 'Reason' },
+]
+
+// ── Component ──────────────────────────────────────────────────────────────────
+
 export default function FPAnalysis() {
   const [step, setStep] = useState<Step>('mode')
   const [mode, setMode] = useState<Mode>('privilege')
@@ -73,6 +112,12 @@ export default function FPAnalysis() {
   const [uploadError, setUploadError] = useState('')
   const [confirmReset, setConfirmReset] = useState(false)
 
+  // Results step state
+  const [activeTab, setActiveTab] = useState<string>('')
+  const [allSheetData, setAllSheetData] = useState<Record<string, FPRow[]>>({})
+  const [dataLoading, setDataLoading] = useState(false)
+
+  // Poll for analysis completion
   useEffect(() => {
     if (step !== 'running' || !jobId) return
     const interval = setInterval(async () => {
@@ -82,7 +127,10 @@ export default function FPAnalysis() {
         setProgressMessage(status.progress_message)
         if (status.status === 'complete') {
           clearInterval(interval)
-          setSummary(status.results as unknown as FPAnalysisSummary)
+          const fpSummary = status.results as unknown as FPAnalysisSummary
+          setSummary(fpSummary)
+          const firstSheet = ALL_SHEET_IDS.find(id => (fpSummary.sheets_analyzed ?? []).includes(id)) ?? ''
+          setActiveTab(firstSheet)
           setStep('results')
           toast.success('FP analysis complete!')
         } else if (status.status === 'failed') {
@@ -95,6 +143,55 @@ export default function FPAnalysis() {
     }, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [step, jobId])
+
+  // Fetch all rows for every analyzed sheet when results are ready
+  useEffect(() => {
+    if (step !== 'results' || !jobId || !summary) return
+    const sheetIds = ALL_SHEET_IDS.filter(id => (summary.sheets_analyzed ?? []).includes(id))
+    if (sheetIds.length === 0) return
+    let cancelled = false
+
+    setDataLoading(true)
+    Promise.all(
+      sheetIds.map(id =>
+        getSheetResults(jobId, id, 1, 100000, '', '')
+          .then(res => [id, res.data as FPRow[]] as const)
+          .catch(() => [id, [] as FPRow[]] as const),
+      ),
+    ).then(pairs => {
+      if (!cancelled) {
+        setAllSheetData(Object.fromEntries(pairs))
+        setDataLoading(false)
+      }
+    })
+
+    return () => { cancelled = true }
+  }, [step, jobId, summary])
+
+  // ── Derived values ─────────────────────────────────────────────────────────
+
+  const analyzedSheetIds = useMemo(() => {
+    if (!summary) return []
+    const analyzed = new Set(summary.sheets_analyzed)
+    return ALL_SHEET_IDS.filter(id => analyzed.has(id))
+  }, [summary])
+
+  const summaryBySheetId = useMemo((): Record<string, FPSheetSummary> => {
+    if (!summary) return {}
+    const map: Record<string, FPSheetSummary> = {}
+    for (const s of summary.sheet_summaries as FPSheetSummary[]) {
+      const id = ALL_SHEET_IDS.find(k => SHEET_LABELS[k] === s.sheet)
+      if (id) map[id] = s
+    }
+    return map
+  }, [summary])
+
+  const activeColumns = useMemo(
+    () => (activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS),
+    [activeTab],
+  )
+
+  // ── Handlers ───────────────────────────────────────────────────────────────
 
   const handleSelectMode = useCallback((m: Mode) => {
     setMode(m)
@@ -158,28 +255,12 @@ export default function FPAnalysis() {
     setErrors([])
     setUploadError('')
     setConfirmReset(false)
+    setActiveTab('')
+    setAllSheetData({})
+    setDataLoading(false)
   }, [jobId])
 
-  const pieData = useMemo(() => {
-    if (!summary) return []
-    const totals = (summary.sheet_summaries as FPSheetSummary[]).reduce(
-      (acc, s) => ({ fp: acc.fp + s.fp_count, sl: acc.sl + s.sl_count, tc: acc.tc + s.tc_count }),
-      { fp: 0, sl: 0, tc: 0 },
-    )
-    return [
-      { name: 'False Positive', value: totals.fp, color: '#22C55E' },
-      { name: 'Single Leg',     value: totals.sl, color: '#EAB308' },
-      { name: 'True Conflict',  value: totals.tc, color: '#EF4444' },
-    ].filter(d => d.value > 0)
-  }, [summary])
-
-  const overallReduction = useMemo(() => {
-    if (!summary?.sheet_summaries?.length) return 0
-    const total = (summary.sheet_summaries as FPSheetSummary[]).reduce((acc, s) => acc + s.total, 0)
-    if (!total) return 0
-    const fpSl = (summary.sheet_summaries as FPSheetSummary[]).reduce((acc, s) => acc + s.fp_count + s.sl_count, 0)
-    return Math.round((fpSl / total) * 100)
-  }, [summary])
+  // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
     <div>
@@ -210,328 +291,317 @@ export default function FPAnalysis() {
 
       <div className="relative">
 
-          {/* ── Step 0: Mode Selection ─────────────────────────────────── */}
-          {step === 'mode' && (
-            <div className="slide-in grid grid-cols-2 gap-5">
-              {MODE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, tag }) => (
-                <button
-                  key={id}
-                  onClick={() => handleSelectMode(id)}
-                  style={{ borderLeftColor: accentColor }}
-                  className={clsx(
-                    'flex flex-col text-left p-6 rounded-xl cursor-pointer',
-                    'bg-white border border-gray-200 border-l-[3px] shadow-sm',
-                    'focus:outline-none hover:shadow-md transition-shadow duration-150',
-                  )}
-                >
-                  <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
-                    <Icon size={20} className={iconColor} strokeWidth={1.5} />
-                  </div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <h3 className="text-[15px] font-semibold text-gray-800">{title}</h3>
-                    <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{tag}</span>
-                  </div>
-                  <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
-                  <span className="mt-4 text-[13px] font-medium text-gray-400 self-start">Select →</span>
-                </button>
-              ))}
-            </div>
-          )}
-
-          {/* ── Step 1: Sheet Configuration ───────────────────────────── */}
-          {step === 'sheets' && (
-            <div className="slide-in space-y-4">
-              <div className="card">
-                <div className="flex items-center gap-3 mb-5">
-                  <span className="label-uppercase">Mode:</span>
-                  <Badge text={mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'} variant="info" />
-                </div>
-
-                <p className="label-uppercase mb-4">Violation Sheets to Analyse</p>
-
-                <div className="grid grid-cols-2 gap-6">
-                  {SHEET_GROUPS.map(({ label, ids }) => (
-                    <div key={label}>
-                      <p className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-3">{label}</p>
-                      <div className="space-y-2">
-                        {ids.map(id => {
-                          const checked = selectedSheets.includes(id)
-                          return (
-                            <div
-                              key={id}
-                              onClick={() => toggleSheet(id)}
-                              className={clsx(
-                                'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer select-none transition-colors border',
-                                checked
-                                  ? 'bg-blue-50 border-blue-200'
-                                  : 'bg-gray-50 border-gray-200 hover:bg-gray-100',
-                              )}
-                            >
-                              <Checkbox
-                                checked={checked}
-                                onCheckedChange={() => toggleSheet(id)}
-                                onClick={e => e.stopPropagation()}
-                                className="data-[state=checked]:bg-[#3B82F6] data-[state=checked]:border-[#3B82F6]"
-                              />
-                              <span className={clsx(
-                                'text-sm font-medium',
-                                checked ? 'text-blue-700' : 'text-gray-600',
-                              )}>
-                                {SHEET_LABELS[id]}
-                              </span>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                {selectedSheets.length === 0 && (
-                  <p className="text-[13px] text-error mt-4">Select at least one violation sheet to continue.</p>
+        {/* ── Step 0: Mode Selection ─────────────────────────────────── */}
+        {step === 'mode' && (
+          <div className="slide-in grid grid-cols-2 gap-5">
+            {MODE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, tag }) => (
+              <button
+                key={id}
+                onClick={() => handleSelectMode(id)}
+                style={{ borderLeftColor: accentColor }}
+                className={clsx(
+                  'flex flex-col text-left p-6 rounded-xl cursor-pointer',
+                  'bg-white border border-gray-200 border-l-[3px] shadow-sm',
+                  'focus:outline-none hover:shadow-md transition-shadow duration-150',
                 )}
-              </div>
-
-              <div className="flex items-center justify-between pt-2">
-                <button className="btn-secondary" onClick={() => setStep('mode')}>← Change Mode</button>
-                <button
-                  className="btn-primary"
-                  disabled={selectedSheets.length === 0}
-                  onClick={() => setStep('upload')}
-                >
-                  Continue →
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Step 2: Upload Files ───────────────────────────────────── */}
-          {step === 'upload' && (
-            <div className="slide-in space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="label-uppercase mb-2">SOD Analysis Output</p>
-                  <FileUpload
-                    label="SOD Output XLSX"
-                    accept=".xlsx,.xls"
-                    hint={`Sheets required: ROLE_DETAILS, ${selectedSheets.map(s => SHEET_LABELS[s]).join(', ')}`}
-                    status={sodFile ? 'success' : 'idle'}
-                    fileInfo={sodFile ? { name: sodFile.name, size: sodFile.size } : null}
-                    onUpload={setSodFile}
-                    onRemove={() => setSodFile(null)}
-                  />
+              >
+                <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
+                  <Icon size={20} className={iconColor} strokeWidth={1.5} />
                 </div>
-                <div>
-                  <p className="label-uppercase mb-2">FP Database</p>
-                  <FileUpload
-                    label="FP Database XLSX"
-                    accept=".xlsx,.xls"
-                    hint="Sheets required: No_action_Privileges, WorkArea_Privileges"
-                    status={fpDbFile ? 'success' : 'idle'}
-                    fileInfo={fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size } : null}
-                    onUpload={setFpDbFile}
-                    onRemove={() => setFpDbFile(null)}
-                  />
+                <div className="flex items-center gap-2 mb-2">
+                  <h3 className="text-[15px] font-semibold text-gray-800">{title}</h3>
+                  <span className="text-[11px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500">{tag}</span>
                 </div>
-              </div>
+                <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
+                <span className="mt-4 text-[13px] font-medium text-gray-400 self-start">Select →</span>
+              </button>
+            ))}
+          </div>
+        )}
 
-              <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
-                <span><span className="font-medium">Mode:</span> {mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'}</span>
-                <span className="text-gray-300">·</span>
-                <span><span className="font-medium">Sheets:</span> {selectedSheets.map(s => SHEET_LABELS[s]).join(', ')}</span>
-                <button className="ml-auto text-[#3B82F6] hover:underline text-[12px]" onClick={() => setStep('sheets')}>
-                  Change
-                </button>
-              </div>
-
-              {isUploading && (
-                <div>
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>Uploading and validating…</span>
-                    <span>{uploadProgress}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-300 ease-out"
-                      style={{ width: `${uploadProgress}%`, background: '#3B82F6' }}
-                    />
-                  </div>
-                </div>
-              )}
-
-              {uploadError && (
-                <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
-                  <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                  <span className="flex-1">{uploadError}</span>
-                  <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
-                    <X size={14} />
-                  </button>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between pt-2">
-                <button className="btn-secondary" onClick={() => setStep('sheets')}>← Back</button>
-                <button
-                  className="btn-gold"
-                  disabled={!sodFile || !fpDbFile || isUploading}
-                  onClick={handleRunAnalysis}
-                >
-                  {isUploading ? 'Uploading…' : 'Run Analysis →'}
-                </button>
-              </div>
-            </div>
-          )}
-
-          {/* ── Running ───────────────────────────────────────────────── */}
-          {step === 'running' && (
-            <div className="slide-in relative min-h-[320px]">
-              <LoadingOverlay
-                message={progressMessage || 'Running 3-level FP classification…'}
-                progress={progress}
-              />
-            </div>
-          )}
-
-          {/* ── Results ───────────────────────────────────────────────── */}
-          {step === 'results' && summary && (
-            <div className="slide-in space-y-5">
-              <div className="flex items-center gap-3">
+        {/* ── Step 1: Sheet Configuration ───────────────────────────── */}
+        {step === 'sheets' && (
+          <div className="slide-in space-y-4">
+            <div className="card">
+              <div className="flex items-center gap-3 mb-5">
                 <span className="label-uppercase">Mode:</span>
-                <Badge
-                  text={summary.mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'}
-                  variant="info"
-                />
-                <span className="text-[13px] text-gray-400 ml-auto">
-                  {(summary.sheet_summaries as FPSheetSummary[]).length} sheet{(summary.sheet_summaries as FPSheetSummary[]).length !== 1 ? 's' : ''} analysed
-                </span>
+                <Badge text={mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'} variant="info" />
               </div>
 
-              {/* Per-sheet summary */}
-              <div className="space-y-3">
-                {(summary.sheet_summaries as FPSheetSummary[]).map(s => (
-                  <div key={s.sheet} className="card">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className="text-[15px] font-semibold text-gray-800">
-                        {SHEET_LABELS[s.sheet] ?? s.sheet}
-                      </span>
-                      <span className={clsx(
-                        'text-[11px] font-semibold px-2 py-0.5 rounded-full',
-                        s.reduction_pct >= 50
-                          ? 'bg-[rgba(34,197,94,0.1)] text-[#22C55E]'
-                          : 'bg-[rgba(234,179,8,0.1)] text-[#EAB308]',
-                      )}>
-                        {s.reduction_pct}% reduction
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-4 gap-3">
-                      <StatCard value={s.total} label="Total Violations" />
-                      <StatCard value={s.fp_count} label="False Positive" badge={{ text: 'FP', variant: 'success' }} />
-                      <StatCard value={s.sl_count} label="Single Leg"     badge={{ text: 'SL', variant: 'warning' }} />
-                      <StatCard value={s.tc_count} label="True Conflict"  badge={{ text: 'TC', variant: 'error' }} />
+              <p className="label-uppercase mb-4">Violation Sheets to Analyse</p>
+
+              <div className="grid grid-cols-2 gap-6">
+                {SHEET_GROUPS.map(({ label, ids }) => (
+                  <div key={label}>
+                    <p className="text-[12px] font-semibold text-gray-500 uppercase tracking-wide mb-3">{label}</p>
+                    <div className="space-y-2">
+                      {ids.map(id => {
+                        const checked = selectedSheets.includes(id)
+                        return (
+                          <div
+                            key={id}
+                            onClick={() => toggleSheet(id)}
+                            className={clsx(
+                              'flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer select-none transition-colors border',
+                              checked
+                                ? 'bg-blue-50 border-blue-200'
+                                : 'bg-gray-50 border-gray-200 hover:bg-gray-100',
+                            )}
+                          >
+                            <Checkbox
+                              checked={checked}
+                              onCheckedChange={() => toggleSheet(id)}
+                              onClick={e => e.stopPropagation()}
+                              className="data-[state=checked]:bg-[#3B82F6] data-[state=checked]:border-[#3B82F6]"
+                            />
+                            <span className={clsx('text-sm font-medium', checked ? 'text-blue-700' : 'text-gray-600')}>
+                              {SHEET_LABELS[id]}
+                            </span>
+                          </div>
+                        )
+                      })}
                     </div>
                   </div>
                 ))}
               </div>
 
-              {/* Analytics: donut chart + reduction counter */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="card">
-                  <div className="flex items-center gap-2 mb-4">
-                    <PieChartIcon size={16} className="text-gray-400" />
-                    <span className="text-card-title">Classification Distribution</span>
-                  </div>
-                  {pieData.length > 0 ? (
-                    <ResponsiveContainer width="100%" height={200}>
-                      <PieChart>
-                        <Pie
-                          data={pieData}
-                          cx="50%"
-                          cy="50%"
-                          innerRadius={52}
-                          outerRadius={78}
-                          paddingAngle={3}
-                          dataKey="value"
-                        >
-                          {pieData.map((entry, i) => (
-                            <Cell key={i} fill={entry.color} />
-                          ))}
-                        </Pie>
-                        <RechartsTooltip
-                          contentStyle={{
-                            background: '#fff',
-                            border: '1px solid #E4E4E7',
-                            borderRadius: 6,
-                            fontSize: 13,
-                          }}
-                        />
-                        <Legend
-                          iconType="circle"
-                          iconSize={8}
-                          formatter={(value) => (
-                            <span style={{ fontSize: 12, color: '#71717A' }}>{value}</span>
-                          )}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="text-center text-sm text-gray-400 py-10">No data available</div>
-                  )}
-                </div>
+              {selectedSheets.length === 0 && (
+                <p className="text-[13px] text-error mt-4">Select at least one violation sheet to continue.</p>
+              )}
+            </div>
 
-                <div className="card flex flex-col items-center justify-center text-center gap-3">
-                  <span className="label-uppercase">Overall FP + SL Reduction</span>
-                  <span className="text-[56px] font-bold font-mono tabular-nums text-gray-800 leading-none">
-                    {overallReduction}%
-                  </span>
-                  <span className="text-[13px] text-gray-400">of total violations removed</span>
-                  <div className="w-full bg-gray-100 rounded-full h-2 overflow-hidden mt-1">
-                    <div
-                      className="h-full rounded-full transition-[width] duration-300 ease-out"
-                      style={{ width: `${overallReduction}%`, background: '#22C55E' }}
-                    />
-                  </div>
-                </div>
+            <div className="flex items-center justify-between pt-2">
+              <button className="btn-secondary" onClick={() => setStep('mode')}>← Change Mode</button>
+              <button
+                className="btn-primary"
+                disabled={selectedSheets.length === 0}
+                onClick={() => setStep('upload')}
+              >
+                Continue →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── Step 2: Upload Files ───────────────────────────────────── */}
+        {step === 'upload' && (
+          <div className="slide-in space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="label-uppercase mb-2">SOD Analysis Output</p>
+                <FileUpload
+                  label="SOD Output XLSX"
+                  accept=".xlsx,.xls"
+                  hint={`Sheets required: ROLE_DETAILS, ${selectedSheets.map(s => SHEET_LABELS[s]).join(', ')}`}
+                  status={sodFile ? 'success' : 'idle'}
+                  fileInfo={sodFile ? { name: sodFile.name, size: sodFile.size } : null}
+                  onUpload={setSodFile}
+                  onRemove={() => setSodFile(null)}
+                />
               </div>
-
-              {/* Actions */}
-              <div className="flex items-center justify-between pt-1">
-                <button
-                  className="btn-secondary flex items-center gap-2"
-                  onClick={() => setConfirmReset(true)}
-                >
-                  <RefreshCw size={14} /> Start New Analysis
-                </button>
-                <DownloadButton
-                  onClick={async () => {
-                    const now = new Date()
-                    const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
-                    return downloadResults(jobId!, `FP_Analysis_${summary.mode}_${ts}.xlsx`)
-                  }}
+              <div>
+                <p className="label-uppercase mb-2">FP Database</p>
+                <FileUpload
+                  label="FP Database XLSX"
+                  accept=".xlsx,.xls"
+                  hint="Sheets required: No_action_Privileges, WorkArea_Privileges"
+                  status={fpDbFile ? 'success' : 'idle'}
+                  fileInfo={fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size } : null}
+                  onUpload={setFpDbFile}
+                  onRemove={() => setFpDbFile(null)}
                 />
               </div>
             </div>
-          )}
 
-          {/* ── Error ─────────────────────────────────────────────────── */}
-          {step === 'error' && (
-            <div className="slide-in">
-              <div className="card border-error/30 bg-error-light/20">
-                <div className="flex gap-3">
-                  <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-error mb-1">Analysis Failed</p>
-                    {errors.map((e, i) => (
-                      <p key={i} className="text-[13px] text-error/80">{e}</p>
-                    ))}
-                  </div>
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+              <span><span className="font-medium">Mode:</span> {mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'}</span>
+              <span className="text-gray-300">·</span>
+              <span><span className="font-medium">Sheets:</span> {selectedSheets.map(s => SHEET_LABELS[s]).join(', ')}</span>
+              <button className="ml-auto text-[#3B82F6] hover:underline text-[12px]" onClick={() => setStep('sheets')}>
+                Change
+              </button>
+            </div>
+
+            {isUploading && (
+              <div>
+                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                  <span>Uploading and validating…</span>
+                  <span>{uploadProgress}%</span>
                 </div>
-                <div className="flex gap-3 mt-4">
-                  <button className="btn-primary" onClick={handleTryAgain}>Try Again</button>
-                  <button className="btn-secondary" onClick={handleReset}>← Start Over</button>
+                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-300 ease-out"
+                    style={{ width: `${uploadProgress}%`, background: '#3B82F6' }}
+                  />
                 </div>
               </div>
+            )}
+
+            {uploadError && (
+              <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
+                <AlertCircle size={16} className="shrink-0 mt-0.5" />
+                <span className="flex-1">{uploadError}</span>
+                <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-2">
+              <button className="btn-secondary" onClick={() => setStep('sheets')}>← Back</button>
+              <button
+                className="btn-gold"
+                disabled={!sodFile || !fpDbFile || isUploading}
+                onClick={handleRunAnalysis}
+              >
+                {isUploading ? 'Uploading…' : 'Run Analysis →'}
+              </button>
             </div>
-          )}
+          </div>
+        )}
+
+        {/* ── Running ───────────────────────────────────────────────── */}
+        {step === 'running' && (
+          <div className="slide-in relative min-h-[320px]">
+            <LoadingOverlay
+              message={progressMessage || 'Running 3-level FP classification…'}
+              progress={progress}
+            />
+          </div>
+        )}
+
+        {/* ── Results ───────────────────────────────────────────────── */}
+        {step === 'results' && summary && (
+          <div className="slide-in space-y-5">
+
+            {/* Mode badge + sheet count */}
+            <div className="flex items-center gap-3">
+              <span className="label-uppercase">Mode:</span>
+              <Badge
+                text={summary.mode === 'privilege' ? 'Privilege Level' : 'Entitlement Level'}
+                variant="info"
+              />
+              <span className="text-[13px] text-gray-400 ml-auto">
+                {analyzedSheetIds.length} sheet{analyzedSheetIds.length !== 1 ? 's' : ''} analysed
+              </span>
+            </div>
+
+            {/* Summary cards — one per analyzed sheet */}
+            <div
+              className="grid gap-4"
+              style={{ gridTemplateColumns: `repeat(${analyzedSheetIds.length}, 1fr)` }}
+            >
+              {analyzedSheetIds.map(id => {
+                const s = summaryBySheetId[id]
+                if (!s) return null
+                return (
+                  <div key={id} className="card p-4">
+                    <div className="text-[12px] font-semibold text-gray-500 uppercase tracking-[0.06em] mb-3">
+                      {SHEET_LABELS[id]}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.06em] mb-0.5">Total</div>
+                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#0F1E3D', lineHeight: 1.2 }}>
+                          {s.total.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.06em] mb-0.5">False Positive</div>
+                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#16A34A', lineHeight: 1.2 }}>
+                          {s.fp_count.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.06em] mb-0.5">Single Leg</div>
+                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#D97706', lineHeight: 1.2 }}>
+                          {s.sl_count.toLocaleString()}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-semibold text-gray-400 uppercase tracking-[0.06em] mb-0.5">True Conflict</div>
+                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#DC2626', lineHeight: 1.2 }}>
+                          {s.tc_count.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+
+            {/* Tabbed DataTable */}
+            <div className="card p-0 overflow-hidden">
+              {/* Tab bar */}
+              <div className="flex border-b border-gray-200 bg-white">
+                {analyzedSheetIds.map(id => (
+                  <button
+                    key={id}
+                    onClick={() => setActiveTab(id)}
+                    className={clsx(
+                      'px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
+                      activeTab === id
+                        ? 'border-[#2563EB] text-[#2563EB]'
+                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                    )}
+                  >
+                    {SHEET_LABELS[id]}
+                  </button>
+                ))}
+              </div>
+
+              {/* Table */}
+              <div className="p-4">
+                <DataTable
+                  data={allSheetData[activeTab] ?? []}
+                  columns={activeColumns}
+                  isLoading={dataLoading}
+                  emptyMessage="No violations for this sheet"
+                  maxHeight="480px"
+                  defaultPageSize={50}
+                />
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-between pt-1">
+              <button
+                className="btn-secondary flex items-center gap-2"
+                onClick={() => setConfirmReset(true)}
+              >
+                <RefreshCw size={14} /> Start New Analysis
+              </button>
+              <DownloadButton
+                onClick={async () => {
+                  const now = new Date()
+                  const ts = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`
+                  return downloadResults(jobId!, `FP_Analysis_${summary.mode}_${ts}.xlsx`)
+                }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* ── Error ─────────────────────────────────────────────────── */}
+        {step === 'error' && (
+          <div className="slide-in">
+            <div className="card border-error/30 bg-error-light/20">
+              <div className="flex gap-3">
+                <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
+                <div>
+                  <p className="text-sm font-semibold text-error mb-1">Analysis Failed</p>
+                  {errors.map((e, i) => (
+                    <p key={i} className="text-[13px] text-error/80">{e}</p>
+                  ))}
+                </div>
+              </div>
+              <div className="flex gap-3 mt-4">
+                <button className="btn-primary" onClick={handleTryAgain}>Try Again</button>
+                <button className="btn-secondary" onClick={handleReset}>← Start Over</button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
 
