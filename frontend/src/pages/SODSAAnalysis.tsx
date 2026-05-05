@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react'
 import { clsx } from 'clsx'
 import {
   Shield, AlertCircle, CheckCircle2, RefreshCw, X,
-  Users, Layers, Info, Search,
+  Users, Layers, Info,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import type { ColumnDef } from '@tanstack/react-table'
@@ -140,13 +140,9 @@ export default function SODSAAnalysis() {
   // Results step state
   const [sodSaSummaryData, setSodSaSummaryData] = useState<SODSASummaryData | null>(null)
   const [activeTab, setActiveTab] = useState('')
-  const [tableRows, setTableRows] = useState<SODRow[]>([])
-  const [tablePage, setTablePage] = useState(1)
-  const [tablePageSize, setTablePageSize] = useState(50)
-  const [tableTotal, setTableTotal] = useState(0)
-  const [tableLoading, setTableLoading] = useState(false)
-  const [tableSearch, setTableSearch] = useState('')
-  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [allSheetData, setAllSheetData] = useState<Record<string, SODRow[]>>({})
+  const [dataLoading, setDataLoading] = useState(false)
+  const [filterResetKey, setFilterResetKey] = useState(0)
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -180,42 +176,37 @@ export default function SODSAAnalysis() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // ── Debounce search (resets page on fire) ────────────────────────────────────
-  useEffect(() => {
-    const t = setTimeout(() => { setDebouncedSearch(tableSearch); setTablePage(1) }, 350)
-    return () => clearTimeout(t)
-  }, [tableSearch])
-
-  // ── Fetch summary data when results first appear ─────────────────────────────
+  // ── Fetch summary + all sheet data when results appear ───────────────────────
   useEffect(() => {
     if (step !== 'results' || !jobId) return
     let cancelled = false
+
     getSummary(jobId)
       .then(data => {
         if (cancelled) return
         setSodSaSummaryData(data)
-        const firstId = ALL_SHEET_IDS.find(id => data.sheet_counts[id])
+        const sheetIds = ALL_SHEET_IDS.filter(id => data.sheet_counts[id])
+        const firstId = sheetIds[0]
         if (firstId) setActiveTab(firstId)
+
+        setDataLoading(true)
+        Promise.all(
+          sheetIds.map(id =>
+            getSheetResults(jobId, id, 1, 100000, '')
+              .then(res => [id, res.data as SODRow[]] as const)
+              .catch(() => [id, [] as SODRow[]] as const),
+          ),
+        ).then(pairs => {
+          if (!cancelled) {
+            setAllSheetData(Object.fromEntries(pairs))
+            setDataLoading(false)
+          }
+        })
       })
-      .catch(() => { /* no-op — summary panel stays hidden */ })
+      .catch(() => { /* summary panel stays hidden */ })
+
     return () => { cancelled = true }
   }, [step, jobId])
-
-  // ── Fetch paginated table rows ───────────────────────────────────────────────
-  useEffect(() => {
-    if (step !== 'results' || !jobId || !activeTab) return
-    let cancelled = false
-    setTableLoading(true)
-    getSheetResults(jobId, activeTab, tablePage, tablePageSize, debouncedSearch)
-      .then(res => {
-        if (cancelled) return
-        setTableRows(res.data)
-        setTableTotal(res.total)
-        setTableLoading(false)
-      })
-      .catch(() => { if (!cancelled) setTableLoading(false) })
-    return () => { cancelled = true }
-  }, [step, jobId, activeTab, tablePage, tablePageSize, debouncedSearch])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const analyzedSheetIds = useMemo(
@@ -234,9 +225,7 @@ export default function SODSAAnalysis() {
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab)
-    setTablePage(1)
-    setTableSearch('')
-    setDebouncedSearch('')
+    setFilterResetKey(k => k + 1)
   }, [])
 
   const handleRunAnalysis = useCallback(async () => {
@@ -298,13 +287,9 @@ export default function SODSAAnalysis() {
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
-    setTableRows([])
-    setTablePage(1)
-    setTablePageSize(50)
-    setTableTotal(0)
-    setTableLoading(false)
-    setTableSearch('')
-    setDebouncedSearch('')
+    setAllSheetData({})
+    setDataLoading(false)
+    setFilterResetKey(0)
   }, [jobId])
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -332,7 +317,11 @@ export default function SODSAAnalysis() {
           <HelpPill label="User expansion" note="When User Analysis is included, each user's assigned roles are resolved through the hierarchy and the same checks applied, attributing violations to named users." />
           <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Large hierarchies are processed in chunks to avoid memory limits — the progress bar reflects chunk completion, not individual row count.</p>
         </HelpAccordion>
-        <TemplateDownloads templates={[['Role Hierarchy Template', 'CSV'], ['SOD SA Ruleset Template', 'XLSX'], ['User Role Membership Template', 'CSV']]} />
+        <TemplateDownloads templates={[
+          ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
+          ['SOD SA Ruleset Template',         'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
+          ['User Role Membership Template',   'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
+        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
@@ -502,45 +491,6 @@ export default function SODSAAnalysis() {
               )}
             </div>
 
-            {/* Per-sheet violation stat cards */}
-            {sodSaSummaryData && analyzedSheetIds.length > 0 && (
-              <div className={clsx(
-                'grid gap-4',
-                analyzedSheetIds.length === 1 && 'grid-cols-1',
-                analyzedSheetIds.length === 2 && 'grid-cols-2',
-                analyzedSheetIds.length === 3 && 'grid-cols-3',
-                analyzedSheetIds.length >= 4 && 'grid-cols-4',
-              )}>
-                {analyzedSheetIds.map(id => {
-                  const sc = sodSaSummaryData.sheet_counts[id]
-                  const isUser = id.startsWith('USER')
-                  const uniqueCount = isUser ? (sc.unique_users ?? 0) : (sc.unique_roles ?? 0)
-                  const uniqueLabel = isUser ? 'Unique Users' : 'Unique Roles'
-                  const hasViolations = sc.total_violations > 0
-                  return (
-                    <div
-                      key={id}
-                      className="bg-white border border-gray-200 rounded-xl p-5 shadow-sm"
-                      style={{ borderTopWidth: 3, borderTopColor: hasViolations ? '#DC2626' : '#16A34A' }}
-                    >
-                      <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em] mb-2">
-                        {SHEET_LABELS[id]}
-                      </div>
-                      <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 36, fontWeight: 700, lineHeight: 1, color: hasViolations ? '#DC2626' : '#16A34A', marginBottom: 4 }}>
-                        {sc.total_violations.toLocaleString()}
-                      </div>
-                      <div className="text-[11.5px] text-gray-400 mb-4">violation records</div>
-                      <div className="border-t border-gray-100 pt-3">
-                        <div className="text-[10px] text-gray-400 uppercase tracking-[0.06em] mb-1">{uniqueLabel}</div>
-                        <div style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 22, fontWeight: 600, color: '#0F1E3D' }}>
-                          {uniqueCount.toLocaleString()}
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
 
             {/* Top Insights */}
             {(() => {
@@ -568,74 +518,50 @@ export default function SODSAAnalysis() {
             {sodSaSummaryData && analyzedSheetIds.length > 0 && (
               <div className="card p-0 overflow-hidden">
                 {/* Tab bar */}
-                <div className="flex border-b border-gray-200 bg-white">
-                  {analyzedSheetIds.map(id => {
-                    const count = sodSaSummaryData.sheet_counts[id]?.total_violations ?? 0
-                    return (
-                      <button
-                        key={id}
-                        onClick={() => handleTabChange(id)}
-                        className={clsx(
-                          'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
-                          activeTab === id
-                            ? 'border-[#EAB308] text-[#0F1E3D] font-semibold'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
-                        )}
-                      >
-                        {SHEET_LABELS[id]}
-                        <span className={clsx(
-                          'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
-                          activeTab === id ? 'bg-[#EAB308]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
-                        )}>
-                          {count.toLocaleString()}
-                        </span>
-                      </button>
-                    )
-                  })}
+                <div className="flex items-center border-b border-gray-200 bg-white">
+                  <div className="flex flex-1">
+                    {analyzedSheetIds.map(id => {
+                      const count = sodSaSummaryData.sheet_counts[id]?.total_violations ?? 0
+                      return (
+                        <button
+                          key={id}
+                          onClick={() => handleTabChange(id)}
+                          className={clsx(
+                            'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
+                            activeTab === id
+                              ? 'border-[#EAB308] text-[#0F1E3D] font-semibold'
+                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                          )}
+                        >
+                          {SHEET_LABELS[id]}
+                          <span className={clsx(
+                            'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
+                            activeTab === id ? 'bg-[#EAB308]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
+                          )}>
+                            {count.toLocaleString()}
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                  <button
+                    onClick={() => setFilterResetKey(k => k + 1)}
+                    className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  >
+                    <X size={11} /> Clear All Filters
+                  </button>
                 </div>
 
-                {/* Search + table */}
+                {/* Table */}
                 <div className="p-4">
-                  <div className="flex items-center gap-2 mb-3">
-                    <div className="relative max-w-sm">
-                      <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
-                      <input
-                        type="text"
-                        value={tableSearch}
-                        onChange={e => setTableSearch(e.target.value)}
-                        placeholder="Search across all columns…"
-                        className="pl-8 pr-3 py-1.5 text-[13px] border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-1 focus:ring-[#EAB308]/50 w-64"
-                      />
-                    </div>
-                    {tableSearch && (
-                      <button
-                        onClick={() => setTableSearch('')}
-                        className="flex items-center gap-1 text-[12px] text-gray-400 hover:text-gray-600"
-                      >
-                        <X size={12} /> Clear
-                      </button>
-                    )}
-                    {tableTotal > 0 && (
-                      <span className="ml-auto text-[12px] text-gray-400">
-                        {tableTotal.toLocaleString()} rows
-                      </span>
-                    )}
-                  </div>
-
                   <DataTable
-                    data={tableRows}
+                    data={allSheetData[activeTab] ?? []}
                     columns={activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS}
-                    isLoading={tableLoading}
+                    isLoading={dataLoading}
                     emptyMessage="No violations found"
                     maxHeight="460px"
-                    defaultPageSize={tablePageSize}
-                    serverSide={{
-                      total: tableTotal,
-                      page: tablePage,
-                      pageSize: tablePageSize,
-                      onPageChange: setTablePage,
-                      onPageSizeChange: (size) => { setTablePageSize(size); setTablePage(1) },
-                    }}
+                    defaultPageSize={50}
+                    filterResetKey={filterResetKey}
                   />
                 </div>
               </div>

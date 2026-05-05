@@ -253,7 +253,7 @@ async def results_page(
     direction: str = Query(..., description="'1to2' or '2to1'"),
     comparison_type: str = Query(..., description="'duty_role', 'privilege', or 'dsp'"),
     page: int = Query(1, ge=1),
-    page_size: int = Query(50, ge=1, le=500),
+    page_size: int = Query(50, ge=1),
     status_filter: Optional[str] = Query(None, description="Filter by Status: 'exists' or 'missing'"),
     search: Optional[str] = Query(None, description="Text search across all columns"),
 ):

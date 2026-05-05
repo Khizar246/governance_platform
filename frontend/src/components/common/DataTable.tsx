@@ -57,6 +57,8 @@ interface DataTableProps<T> {
   serverSide?: ServerSideProps
   /** Per-column filter state for server-side mode. */
   serverSideFilters?: ServerSideFilters
+  /** Increment to programmatically clear all active client-side filters. */
+  filterResetKey?: number
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -70,6 +72,7 @@ export default function DataTable<T>({
   isLoading = false,
   serverSide,
   serverSideFilters,
+  filterResetKey,
 }: DataTableProps<T>) {
   const [sorting, setSorting] = useState<SortingState>([])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
@@ -114,11 +117,18 @@ export default function DataTable<T>({
       const key = String(def.accessorKey ?? colId)
       if (!colId) continue
       const vals = new Set<string>()
+      let hasEmpty = false
       for (const row of data) {
-        const v = String((row as Record<string, unknown>)[key] ?? '')
-        if (v && v !== 'undefined' && v !== 'null') vals.add(v)
+        const raw = (row as Record<string, unknown>)[key]
+        const v = raw == null ? '' : String(raw)
+        if (v === '' || v === 'undefined' || v === 'null') {
+          hasEmpty = true
+        } else {
+          vals.add(v)
+        }
       }
-      map[colId] = Array.from(vals).sort((a, b) => a.localeCompare(b))
+      const sorted = Array.from(vals).sort((a, b) => a.localeCompare(b))
+      map[colId] = hasEmpty ? [...sorted, ''] : sorted
     }
     return map
   }, [data, columns, serverSide])
@@ -154,6 +164,14 @@ export default function DataTable<T>({
     return () => document.removeEventListener('keydown', handle)
   }, [openFilterCol])
 
+  // ── Clear all filters when reset key increments ───────────────────────────
+  useEffect(() => {
+    if (!filterResetKey) return
+    setColumnFilters([])
+    setOpenFilterCol(null)
+    setFilterSearch('')
+  }, [filterResetKey])
+
   // ── Client-side multi-select helpers ─────────────────────────────────────
   const getClientFilterValues = (colId: string): string[] => {
     const f = columnFilters.find(cf => cf.id === colId)
@@ -162,10 +180,20 @@ export default function DataTable<T>({
 
   const toggleClientValue = (colId: string, value: string) => {
     const current = getClientFilterValues(colId)
-    const updated = current.includes(value)
-      ? current.filter(v => v !== value)
-      : [...current, value]
-    table.getColumn(colId)?.setFilterValue(updated.length ? updated : undefined)
+    const all = uniqueValues[colId] ?? []
+    let updated: string[]
+    if (current.length === 0) {
+      // No active filter — all values implicitly shown. Unchecking excludes this value.
+      updated = all.filter(v => v !== value)
+    } else {
+      updated = current.includes(value)
+        ? current.filter(v => v !== value)
+        : [...current, value]
+    }
+    // Clear filter when all values are re-included
+    table.getColumn(colId)?.setFilterValue(
+      updated.length === 0 || updated.length >= all.length ? undefined : updated,
+    )
   }
 
   // ── Open filter dropdown ──────────────────────────────────────────────────
@@ -487,10 +515,14 @@ export default function DataTable<T>({
               {!serverSide && (() => {
                 const allVals = uniqueValues[openFilterCol] ?? []
                 const visible = filterSearch
-                  ? allVals.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase()))
+                  ? allVals.filter(v =>
+                      (v === '' ? '[Empty]' : v).toLowerCase().includes(filterSearch.toLowerCase()),
+                    )
                   : allVals
                 const activeVals = getClientFilterValues(openFilterCol)
-                const allChecked = visible.length > 0 && visible.every(v => activeVals.includes(v))
+                // Exclusion model: no filter = all implicitly selected
+                const effectiveSelected = activeVals.length === 0 ? allVals : activeVals
+                const allChecked = visible.length > 0 && visible.every(v => effectiveSelected.includes(v))
 
                 if (visible.length === 0) {
                   return (
@@ -506,13 +538,7 @@ export default function DataTable<T>({
                         <input
                           type="checkbox"
                           checked={allChecked}
-                          onChange={() => {
-                            if (allChecked) {
-                              table.getColumn(openFilterCol)?.setFilterValue(undefined)
-                            } else {
-                              table.getColumn(openFilterCol)?.setFilterValue(allVals)
-                            }
-                          }}
+                          onChange={() => table.getColumn(openFilterCol)?.setFilterValue(undefined)}
                           className="h-3.5 w-3.5 rounded accent-[#FFD100]"
                         />
                         <span className="text-[12px] text-gray-500 italic">(Select All)</span>
@@ -520,17 +546,17 @@ export default function DataTable<T>({
                     )}
                     {visible.map((val) => (
                       <label
-                        key={val}
+                        key={val === '' ? '__empty__' : val}
                         className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50"
                       >
                         <input
                           type="checkbox"
-                          checked={activeVals.includes(val)}
+                          checked={effectiveSelected.includes(val)}
                           onChange={() => toggleClientValue(openFilterCol, val)}
                           className="h-3.5 w-3.5 rounded accent-[#FFD100]"
                         />
-                        <span className="text-[12px] text-gray-700 truncate" title={val}>
-                          {val || <em className="text-gray-400">(blank)</em>}
+                        <span className="text-[12px] text-gray-700 truncate" title={val || '[Empty]'}>
+                          {val === '' ? <em className="text-gray-400">[Empty]</em> : val}
                         </span>
                       </label>
                     ))}

@@ -81,13 +81,9 @@ export default function EntitlementMapping() {
   const [uploadError, setUploadError] = useState('')
   const [activeTab, setActiveTab] = useState<TabId>('all')
   const [confirmReset, setConfirmReset] = useState(false)
-  const [page, setPage] = useState(1)
-  const [pageSize, setPageSize] = useState(50)
-  const [totalRows, setTotalRows] = useState(0)
   const [tableRows, setTableRows] = useState<Record<string, unknown>[]>([])
   const [isLoadingResults, setIsLoadingResults] = useState(false)
-  const [colFilters, setColFilters] = useState<Record<string, string>>({})
-  const [debouncedColFilters, setDebouncedColFilters] = useState<Record<string, string>>({})
+  const [filterResetKey, setFilterResetKey] = useState(0)
 
   useEffect(() => {
     if (step !== 'running' || !jobId) return
@@ -114,46 +110,17 @@ export default function EntitlementMapping() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // Debounce column filters before sending to server
-  useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedColFilters(colFilters)
-      setPage(1)
-    }, 300)
-    return () => clearTimeout(t)
-  }, [colFilters])
-
-  // Fetch paginated results from server whenever page/tab/filters change
+  // Fetch all rows for active tab (client-side filtering via DataTable)
   useEffect(() => {
     if (step !== 'results' || !jobId) return
     let cancelled = false
-    const fetchPage = async () => {
-      setIsLoadingResults(true)
-      try {
-        const res = await getResults(jobId, {
-          page,
-          pageSize,
-          tab: activeTab,
-          clientFilter: debouncedColFilters['Client Entitlement'] ?? '',
-          eyFilter: debouncedColFilters['EY Entitlement Match'] ?? '',
-          confidence: debouncedColFilters['Match Confidence'] ?? '',
-          pmcFilter: debouncedColFilters['Privilege Match Count'] ?? '',
-          jaccardFilter: debouncedColFilters['Jaccard Similarity (%)'] ?? '',
-          runnerUpFilter: debouncedColFilters['Runner-Up EY Entitlements'] ?? '',
-        })
-        if (!cancelled) {
-          setTableRows(res.data)
-          setTotalRows(res.total)
-        }
-      } catch {
-        if (!cancelled) toast.error('Failed to load results page.')
-      } finally {
-        if (!cancelled) setIsLoadingResults(false)
-      }
-    }
-    fetchPage()
+    setIsLoadingResults(true)
+    getResults(jobId, { page: 1, pageSize: 100000, tab: activeTab })
+      .then(res => { if (!cancelled) setTableRows(res.data) })
+      .catch(() => { if (!cancelled) toast.error('Failed to load results.') })
+      .finally(() => { if (!cancelled) setIsLoadingResults(false) })
     return () => { cancelled = true }
-  }, [step, jobId, page, pageSize, activeTab, debouncedColFilters])
+  }, [step, jobId, activeTab])
 
   const handleUpload = useCallback(async () => {
     if (!clientFile || !eyFile) return
@@ -208,13 +175,9 @@ export default function EntitlementMapping() {
     setUploadError('')
     setActiveTab('all')
     setConfirmReset(false)
-    setPage(1)
-    setPageSize(50)
-    setTotalRows(0)
     setTableRows([])
     setIsLoadingResults(false)
-    setColFilters({})
-    setDebouncedColFilters({})
+    setFilterResetKey(0)
   }, [jobId])
 
   const tabCounts = useMemo<Record<TabId, number>>(() => {
@@ -249,7 +212,10 @@ export default function EntitlementMapping() {
           <HelpPill label="Jaccard Similarity" note="Tiebreaker — overlap divided by the union of both privilege sets. Penalises bloated EY entitlements that contain many extra privileges beyond what the client holds." />
           <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Match Confidence is based on privilege coverage: High ≥ 75%, Medium 40–74%, Low &lt; 40%, None = no shared privileges. Rows with Low or None confidence should be reviewed manually.</p>
         </HelpAccordion>
-        <TemplateDownloads templates={[['Client Entitlement Template', 'CSV / XLSX'], ['EY Ruleset Template', 'CSV / XLSX']]} />
+        <TemplateDownloads templates={[
+          ['Client Entitlement Template', 'XLSX', '/api/templates/entitlement-mapping/client_entitlements_template.xlsx'],
+          ['EY Ruleset Template',          'XLSX', '/api/templates/entitlement-mapping/ey_ruleset_template.xlsx'],
+        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
@@ -442,13 +408,13 @@ export default function EntitlementMapping() {
                 />
               </div>
 
-              {/* Tab bar */}
-              <div className="border-b border-gray-200">
-                <nav className="-mb-px flex gap-0">
+              {/* Tab bar + Clear All Filters */}
+              <div className="flex items-center border-b border-gray-200">
+                <nav className="-mb-px flex flex-1 gap-0">
                   {TABS.map(({ id, label }) => (
                     <button
                       key={id}
-                      onClick={() => { setActiveTab(id); setPage(1) }}
+                      onClick={() => { setActiveTab(id); setFilterResetKey(k => k + 1) }}
                       className={clsx(
                         'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors duration-150',
                         activeTab === id
@@ -468,27 +434,22 @@ export default function EntitlementMapping() {
                     </button>
                   ))}
                 </nav>
+                <button
+                  onClick={() => setFilterResetKey(k => k + 1)}
+                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={11} /> Clear All Filters
+                </button>
               </div>
 
-              {/* DataTable — server-side paginated with per-column filters */}
+              {/* DataTable — client-side with Excel-style column filters */}
               <DataTable
                 data={tableRows}
                 columns={RESULT_COLUMNS}
                 maxHeight="400px"
                 emptyMessage="No results in this category"
                 isLoading={isLoadingResults}
-                serverSide={{
-                  total: totalRows,
-                  page,
-                  pageSize,
-                  onPageChange: setPage,
-                  onPageSizeChange: (s) => { setPageSize(s); setPage(1) },
-                }}
-                serverSideFilters={{
-                  values: colFilters,
-                  onChange: (col, val) => setColFilters(prev => ({ ...prev, [col]: val })),
-                  selectOptions: { 'Match Confidence': ['High', 'Medium', 'Low', 'None'] },
-                }}
+                filterResetKey={filterResetKey}
               />
 
               {/* Actions */}

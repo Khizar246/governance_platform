@@ -119,13 +119,8 @@ export default function OracleComparator() {
   const [selectedDir, setSelectedDir] = useState<'1to2' | '2to1'>('1to2')
   const [selectedType, setSelectedType] = useState('')
   const [detailRows, setDetailRows] = useState<OracleRow[]>([])
-  const [detailTotal, setDetailTotal] = useState(0)
-  const [detailPage, setDetailPage] = useState(1)
-  const [detailPageSize, setDetailPageSize] = useState(50)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [statusFilter, setStatusFilter] = useState('')
-  const [searchInput, setSearchInput] = useState('')
-  const [detailSearch, setDetailSearch] = useState('')
+  const [filterResetKey, setFilterResetKey] = useState(0)
 
   const needsRbac = analysisType === 'rbac' || analysisType === 'both'
   const needsDsp  = analysisType === 'dsp'  || analysisType === 'both'
@@ -165,29 +160,18 @@ export default function OracleComparator() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // Debounce search input → detailSearch
-  useEffect(() => {
-    const t = setTimeout(() => { setDetailSearch(searchInput); setDetailPage(1) }, 350)
-    return () => clearTimeout(t)
-  }, [searchInput])
-
   const fetchDetail = useCallback(async () => {
     if (!jobId || !selectedType) return
     setDetailLoading(true)
     try {
-      const res = await getResults(
-        jobId, selectedDir, selectedType, detailPage, detailPageSize,
-        statusFilter || undefined, detailSearch || undefined,
-      )
+      const res = await getResults(jobId, selectedDir, selectedType, 1, 100000)
       setDetailRows(res.rows)
-      setDetailTotal(res.total)
     } catch {
       setDetailRows([])
-      setDetailTotal(0)
     } finally {
       setDetailLoading(false)
     }
-  }, [jobId, selectedDir, selectedType, detailPage, detailPageSize, statusFilter, detailSearch])
+  }, [jobId, selectedDir, selectedType])
 
   useEffect(() => {
     if (step === 'results') fetchDetail()
@@ -275,13 +259,8 @@ export default function OracleComparator() {
     setSelectedDir('1to2')
     setSelectedType('')
     setDetailRows([])
-    setDetailTotal(0)
-    setDetailPage(1)
-    setDetailPageSize(50)
     setDetailLoading(false)
-    setStatusFilter('')
-    setSearchInput('')
-    setDetailSearch('')
+    setFilterResetKey(0)
   }, [jobId])
 
   const availableCompTypes = useMemo(() => {
@@ -324,7 +303,10 @@ export default function OracleComparator() {
           <HelpPill label="Key matching" note="Rows are matched on a composite key of ROLE NAME + ENTITLEMENT (RBAC) or ROLE NAME + OBJECT NAME (DSP). Whitespace and case are normalised before matching." />
           <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Particularly useful for post-migration checks — anything in Env1 but absent from Env2 is a potential missed configuration.</p>
         </HelpAccordion>
-        <TemplateDownloads templates={[['RBAC Export Template', 'CSV'], ['DSP Export Template', 'CSV']]} />
+        <TemplateDownloads templates={[
+          ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
+          ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
+        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
@@ -591,7 +573,7 @@ export default function OracleComparator() {
                   <span className="label-uppercase text-gray-500 shrink-0">Direction:</span>
                   <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-[13px]">
                     <button
-                      onClick={() => { setSelectedDir('1to2'); setDetailPage(1) }}
+                      onClick={() => { setSelectedDir('1to2'); setFilterResetKey(k => k + 1) }}
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
                         selectedDir === '1to2'
@@ -602,7 +584,7 @@ export default function OracleComparator() {
                       {summary.env1_name} → {summary.env2_name}
                     </button>
                     <button
-                      onClick={() => { setSelectedDir('2to1'); setDetailPage(1) }}
+                      onClick={() => { setSelectedDir('2to1'); setFilterResetKey(k => k + 1) }}
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap border-l border-gray-200',
                         selectedDir === '2to1'
@@ -622,7 +604,7 @@ export default function OracleComparator() {
                     {availableCompTypes.map(ct => (
                       <button
                         key={ct}
-                        onClick={() => { setSelectedType(ct); setDetailPage(1) }}
+                        onClick={() => { setSelectedType(ct); setFilterResetKey(k => k + 1) }}
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors whitespace-nowrap',
                           selectedType === ct
@@ -636,25 +618,13 @@ export default function OracleComparator() {
                   </div>
                 </div>
 
-                {/* Status filter + search */}
-                <div className="flex items-center gap-2 ml-auto">
-                  <select
-                    value={statusFilter}
-                    onChange={e => { setStatusFilter(e.target.value); setDetailPage(1) }}
-                    className="border border-gray-200 rounded-lg px-2.5 py-1.5 text-[13px] text-gray-700 bg-white focus:outline-none focus:border-ey-yellow"
-                  >
-                    <option value="">All Status</option>
-                    <option value="exists">Exists in Both</option>
-                    <option value="missing">Missing</option>
-                  </select>
-                  <input
-                    type="text"
-                    value={searchInput}
-                    onChange={e => setSearchInput(e.target.value)}
-                    placeholder="Search…"
-                    className="border border-gray-200 rounded-lg px-3 py-1.5 text-[13px] text-gray-700 bg-white focus:outline-none focus:border-ey-yellow w-44"
-                  />
-                </div>
+                {/* Clear All Filters */}
+                <button
+                  onClick={() => setFilterResetKey(k => k + 1)}
+                  className="flex items-center gap-1 ml-auto text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={11} /> Clear All Filters
+                </button>
               </div>
 
               {/* DataTable */}
@@ -665,13 +635,7 @@ export default function OracleComparator() {
                   isLoading={detailLoading}
                   maxHeight="460px"
                   emptyMessage="No records for this selection"
-                  serverSide={{
-                    total: detailTotal,
-                    page: detailPage,
-                    pageSize: detailPageSize,
-                    onPageChange: setDetailPage,
-                    onPageSizeChange: sz => { setDetailPageSize(sz); setDetailPage(1) },
-                  }}
+                  filterResetKey={filterResetKey}
                 />
               </div>
             </div>

@@ -23,25 +23,48 @@ export function HelpPill({ label, note }: { label: string; note: string }) {
   )
 }
 
-export function TemplateDownloads({ templates }: { templates: [string, string][] }) {
+export function TemplateDownloads({ templates }: { templates: [string, string, string?][] }) {
   return (
     <HelpAccordion title="Template Files" icon={<Download size={14} color="#D97706" />} accentColor="#D97706">
       <p style={{ fontSize: 12.5, color: '#64748B', marginBottom: 12, lineHeight: 1.55 }}>
-        Blank templates with the correct column headers pre-filled.
+        Blank templates with the correct column headers and a "How to Fill Data" guide sheet pre-filled.
       </p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
-        {templates.map(([name, fmt]) => (
-          <div
-            key={name}
-            style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 11px', borderRadius: 7, border: '1px solid #E2E8F0', cursor: 'pointer', transition: 'background 0.12s' }}
-            onMouseOver={e => { (e.currentTarget as HTMLDivElement).style.background = '#F7F6F3' }}
-            onMouseOut={e => { (e.currentTarget as HTMLDivElement).style.background = 'transparent' }}
-          >
-            <Download size={13} color="#64748B" />
-            <span style={{ fontSize: 13, color: '#334155', flex: 1 }}>{name}</span>
-            <code style={{ fontSize: 10, background: '#F0EFE9', padding: '2px 7px', borderRadius: 3, color: '#64748B', fontFamily: 'monospace' }}>{fmt}</code>
-          </div>
-        ))}
+        {templates.map(([name, fmt, url]) => {
+          const inner = (
+            <>
+              <Download size={13} color={url ? '#D97706' : '#64748B'} />
+              <span style={{ fontSize: 13, color: '#334155', flex: 1 }}>{name}</span>
+              <code style={{ fontSize: 10, background: '#F0EFE9', padding: '2px 7px', borderRadius: 3, color: '#64748B', fontFamily: 'monospace' }}>{fmt}</code>
+            </>
+          )
+          const sharedStyle: React.CSSProperties = {
+            display: 'flex', alignItems: 'center', gap: 9,
+            padding: '8px 11px', borderRadius: 7,
+            border: `1px solid ${url ? '#FFD100' : '#E2E8F0'}`,
+            transition: 'background 0.12s',
+            textDecoration: 'none',
+          }
+          return url ? (
+            <a
+              key={name}
+              href={url}
+              download
+              style={{ ...sharedStyle, cursor: 'pointer' }}
+              onMouseOver={e => { (e.currentTarget as HTMLAnchorElement).style.background = '#FFFBEB' }}
+              onMouseOut={e => { (e.currentTarget as HTMLAnchorElement).style.background = 'transparent' }}
+            >
+              {inner}
+            </a>
+          ) : (
+            <div
+              key={name}
+              style={{ ...sharedStyle, cursor: 'default' }}
+            >
+              {inner}
+            </div>
+          )
+        })}
       </div>
     </HelpAccordion>
   )

@@ -32,3 +32,8 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+
+#markdown
+CLAUDE.md
+SPEC.md
+STATUS.md

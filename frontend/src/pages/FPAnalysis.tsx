@@ -116,6 +116,7 @@ export default function FPAnalysis() {
   const [activeTab, setActiveTab] = useState<string>('')
   const [allSheetData, setAllSheetData] = useState<Record<string, FPRow[]>>({})
   const [dataLoading, setDataLoading] = useState(false)
+  const [filterResetKey, setFilterResetKey] = useState(0)
 
   // Poll for analysis completion
   useEffect(() => {
@@ -258,6 +259,7 @@ export default function FPAnalysis() {
     setActiveTab('')
     setAllSheetData({})
     setDataLoading(false)
+    setFilterResetKey(0)
   }, [jobId])
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -284,7 +286,10 @@ export default function FPAnalysis() {
           <HelpPill label="True Conflict" note="Neither privilege is in the FP database. This is a live violation that must appear in the final deliverable." />
           <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>At Entitlement Level, an entitlement is only marked False Positive if every constituent privilege pair within it is FP — a single True Conflict escalates the whole entitlement.</p>
         </HelpAccordion>
-        <TemplateDownloads templates={[['FP Database Template', 'XLSX'], ['SOD Analysis Output Template', 'XLSX']]} />
+        <TemplateDownloads templates={[
+          ['FP Database Template',        'XLSX', '/api/templates/fp-analysis/fp_database_template.xlsx'],
+          ['SOD Analysis Output Template', 'XLSX', '/api/templates/fp-analysis/sod_analysis_template.xlsx'],
+        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
@@ -533,21 +538,29 @@ export default function FPAnalysis() {
             {/* Tabbed DataTable */}
             <div className="card p-0 overflow-hidden">
               {/* Tab bar */}
-              <div className="flex border-b border-gray-200 bg-white">
-                {analyzedSheetIds.map(id => (
-                  <button
-                    key={id}
-                    onClick={() => setActiveTab(id)}
-                    className={clsx(
-                      'px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
-                      activeTab === id
-                        ? 'border-[#2563EB] text-[#2563EB]'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
-                    )}
-                  >
-                    {SHEET_LABELS[id]}
-                  </button>
-                ))}
+              <div className="flex items-center border-b border-gray-200 bg-white">
+                <div className="flex flex-1">
+                  {analyzedSheetIds.map(id => (
+                    <button
+                      key={id}
+                      onClick={() => { setActiveTab(id); setFilterResetKey(k => k + 1) }}
+                      className={clsx(
+                        'px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
+                        activeTab === id
+                          ? 'border-[#2563EB] text-[#2563EB]'
+                          : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                      )}
+                    >
+                      {SHEET_LABELS[id]}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  onClick={() => setFilterResetKey(k => k + 1)}
+                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  <X size={11} /> Clear All Filters
+                </button>
               </div>
 
               {/* Table */}
@@ -559,6 +572,7 @@ export default function FPAnalysis() {
                   emptyMessage="No violations for this sheet"
                   maxHeight="480px"
                   defaultPageSize={50}
+                  filterResetKey={filterResetKey}
                 />
               </div>
             </div>

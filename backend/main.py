@@ -13,11 +13,13 @@ Responsibilities:
 import uuid
 import asyncio
 import logging
+import pathlib
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 
@@ -168,6 +170,10 @@ app.include_router(entitlement_mapping.router)
 app.include_router(fp_analysis.router)
 app.include_router(oracle_comparator.router)
 app.include_router(sod_sa_analysis.router)
+
+_TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
+_TEMPLATES_DIR.mkdir(exist_ok=True)
+app.mount("/api/templates", StaticFiles(directory=str(_TEMPLATES_DIR)), name="templates")
 
 
 # ── Health check ──────────────────────────────────────────────────────────────
