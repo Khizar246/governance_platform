@@ -4,15 +4,15 @@ import { ROUTES } from '../utils/constants'
 
 const TOOLS = [
   {
-    route: ROUTES.ENTITLEMENT_MAPPING,
-    icon: IconMap,
-    name: 'Entitlement Mapping',
-    desc: 'Map client entitlements to EY rulesets using privilege overlap, Jaccard similarity, and name-based matching algorithms.',
-    accent: '#E8A900',
+    route: ROUTES.RULESET_MAPPING,
+    icon: IconRuleset,
+    name: 'Ruleset Mapping',
+    desc: 'Map client SoD and SA ruleset controls to EY controls using privilege-set Jaccard similarity.',
+    accent: '#7C3AED',
     tag: 'Mapping',
-    tagStyle: { background: '#FEF9C3', color: '#854D0E' },
-    runtime: '14 sec',
-    files: '2 CSV/XLSX',
+    tagStyle: { background: '#EDE9FE', color: '#5B21B6' },
+    runtime: '20 sec',
+    files: '2 XLSX',
   },
   {
     route: ROUTES.FP_ANALYSIS,
@@ -50,16 +50,16 @@ const TOOLS = [
 ]
 
 const KPIS = [
-  { label: 'Entitlement Mapping', value: 18, accent: '#E8A900', icon: IconMap },
   { label: 'FP Analysis',         value: 12, accent: '#2563EB', icon: IconFP },
+  { label: 'Ruleset Mapping',     value: 18, accent: '#7C3AED', icon: IconRuleset },
   { label: 'Oracle Comparator',   value: 9,  accent: '#16A34A', icon: IconOracle },
   { label: 'SOD & SA Runs',       value: 8,  accent: '#D97706', icon: IconSod },
 ]
 
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-function IconMap({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="12" cy="12" r="3" stroke={c} strokeWidth="1.6"/><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2z" stroke={c} strokeWidth="1.6"/></svg>
+function IconRuleset({ c, s }: { c: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><path d="M17.5 14v7M14 17.5h7" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>
 }
 function IconFP({ c, s }: { c: string; s: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.6"/><circle cx="12" cy="12" r="3.5" stroke={c} strokeWidth="1.6"/><circle cx="12" cy="12" r="1" fill={c}/></svg>

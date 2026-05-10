@@ -327,6 +327,112 @@ def _fp_level2(
     return r
 
 
+def _build_user_effective_access(sod: dict[str, pl.DataFrame]) -> pl.DataFrame:
+    """Build a flat [USER_NAME, PRIVILEGE_DISPLAY_NAME] lookup from all roles a user holds.
+
+    Derives user-to-role membership from USER_SOD and USER_SA sheets (source of truth),
+    then joins against ROLE_DETAILS to expand each role into its full privilege set.
+    """
+    user_frames = []
+    for sheet in ("USER_SOD", "USER_SA"):
+        if sheet in sod and not sod[sheet].is_empty():
+            user_frames.append(sod[sheet].select(["USER_NAME", "ROLE_NAME"]))
+
+    if not user_frames:
+        return pl.DataFrame(schema={"USER_NAME": pl.Utf8, "PRIVILEGE_DISPLAY_NAME": pl.Utf8})
+
+    membership = pl.concat(user_frames).unique()
+    role_hier = sod[DETAILS_SHEET].select(["ROLE_NAME", "PRIVILEGE_DISPLAY_NAME"]).unique()
+
+    return (
+        membership
+        .join(role_hier, on="ROLE_NAME", how="left")
+        .select(["USER_NAME", "PRIVILEGE_DISPLAY_NAME"])
+        .drop_nulls()
+        .unique()
+    )
+
+
+def _fp_level2_user(
+    df: pl.DataFrame,
+    work_area: pl.DataFrame,
+    user_access: pl.DataFrame,
+    join_col: str,
+) -> pl.DataFrame:
+    """Level 2 work-area gatekeeper check for USER sheets.
+
+    A violation row is FP only if the user lacks the required work-area privilege across
+    ALL of their assigned roles. If any role the user holds provides the gatekeeper
+    privilege, the violation is genuine (not FP).
+
+    Mirrors _fp_level2 exactly; the only difference is the satisfaction join uses
+    USER_NAME instead of ROLE_NAME so the check spans the user's full effective access.
+    """
+    if work_area.is_empty():
+        return df
+
+    wa = work_area.filter(
+        pl.col("WORK_AREA_PRIVILEGE").is_not_null()
+        & (pl.col("WORK_AREA_PRIVILEGE") != "")
+        & (~pl.col("WORK_AREA_PRIVILEGE").is_in(["NAN", "NONE"]))
+    )
+    if wa.is_empty() or user_access.is_empty():
+        return df
+
+    pending = df.filter(pl.col("FP?") == "")
+    if pending.is_empty():
+        return df
+
+    merged = pending.join(
+        wa.select([join_col, "WORK_AREA_PRIVILEGE"]),
+        on=join_col,
+        how="inner",
+    )
+    if merged.is_empty():
+        return df
+
+    satisfied = (
+        merged
+        .join(
+            user_access,
+            left_on=["USER_NAME", "WORK_AREA_PRIVILEGE"],
+            right_on=["USER_NAME", "PRIVILEGE_DISPLAY_NAME"],
+            how="inner",
+        )
+        .select("_row_nr")
+        .unique()
+    )
+
+    fp_ids = (
+        merged.select("_row_nr").unique()
+        .join(satisfied, on="_row_nr", how="anti")
+    )
+    if fp_ids.is_empty():
+        return df
+
+    reasons = (
+        merged
+        .join(fp_ids, on="_row_nr", how="inner")
+        .group_by("_row_nr")
+        .agg(pl.col("WORK_AREA_PRIVILEGE").unique().sort().alias("_wa"))
+        .with_columns(
+            (
+                pl.lit("User lacks required work-area privilege(s): ")
+                + pl.col("_wa").list.join(", ")
+            ).alias("_reason")
+        )
+        .drop("_wa")
+    )
+
+    r = df.join(reasons, on="_row_nr", how="left").with_columns([
+        pl.when(pl.col("_reason").is_not_null() & (pl.col("FP?") == ""))
+          .then(pl.lit("YES")).otherwise(pl.col("FP?")).alias("FP?"),
+        pl.when(pl.col("_reason").is_not_null() & (pl.col("Reason") == ""))
+          .then(pl.col("_reason")).otherwise(pl.col("Reason")).alias("Reason"),
+    ]).drop("_reason")
+    return r
+
+
 def _fp_level3(
     df: pl.DataFrame,
     entity_col: str,
@@ -418,6 +524,7 @@ def run_analysis(
             if s in selected and s in sod and sod[s].height > 0
         ]
         n_sheets = len(active_sheets)
+        user_access = _build_user_effective_access(sod)
 
         results: dict[str, pl.DataFrame] = {}
 
@@ -438,7 +545,10 @@ def run_analysis(
             df = _fp_level1(df, no_action)
 
             _cb(start_pct + (end_pct - start_pct) // 2, f"{sheet}: Level 2 — work-area gatekeeper…")
-            df = _fp_level2(df, work_area, hierarchy, join_col)
+            if sheet in ("USER_SOD", "USER_SA"):
+                df = _fp_level2_user(df, work_area, user_access, join_col)
+            else:
+                df = _fp_level2(df, work_area, hierarchy, join_col)
 
             _cb(start_pct + (end_pct - start_pct) * 3 // 4, f"{sheet}: Level 3 — SL/TC classification…")
             df = _fp_level3(df, entity_col, is_sod, sheet)

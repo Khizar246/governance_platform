@@ -164,12 +164,12 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-from routers import entitlement_mapping, fp_analysis, oracle_comparator, sod_sa_analysis  # noqa: E402
+from routers import fp_analysis, oracle_comparator, sod_sa_analysis, ruleset_mapping  # noqa: E402
 
-app.include_router(entitlement_mapping.router)
 app.include_router(fp_analysis.router)
 app.include_router(oracle_comparator.router)
 app.include_router(sod_sa_analysis.router)
+app.include_router(ruleset_mapping.router)
 
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 _TEMPLATES_DIR.mkdir(exist_ok=True)

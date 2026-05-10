@@ -1,24 +1,14 @@
 /** Route path constants used in App.tsx and Sidebar nav items. */
 export const ROUTES = {
   HOME: '/',
-  ENTITLEMENT_MAPPING: '/entitlement-mapping',
   FP_ANALYSIS: '/fp-analysis',
   ORACLE_COMPARATOR: '/oracle-comparator',
   SOD_SA: '/sod-sa',
+  RULESET_MAPPING: '/ruleset-mapping',
 } as const
 
 /** Tool metadata for home page cards and sidebar nav. */
 export const TOOL_META = [
-  {
-    id: 'entitlement-mapping',
-    title: 'Entitlement Mapping',
-    description:
-      'Map client entitlements to EY rulesets using privilege overlap, Jaccard similarity, and name matching.',
-    route: ROUTES.ENTITLEMENT_MAPPING,
-    icon: 'Link',
-    accentClass: 'border-ey-yellow',
-    iconColorClass: 'text-ey-yellow',
-  },
   {
     id: 'fp-analysis',
     title: 'False Positive Analysis',
@@ -48,6 +38,16 @@ export const TOOL_META = [
     icon: 'Shield',
     accentClass: 'border-warning',
     iconColorClass: 'text-warning',
+  },
+  {
+    id: 'ruleset-mapping',
+    title: 'Ruleset Mapping',
+    description:
+      'Map client SoD and SA ruleset controls to EY controls using privilege-set Jaccard similarity.',
+    route: ROUTES.RULESET_MAPPING,
+    icon: 'GitMerge',
+    accentClass: 'border-purple-400',
+    iconColorClass: 'text-purple-400',
   },
 ] as const
 

@@ -102,3 +102,15 @@ export interface SODSASummary {
   total_roles_analyzed: number
   total_users_analyzed: number
 }
+
+export interface RulesetMappingSummary {
+  sod_total: number
+  sod_direct: number
+  sod_derived: number
+  sod_unmatched: number
+  sa_total: number
+  sa_direct: number
+  sa_derived: number
+  sa_unmatched: number
+  ent_total: number
+}
