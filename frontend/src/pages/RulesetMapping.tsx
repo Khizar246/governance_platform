@@ -118,6 +118,15 @@ type Step = 'upload' | 'preview' | 'running' | 'results' | 'error'
 const STEPS = ['Upload', 'Preview', 'Analysis', 'Results']
 const STEP_INDEX: Record<Step, number> = { upload: 0, preview: 1, running: 2, results: 3, error: 0 }
 
+const STAGES = [
+  { label: 'Initialising',                   minPercent: 0  },
+  { label: 'Step 1 — Entitlement Mapping',   minPercent: 1  },
+  { label: 'Step 2 — SoD Control Matching',  minPercent: 30 },
+  { label: 'Step 3 — SA Control Matching',   minPercent: 65 },
+  { label: 'Building Summary',               minPercent: 90 },
+  { label: 'Finalising',                     minPercent: 95 },
+]
+
 const TABS: { id: ResultTab; label: string }[] = [
   { id: 'sod', label: 'SoD Mapping' },
   { id: 'sa',  label: 'SA Mapping' },
@@ -428,6 +437,8 @@ export default function RulesetMapping() {
             <LoadingOverlay
               message={progressMessage || 'Running ruleset mapping pipeline…'}
               progress={progress}
+              stages={STAGES}
+              progressMessage={progressMessage}
             />
           </div>
         )}

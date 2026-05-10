@@ -26,6 +26,14 @@ type OracleRow = Record<string, unknown>
 const STEPS = ['Analysis Type', 'Upload Files', 'Results']
 const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 1, results: 2, error: 0 }
 
+const STAGES = [
+  { label: 'Initialising',          minPercent: 0  },
+  { label: 'Loading Files',         minPercent: 3  },
+  { label: 'Comparing Duty Roles',  minPercent: 10 },
+  { label: 'Comparing Privileges',  minPercent: 43 },
+  { label: 'Finalising',            minPercent: 95 },
+]
+
 const COMP_TYPE_LABELS: Record<string, string> = {
   duty_role: 'Duty Roles',
   privilege: 'Privileges',
@@ -502,6 +510,8 @@ export default function OracleComparator() {
             <LoadingOverlay
               message={progressMessage || 'Comparing environments…'}
               progress={progress}
+              stages={STAGES}
+              progressMessage={progressMessage}
             />
           </div>
         )}

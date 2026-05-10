@@ -181,6 +181,8 @@ def run_analysis(
         results_2to1: dict[str, pl.DataFrame] = {}
         total = len(comp_types)
 
+        _cb(3, "Loading environment files…")
+
         for i, (comp_type, file_type) in enumerate(comp_types):
             pct = 10 + int(i / total * 80) if total else 10
             label = comp_type.replace("_", " ").title()

@@ -66,6 +66,14 @@ const TABS: { id: TabId; label: string }[] = [
   { id: 'no_match', label: 'No Match' },
 ]
 
+const STAGES = [
+  { label: 'Initialising',           minPercent: 0  },
+  { label: 'Indexing Entitlements',  minPercent: 5  },
+  { label: 'Scoring Matches',        minPercent: 10 },
+  { label: 'Building Results',       minPercent: 85 },
+  { label: 'Finalising',             minPercent: 95 },
+]
+
 export default function EntitlementMapping() {
   const [step, setStep] = useState<Step>('upload')
   const [clientFile, setClientFile] = useState<File | null>(null)
@@ -394,6 +402,8 @@ export default function EntitlementMapping() {
               <LoadingOverlay
                 message={progressMessage || 'Analysing entitlement mappings…'}
                 progress={progress}
+                stages={STAGES}
+                progressMessage={progressMessage}
               />
             </div>
           )}

@@ -526,6 +526,8 @@ def run_analysis(
         n_sheets = len(active_sheets)
         user_access = _build_user_effective_access(sod)
 
+        _cb(3, "Loading FP database and input data…")
+
         results: dict[str, pl.DataFrame] = {}
 
         for sheet_idx, sheet in enumerate(active_sheets):

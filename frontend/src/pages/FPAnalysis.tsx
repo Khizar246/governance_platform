@@ -24,6 +24,15 @@ type FPRow = Record<string, unknown>
 const STEPS = ['Mode', 'Configure', 'Upload', 'Results']
 const STEP_INDEX: Record<Step, number> = { mode: 0, sheets: 1, upload: 2, running: 2, results: 3, error: 0 }
 
+const STAGES = [
+  { label: 'Initialising',          minPercent: 0  },
+  { label: 'Loading Input Data',    minPercent: 3  },
+  { label: 'Level 1 — FP Lookup',  minPercent: 12 },
+  { label: 'Level 2 — Work-Area',  minPercent: 25 },
+  { label: 'Level 3 — SL / TC',   minPercent: 55 },
+  { label: 'Finalising',            minPercent: 95 },
+]
+
 const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
 const SHEET_LABELS: Record<string, string> = {
   ROLE_SOD: 'Role SoD', ROLE_SA: 'Role SA', USER_SOD: 'User SoD', USER_SA: 'User SA',
@@ -499,6 +508,8 @@ export default function FPAnalysis() {
             <LoadingOverlay
               message={progressMessage || 'Running 3-level FP classification…'}
               progress={progress}
+              stages={STAGES}
+              progressMessage={progressMessage}
             />
           </div>
         )}

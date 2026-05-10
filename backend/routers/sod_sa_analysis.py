@@ -78,6 +78,16 @@ def _run_thread(
     try:
         callback = job_manager.make_progress_callback(job_id)
 
+        if analysis_type == "both":
+            def role_callback(pct: int, msg: str) -> None:
+                callback(pct // 2, msg)
+
+            def user_callback(pct: int, msg: str) -> None:
+                callback(50 + pct // 2, msg)
+        else:
+            role_callback = callback if analysis_type == "role" else None
+            user_callback = callback if analysis_type == "user" else None
+
         role_sod = pl.DataFrame()
         role_sa = pl.DataFrame()
         user_sod = pl.DataFrame()
@@ -90,7 +100,7 @@ def _run_thread(
                 sa_controls_df,
                 entitlement_mapping_df,
                 logger=logger,
-                progress_callback=callback if analysis_type == "role" else None,
+                progress_callback=role_callback,
             )
 
         if analysis_type in ("user", "both") and user_role_df is not None:
@@ -101,7 +111,7 @@ def _run_thread(
                 sa_controls_df,
                 entitlement_mapping_df,
                 logger=logger,
-                progress_callback=callback if analysis_type == "user" else None,
+                progress_callback=user_callback,
             )
 
         total_roles = (

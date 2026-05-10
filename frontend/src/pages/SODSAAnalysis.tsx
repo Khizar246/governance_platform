@@ -29,6 +29,8 @@ type SODRow = Record<string, unknown>
 const STEPS = ['Analysis Type', 'Upload Files', 'Processing', 'Results']
 const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 2, results: 3, error: 0 }
 
+type Stage = { label: string; minPercent: number }
+
 const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
 const SHEET_LABELS: Record<string, string> = {
   ROLE_SOD: 'Role SoD', ROLE_SA: 'Role SA', USER_SOD: 'User SoD', USER_SA: 'User SA',
@@ -164,6 +166,33 @@ export default function SODSAAnalysis() {
   const [dataLoading, setDataLoading] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
+
+  const stages = useMemo((): Stage[] => {
+    if (analysisType === 'role') return [
+      { label: 'Initialising',                    minPercent: 0  },
+      { label: 'Building Entitlement Mappings',   minPercent: 5  },
+      { label: 'Checking SOD Violations',         minPercent: 30 },
+      { label: 'Checking SA Violations',          minPercent: 65 },
+      { label: 'Finalising',                      minPercent: 95 },
+    ]
+    if (analysisType === 'user') return [
+      { label: 'Initialising',                     minPercent: 0  },
+      { label: 'Expanding User-Role Memberships',  minPercent: 5  },
+      { label: 'Building User Entitlements',       minPercent: 10 },
+      { label: 'SOD Violations (chunked)',         minPercent: 20 },
+      { label: 'SA Violations (chunked)',          minPercent: 58 },
+      { label: 'Finalising',                       minPercent: 95 },
+    ]
+    return [  // 'both'
+      { label: 'Initialising',                      minPercent: 0  },
+      { label: 'Role — Entitlement Mappings',        minPercent: 2  },
+      { label: 'Role — SOD & SA Checks',             minPercent: 15 },
+      { label: 'User — Expanding Memberships',       minPercent: 52 },
+      { label: 'User — Building Entitlements',       minPercent: 55 },
+      { label: 'User — SOD Violations (chunked)',    minPercent: 60 },
+      { label: 'User — SA Violations (chunked)',     minPercent: 79 },
+    ]
+  }, [analysisType])
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -496,6 +525,8 @@ export default function SODSAAnalysis() {
             <LoadingOverlay
               message={progressMessage || 'Detecting SOD & SA violations…'}
               progress={progress}
+              stages={analysisType ? stages : undefined}
+              progressMessage={progressMessage}
             />
           </div>
         )}
