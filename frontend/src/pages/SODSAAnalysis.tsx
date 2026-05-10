@@ -15,7 +15,7 @@ import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
-  getSummary, getSheetResults,
+  getSummary, getSheetResults, getFilterOptions,
 } from '../api/sodSaAnalysis'
 import type { SODSASummaryData, SODSATopItem } from '../api/sodSaAnalysis'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
@@ -73,20 +73,37 @@ const TYPE_CARDS = [
 // ── Column definitions ─────────────────────────────────────────────────────────
 
 const ROLE_COLUMNS: ColumnDef<SODRow>[] = [
-  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
-  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
-  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
-  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
-  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+  { id: 'CONTROL_NAME',               accessorKey: 'CONTROL_NAME',               header: 'Control Name' },
+  { id: 'ENTITLEMENT',                accessorKey: 'ENTITLEMENT',                header: 'Entitlement' },
+  { id: 'ROLE_DISPLAY_NAME',          accessorKey: 'ROLE_DISPLAY_NAME',          header: 'Role Name' },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME',accessorKey: 'INHERITED_ROLE_DISPLAY_NAME',header: 'Inherited Role' },
+  { id: 'PRIVILEGE_DISPLAY_NAME',     accessorKey: 'PRIVILEGE_DISPLAY_NAME',     header: 'Privilege Name' },
 ]
 
 const USER_COLUMNS: ColumnDef<SODRow>[] = [
-  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
-  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
-  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
-  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
-  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
-  { id: 'USER_NAME',           accessorKey: 'USER_NAME',           header: 'User Name' },
+  { id: 'CONTROL_NAME',               accessorKey: 'CONTROL_NAME',               header: 'Control Name' },
+  { id: 'ENTITLEMENT',                accessorKey: 'ENTITLEMENT',                header: 'Entitlement' },
+  { id: 'ROLE_DISPLAY_NAME',          accessorKey: 'ROLE_DISPLAY_NAME',          header: 'Role Name' },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME',accessorKey: 'INHERITED_ROLE_DISPLAY_NAME',header: 'Inherited Role' },
+  { id: 'PRIVILEGE_DISPLAY_NAME',     accessorKey: 'PRIVILEGE_DISPLAY_NAME',     header: 'Privilege Name' },
+  { id: 'USER_NAME',                  accessorKey: 'USER_NAME',                  header: 'User Name' },
+]
+
+const ROLE_DEFAULT_SORT = [
+  { id: 'CONTROL_NAME',                desc: false },
+  { id: 'ENTITLEMENT',                 desc: false },
+  { id: 'ROLE_DISPLAY_NAME',           desc: false },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+]
+
+const USER_DEFAULT_SORT = [
+  { id: 'CONTROL_NAME',                desc: false },
+  { id: 'ENTITLEMENT',                 desc: false },
+  { id: 'ROLE_DISPLAY_NAME',           desc: false },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+  { id: 'USER_NAME',                   desc: false },
 ]
 
 // ── Insight card ───────────────────────────────────────────────────────────────
@@ -140,9 +157,13 @@ export default function SODSAAnalysis() {
   // Results step state
   const [sodSaSummaryData, setSodSaSummaryData] = useState<SODSASummaryData | null>(null)
   const [activeTab, setActiveTab] = useState('')
-  const [allSheetData, setAllSheetData] = useState<Record<string, SODRow[]>>({})
+  const [pageRows, setPageRows] = useState<SODRow[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [total, setTotal] = useState(0)
   const [dataLoading, setDataLoading] = useState(false)
-  const [filterResetKey, setFilterResetKey] = useState(0)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
+  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -176,37 +197,43 @@ export default function SODSAAnalysis() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // ── Fetch summary + all sheet data when results appear ───────────────────────
+  // ── Fetch summary when results appear ────────────────────────────────────────
   useEffect(() => {
     if (step !== 'results' || !jobId) return
     let cancelled = false
-
     getSummary(jobId)
       .then(data => {
         if (cancelled) return
         setSodSaSummaryData(data)
         const sheetIds = ALL_SHEET_IDS.filter(id => data.sheet_counts[id])
-        const firstId = sheetIds[0]
-        if (firstId) setActiveTab(firstId)
-
-        setDataLoading(true)
-        Promise.all(
-          sheetIds.map(id =>
-            getSheetResults(jobId, id, 1, 100000, '')
-              .then(res => [id, res.data as SODRow[]] as const)
-              .catch(() => [id, [] as SODRow[]] as const),
-          ),
-        ).then(pairs => {
-          if (!cancelled) {
-            setAllSheetData(Object.fromEntries(pairs))
-            setDataLoading(false)
-          }
-        })
+        if (sheetIds[0]) setActiveTab(sheetIds[0])
       })
-      .catch(() => { /* summary panel stays hidden */ })
-
+      .catch(() => {})
     return () => { cancelled = true }
   }, [step, jobId])
+
+  // ── Fetch current page on demand ──────────────────────────────────────────────
+  useEffect(() => {
+    if (step !== 'results' || !jobId || !activeTab) return
+    let cancelled = false
+    setDataLoading(true)
+    getSheetResults(jobId, activeTab, page, pageSize, '', activeFilters)
+      .then(res => {
+        if (!cancelled) {
+          setPageRows(res.data as SODRow[])
+          setTotal(res.total)
+          setDataLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPageRows([])
+          setTotal(0)
+          setDataLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [step, jobId, activeTab, page, pageSize, activeFilters])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const analyzedSheetIds = useMemo(
@@ -225,7 +252,8 @@ export default function SODSAAnalysis() {
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab)
-    setFilterResetKey(k => k + 1)
+    setPage(1)
+    setActiveFilters({})
   }, [])
 
   const handleRunAnalysis = useCallback(async () => {
@@ -287,7 +315,10 @@ export default function SODSAAnalysis() {
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
-    setAllSheetData({})
+    setPageRows([])
+    setPage(1)
+    setPageSize(50)
+    setTotal(0)
     setDataLoading(false)
     setFilterResetKey(0)
   }, [jobId])
@@ -545,8 +576,9 @@ export default function SODSAAnalysis() {
                     })}
                   </div>
                   <button
-                    onClick={() => setFilterResetKey(k => k + 1)}
-                    className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                    onClick={() => { setActiveFilters({}); setPage(1) }}
+                    disabled={!hasActiveFilters}
+                    className="flex items-center gap-1 mr-4 text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
                   >
                     <X size={11} /> Clear All Filters
                   </button>
@@ -555,13 +587,27 @@ export default function SODSAAnalysis() {
                 {/* Table */}
                 <div className="p-4">
                   <DataTable
-                    data={allSheetData[activeTab] ?? []}
+                    data={pageRows}
                     columns={activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS}
+                    defaultSorting={activeTab.startsWith('USER') ? USER_DEFAULT_SORT : ROLE_DEFAULT_SORT}
                     isLoading={dataLoading}
                     emptyMessage="No violations found"
                     maxHeight="460px"
-                    defaultPageSize={50}
-                    filterResetKey={filterResetKey}
+                    serverSide={{
+                      total,
+                      page,
+                      pageSize,
+                      onPageChange: (p) => setPage(p),
+                      onPageSizeChange: (sz) => { setPageSize(sz); setPage(1) },
+                    }}
+                    serverSideFilters={{
+                      values: activeFilters,
+                      onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                      onFetchOptions: (colId) => {
+                        const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
+                        return getFilterOptions(jobId!, activeTab, colId, others)
+                      },
+                    }}
                   />
                 </div>
               </div>

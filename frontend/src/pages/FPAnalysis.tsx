@@ -12,7 +12,7 @@ import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Badge from '../components/common/Badge'
 import { Checkbox } from '@/components/ui/checkbox'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getSheetResults } from '../api/fpAnalysis'
+import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getSheetResults, getFilterOptions } from '../api/fpAnalysis'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { FPAnalysisSummary, FPSheetSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
@@ -74,24 +74,41 @@ function fpClassCell({ getValue }: { getValue: () => unknown }) {
 }
 
 const ROLE_COLUMNS: ColumnDef<FPRow>[] = [
-  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
-  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
-  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
-  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
-  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
+  { id: 'CONTROL_NAME',                accessorKey: 'CONTROL_NAME',                header: 'Control Name' },
+  { id: 'ENTITLEMENT',                 accessorKey: 'ENTITLEMENT',                 header: 'Entitlement' },
+  { id: 'ROLE_DISPLAY_NAME',           accessorKey: 'ROLE_DISPLAY_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', accessorKey: 'INHERITED_ROLE_DISPLAY_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      accessorKey: 'PRIVILEGE_DISPLAY_NAME',      header: 'Privilege Name' },
   { id: 'FP?', accessorFn: (row) => row['FP?'], header: 'Classification', cell: fpClassCell },
-  { id: 'Reason',              accessorKey: 'Reason',              header: 'Reason' },
+  { id: 'Reason',                      accessorKey: 'Reason',                      header: 'Reason' },
 ]
 
 const USER_COLUMNS: ColumnDef<FPRow>[] = [
-  { id: 'CONTROL_NAME',        accessorKey: 'CONTROL_NAME',        header: 'Control Name' },
-  { id: 'ENTITLEMENT',         accessorKey: 'ENTITLEMENT',         header: 'Entitlement' },
-  { id: 'ROLE_NAME',           accessorKey: 'ROLE_NAME',           header: 'Role Name' },
-  { id: 'INHERITED_ROLE_NAME', accessorKey: 'INHERITED_ROLE_NAME', header: 'Inherited Role' },
-  { id: 'PRIVILEGE_NAME',      accessorKey: 'PRIVILEGE_NAME',      header: 'Privilege Name' },
-  { id: 'USER_NAME',           accessorKey: 'USER_NAME',           header: 'User Name' },
+  { id: 'CONTROL_NAME',                accessorKey: 'CONTROL_NAME',                header: 'Control Name' },
+  { id: 'ENTITLEMENT',                 accessorKey: 'ENTITLEMENT',                 header: 'Entitlement' },
+  { id: 'ROLE_DISPLAY_NAME',           accessorKey: 'ROLE_DISPLAY_NAME',           header: 'Role Name' },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', accessorKey: 'INHERITED_ROLE_DISPLAY_NAME', header: 'Inherited Role' },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      accessorKey: 'PRIVILEGE_DISPLAY_NAME',      header: 'Privilege Name' },
+  { id: 'USER_NAME',                   accessorKey: 'USER_NAME',                   header: 'User Name' },
   { id: 'FP?', accessorFn: (row) => row['FP?'], header: 'Classification', cell: fpClassCell },
-  { id: 'Reason',              accessorKey: 'Reason',              header: 'Reason' },
+  { id: 'Reason',                      accessorKey: 'Reason',                      header: 'Reason' },
+]
+
+const ROLE_DEFAULT_SORT = [
+  { id: 'CONTROL_NAME',                desc: false },
+  { id: 'ENTITLEMENT',                 desc: false },
+  { id: 'ROLE_DISPLAY_NAME',           desc: false },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+]
+
+const USER_DEFAULT_SORT = [
+  { id: 'CONTROL_NAME',                desc: false },
+  { id: 'ENTITLEMENT',                 desc: false },
+  { id: 'ROLE_DISPLAY_NAME',           desc: false },
+  { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
+  { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+  { id: 'USER_NAME',                   desc: false },
 ]
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -114,9 +131,13 @@ export default function FPAnalysis() {
 
   // Results step state
   const [activeTab, setActiveTab] = useState<string>('')
-  const [allSheetData, setAllSheetData] = useState<Record<string, FPRow[]>>({})
+  const [pageRows, setPageRows] = useState<FPRow[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [total, setTotal] = useState(0)
   const [dataLoading, setDataLoading] = useState(false)
-  const [filterResetKey, setFilterResetKey] = useState(0)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
+  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
 
   // Poll for analysis completion
   useEffect(() => {
@@ -145,29 +166,28 @@ export default function FPAnalysis() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // Fetch all rows for every analyzed sheet when results are ready
+  // Fetch current page on demand
   useEffect(() => {
-    if (step !== 'results' || !jobId || !summary) return
-    const sheetIds = ALL_SHEET_IDS.filter(id => (summary.sheets_analyzed ?? []).includes(id))
-    if (sheetIds.length === 0) return
+    if (step !== 'results' || !jobId || !activeTab) return
     let cancelled = false
-
     setDataLoading(true)
-    Promise.all(
-      sheetIds.map(id =>
-        getSheetResults(jobId, id, 1, 100000, '', '')
-          .then(res => [id, res.data as FPRow[]] as const)
-          .catch(() => [id, [] as FPRow[]] as const),
-      ),
-    ).then(pairs => {
-      if (!cancelled) {
-        setAllSheetData(Object.fromEntries(pairs))
-        setDataLoading(false)
-      }
-    })
-
+    getSheetResults(jobId, activeTab, page, pageSize, '', '', activeFilters)
+      .then(res => {
+        if (!cancelled) {
+          setPageRows(res.data as FPRow[])
+          setTotal(res.total)
+          setDataLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setPageRows([])
+          setTotal(0)
+          setDataLoading(false)
+        }
+      })
     return () => { cancelled = true }
-  }, [step, jobId, summary])
+  }, [step, jobId, activeTab, page, pageSize, activeFilters])
 
   // ── Derived values ─────────────────────────────────────────────────────────
 
@@ -189,6 +209,11 @@ export default function FPAnalysis() {
 
   const activeColumns = useMemo(
     () => (activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS),
+    [activeTab],
+  )
+
+  const activeDefaultSort = useMemo(
+    () => (activeTab.startsWith('USER') ? USER_DEFAULT_SORT : ROLE_DEFAULT_SORT),
     [activeTab],
   )
 
@@ -257,9 +282,12 @@ export default function FPAnalysis() {
     setUploadError('')
     setConfirmReset(false)
     setActiveTab('')
-    setAllSheetData({})
+    setPageRows([])
+    setPage(1)
+    setPageSize(50)
+    setTotal(0)
     setDataLoading(false)
-    setFilterResetKey(0)
+    setActiveFilters({})
   }, [jobId])
 
   // ── Render ─────────────────────────────────────────────────────────────────
@@ -543,7 +571,7 @@ export default function FPAnalysis() {
                   {analyzedSheetIds.map(id => (
                     <button
                       key={id}
-                      onClick={() => { setActiveTab(id); setFilterResetKey(k => k + 1) }}
+                      onClick={() => { setActiveTab(id); setPage(1); setActiveFilters({}) }}
                       className={clsx(
                         'px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
                         activeTab === id
@@ -556,8 +584,9 @@ export default function FPAnalysis() {
                   ))}
                 </div>
                 <button
-                  onClick={() => setFilterResetKey(k => k + 1)}
-                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => { setActiveFilters({}); setPage(1) }}
+                  disabled={!hasActiveFilters}
+                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
                 >
                   <X size={11} /> Clear All Filters
                 </button>
@@ -566,13 +595,27 @@ export default function FPAnalysis() {
               {/* Table */}
               <div className="p-4">
                 <DataTable
-                  data={allSheetData[activeTab] ?? []}
+                  data={pageRows}
                   columns={activeColumns}
+                  defaultSorting={activeDefaultSort}
                   isLoading={dataLoading}
                   emptyMessage="No violations for this sheet"
                   maxHeight="480px"
-                  defaultPageSize={50}
-                  filterResetKey={filterResetKey}
+                  serverSide={{
+                    total,
+                    page,
+                    pageSize,
+                    onPageChange: (p) => setPage(p),
+                    onPageSizeChange: (sz) => { setPageSize(sz); setPage(1) },
+                  }}
+                  serverSideFilters={{
+                    values: activeFilters,
+                    onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                    onFetchOptions: (colId) => {
+                      const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
+                      return getFilterOptions(jobId!, activeTab, colId, others)
+                    },
+                  }}
                 />
               </div>
             </div>

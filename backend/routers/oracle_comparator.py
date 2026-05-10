@@ -16,7 +16,7 @@ import threading
 from typing import Optional
 
 import polars as pl
-from fastapi import APIRouter, UploadFile, File, Form, Query
+from fastapi import APIRouter, Request, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
@@ -30,8 +30,8 @@ from engines.oracle_comparator_engine import run_analysis, generate_report
 router = APIRouter(prefix="/api/oracle-comparator", tags=["Oracle Comparator"])
 logger = logging.getLogger("governance_platform.oracle_comparator")
 
-# { job_id: { "1to2": { comp_type: [rows] }, "2to1": { comp_type: [rows] } } }
-_result_data: dict[str, dict[str, dict[str, list[dict]]]] = {}
+# { job_id: { "1to2": { comp_type: DataFrame }, "2to1": { comp_type: DataFrame } } }
+_result_data: dict[str, dict[str, dict[str, pl.DataFrame]]] = {}
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -69,8 +69,8 @@ def _run_thread(
         results_1to2, results_2to1 = result.data
 
         _result_data[job_id] = {
-            "1to2": {ct: df.to_dicts() for ct, df in results_1to2.items() if df is not None},
-            "2to1": {ct: df.to_dicts() for ct, df in results_2to1.items() if df is not None},
+            "1to2": {ct: df for ct, df in results_1to2.items() if df is not None},
+            "2to1": {ct: df for ct, df in results_2to1.items() if df is not None},
         }
 
         report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
@@ -247,8 +247,32 @@ async def summary(job_id: str):
     return job.results
 
 
+@router.get("/filter-options/{job_id}")
+async def filter_options(
+    request: Request,
+    job_id: str,
+    column: str,
+    direction: str = Query(...),
+    comparison_type: str = Query(...),
+):
+    """Distinct values for one column after applying all other active column filters."""
+    if job_id not in _result_data:
+        return JSONResponse(status_code=404, content={"error": True, "message": "Results not found.", "code": "NOT_FOUND", "details": []})
+    df: pl.DataFrame = _result_data[job_id].get(direction, {}).get(comparison_type, pl.DataFrame())
+    if df.height == 0 or column not in df.columns:
+        return {"values": []}
+    _reserved = {"column", "direction", "comparison_type"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col != column and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
+    return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
+
+
 @router.get("/results/{job_id}")
 async def results_page(
+    request: Request,
     job_id: str,
     direction: str = Query(..., description="'1to2' or '2to1'"),
     comparison_type: str = Query(..., description="'duty_role', 'privilege', or 'dsp'"),
@@ -268,25 +292,39 @@ async def results_page(
             content={"error": True, "message": "direction must be '1to2' or '2to1'.", "code": "VALIDATION_ERROR", "details": []},
         )
 
-    rows: list[dict] = _result_data[job_id].get(direction, {}).get(comparison_type, [])
+    df: pl.DataFrame = _result_data[job_id].get(direction, {}).get(comparison_type, pl.DataFrame())
 
-    if status_filter:
+    if df.height == 0:
+        return {"rows": [], "total": 0, "page": page, "page_size": page_size}
+
+    _reserved = {"direction", "comparison_type", "page", "page_size", "status_filter", "search"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
+
+    if status_filter and "Status" in df.columns:
         sf = status_filter.lower()
-        rows = [r for r in rows if sf in str(r.get("Status", "")).lower()]
+        df = df.filter(pl.col("Status").cast(pl.Utf8).str.to_lowercase().str.contains(sf, literal=True))
 
     if search:
         s = search.lower()
-        rows = [r for r in rows if any(s in str(v).lower() for v in r.values())]
+        df = df.filter(
+            pl.any_horizontal([
+                pl.col(c).cast(pl.Utf8).str.to_lowercase().str.contains(s, literal=True)
+                for c in df.columns
+            ])
+        )
 
-    total = len(rows)
+    if "Status" in df.columns:
+        df = df.sort("Status")
+
+    total = df.height
+    page_size = max(1, page_size)
+    page = max(1, page)
     start = (page - 1) * page_size
-
-    return {
-        "rows": rows[start : start + page_size],
-        "total": total,
-        "page": page,
-        "page_size": page_size,
-    }
+    return {"rows": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size}
 
 
 @router.delete("/job/{job_id}")

@@ -12,11 +12,10 @@ Endpoints:
 
 import logging
 import threading
-from collections import defaultdict
 from typing import Optional
 
 import polars as pl
-from fastapi import APIRouter, UploadFile, File
+from fastapi import APIRouter, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
@@ -34,8 +33,8 @@ router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
 logger = logging.getLogger("governance_platform.sod_sa")
 
 # Columns exposed per sheet through the paginated results endpoint
-_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME"]
-_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_NAME", "INHERITED_ROLE_NAME", "PRIVILEGE_NAME", "USER_NAME"]
+_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
+_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "USER_NAME"]
 _SHEET_COLS = {
     "ROLE_SOD": _ROLE_COLS,
     "ROLE_SA":  _ROLE_COLS,
@@ -43,8 +42,11 @@ _SHEET_COLS = {
     "USER_SA":  _USER_COLS,
 }
 
-# Per-sheet result rows keyed by job_id; cleared on DELETE
-_result_dfs: dict[str, dict[str, list[dict]]] = {}
+_ROLE_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
+_USER_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "USER_NAME"]
+
+# Per-sheet DataFrames keyed by job_id; cleared on DELETE
+_result_dfs: dict[str, dict[str, pl.DataFrame]] = {}
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -125,7 +127,7 @@ def _run_thread(
                 continue
             _cols = _SHEET_COLS[_sheet_name]
             _available = [c for c in _cols if c in _df.columns]
-            cache[_sheet_name] = _df.select(_available).to_dicts()
+            cache[_sheet_name] = _df.select(_available)
         _result_dfs[job_id] = cache
 
         summary = SODSASummary(
@@ -334,32 +336,32 @@ async def summary(job_id: str):
 
     cache = _result_dfs[job_id]
 
-    def _top5(rows: list[dict], group_col: str, count_col: str) -> list[dict]:
-        """Count unique count_col values per group_col; return top 5 descending."""
-        groups: dict[str, set] = defaultdict(set)
-        for r in rows:
-            g = r.get(group_col)
-            c = r.get(count_col)
-            if g and c:
-                groups[g].add(c)
-        ranked = sorted(groups.items(), key=lambda x: len(x[1]), reverse=True)
-        return [{"name": k, "count": len(v)} for k, v in ranked[:5]]
+    def _top5(df: pl.DataFrame, group_col: str, count_col: str) -> list[dict]:
+        if group_col not in df.columns or count_col not in df.columns:
+            return []
+        return (
+            df.group_by(group_col)
+            .agg(pl.col(count_col).n_unique().alias("count"))
+            .sort("count", descending=True)
+            .head(5)
+            .rename({group_col: "name"})
+            .to_dicts()
+        )
 
     sheet_counts: dict[str, dict] = {}
-    for sheet, rows in cache.items():
-        entry: dict = {"total_violations": len(rows)}
-        if rows:
-            if "ROLE_NAME" in rows[0]:
-                entry["unique_roles"] = len({r["ROLE_NAME"] for r in rows if r.get("ROLE_NAME")})
-            if "USER_NAME" in rows[0]:
-                entry["unique_users"] = len({r["USER_NAME"] for r in rows if r.get("USER_NAME")})
+    for sheet, df in cache.items():
+        entry: dict = {"total_violations": df.height}
+        if "ROLE_NAME" in df.columns:
+            entry["unique_roles"] = df["ROLE_NAME"].n_unique()
+        if "USER_NAME" in df.columns:
+            entry["unique_users"] = df["USER_NAME"].n_unique()
         sheet_counts[sheet] = entry
 
     result: dict = {"sheet_counts": sheet_counts}
 
     if "ROLE_SOD" in cache:
-        result["top_roles_sod"]  = _top5(cache["ROLE_SOD"], "ROLE_NAME",    "CONTROL_NAME")
-        result["top_sod_controls"] = _top5(cache["ROLE_SOD"], "CONTROL_NAME", "ROLE_NAME")
+        result["top_roles_sod"]    = _top5(cache["ROLE_SOD"], "ROLE_DISPLAY_NAME",    "CONTROL_NAME")
+        result["top_sod_controls"] = _top5(cache["ROLE_SOD"], "CONTROL_NAME", "ROLE_DISPLAY_NAME")
 
     if "USER_SOD" in cache:
         result["top_users_sod"] = _top5(cache["USER_SOD"], "USER_NAME", "CONTROL_NAME")
@@ -367,7 +369,7 @@ async def summary(job_id: str):
             result["top_sod_controls"] = _top5(cache["USER_SOD"], "CONTROL_NAME", "USER_NAME")
 
     if "ROLE_SA" in cache:
-        result["top_sa_controls"] = _top5(cache["ROLE_SA"], "CONTROL_NAME", "ROLE_NAME")
+        result["top_sa_controls"] = _top5(cache["ROLE_SA"], "CONTROL_NAME", "ROLE_DISPLAY_NAME")
 
     if "USER_SA" in cache and "top_sa_controls" not in result:
         result["top_sa_controls"] = _top5(cache["USER_SA"], "CONTROL_NAME", "USER_NAME")
@@ -375,8 +377,30 @@ async def summary(job_id: str):
     return result
 
 
+@router.get("/filter-options/{job_id}")
+async def filter_options(request: Request, job_id: str, column: str, sheet: str):
+    """Distinct values for one column after applying all other active column filters."""
+    if job_id not in _result_dfs:
+        job_manager.get_job(job_id)
+        return JSONResponse(status_code=400, content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []})
+    cache = _result_dfs[job_id]
+    if sheet not in cache:
+        return {"values": []}
+    df: pl.DataFrame = cache[sheet]
+    _reserved = {"column", "sheet"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col != column and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
+    if column not in df.columns:
+        return {"values": []}
+    return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
+
+
 @router.get("/results/{job_id}")
 async def results_page(
+    request: Request,
     job_id: str,
     sheet: str,
     page: int = 1,
@@ -398,17 +422,34 @@ async def results_page(
             content={"error": True, "message": f"Sheet '{sheet}' was not analyzed.", "code": "NOT_FOUND", "details": []},
         )
 
-    rows: list[dict] = cache[sheet]
+    df: pl.DataFrame = cache[sheet]
+
+    _reserved = {"sheet", "page", "page_size", "search"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
 
     if search:
         q = search.lower()
-        rows = [r for r in rows if any(q in str(r.get(c, "")).lower() for c in _SHEET_COLS.get(sheet, []))]
+        cols = [c for c in _SHEET_COLS.get(sheet, []) if c in df.columns]
+        if cols:
+            df = df.filter(
+                pl.any_horizontal([
+                    pl.col(c).cast(pl.Utf8).str.to_lowercase().str.contains(q, literal=True)
+                    for c in cols
+                ])
+            )
 
-    total = len(rows)
-    page_size = max(1, min(page_size, 200))
+    sort_cols = _USER_SORT if sheet.startswith("USER") else _ROLE_SORT
+    df = df.sort([c for c in sort_cols if c in df.columns])
+
+    total = df.height
+    page_size = max(1, page_size)
     page = max(1, page)
     start = (page - 1) * page_size
-    return {"data": rows[start: start + page_size], "total": total, "page": page, "page_size": page_size, "sheet": sheet}
+    return {"data": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size, "sheet": sheet}
 
 
 @router.delete("/job/{job_id}")

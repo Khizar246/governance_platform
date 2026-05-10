@@ -66,15 +66,34 @@ export async function getResults(
   pageSize: number,
   statusFilter?: string,
   search?: string,
+  filters: Record<string, string[]> = {},
 ): Promise<OracleResultsResponse> {
-  const params = new URLSearchParams({
+  const params: Record<string, string | number> = {
     direction,
     comparison_type: compType,
-    page: String(page),
-    page_size: String(pageSize),
-  })
-  if (statusFilter) params.set('status_filter', statusFilter)
-  if (search) params.set('search', search)
-  const response = await api.get(`/api/oracle-comparator/results/${jobId}?${params}`)
+    page,
+    page_size: pageSize,
+  }
+  if (statusFilter) params.status_filter = statusFilter
+  if (search) params.search = search
+  for (const [col, vals] of Object.entries(filters)) {
+    if (vals.length > 0) params[col] = vals.join(',')
+  }
+  const response = await api.get(`/api/oracle-comparator/results/${jobId}`, { params })
   return response.data
+}
+
+export async function getFilterOptions(
+  jobId: string,
+  direction: '1to2' | '2to1',
+  compType: string,
+  column: string,
+  otherFilters: Record<string, string[]>,
+): Promise<string[]> {
+  const params: Record<string, string> = { column, direction, comparison_type: compType }
+  for (const [col, vals] of Object.entries(otherFilters)) {
+    if (vals.length > 0) params[col] = vals.join(',')
+  }
+  const response = await api.get(`/api/oracle-comparator/filter-options/${jobId}`, { params })
+  return response.data.values
 }

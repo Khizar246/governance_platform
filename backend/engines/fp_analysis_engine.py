@@ -484,15 +484,16 @@ def export_results(
             {"constant_memory": True, "strings_to_urls": False},
         )
 
+        _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
+        _user_sort_cols = [*_role_sort_cols, "USER_NAME"]
+
         for name in VIOLATION_SHEETS + [DETAILS_SHEET]:
             if name not in results or results[name].height == 0:
                 continue
 
-            df = (
-                results[name].sort("CONTROL_NAME")
-                if "CONTROL_NAME" in results[name].columns
-                else results[name]
-            )
+            _sort_cols = _user_sort_cols if "USER" in name else _role_sort_cols
+            _available_sort = [c for c in _sort_cols if c in results[name].columns]
+            df = results[name].sort(_available_sort, nulls_last=True) if _available_sort else results[name]
 
             if df.height <= EXCEL_MAX_ROWS:
                 ws = wb.add_worksheet(name[:31])

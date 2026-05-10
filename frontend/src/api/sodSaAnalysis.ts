@@ -67,11 +67,29 @@ export async function getSheetResults(
   page: number,
   pageSize: number,
   search: string,
+  filters: Record<string, string[]> = {},
 ): Promise<SODSASheetPage> {
   const params: Record<string, string | number> = { sheet, page, page_size: pageSize }
   if (search) params.search = search
+  for (const [col, vals] of Object.entries(filters)) {
+    if (vals.length > 0) params[col] = vals.join(',')
+  }
   const response = await api.get(`/api/sod-sa/results/${jobId}`, { params })
   return response.data
+}
+
+export async function getFilterOptions(
+  jobId: string,
+  sheet: string,
+  column: string,
+  otherFilters: Record<string, string[]>,
+): Promise<string[]> {
+  const params: Record<string, string> = { column, sheet }
+  for (const [col, vals] of Object.entries(otherFilters)) {
+    if (vals.length > 0) params[col] = vals.join(',')
+  }
+  const response = await api.get(`/api/sod-sa/filter-options/${jobId}`, { params })
+  return response.data.values
 }
 
 export async function downloadResults(jobId: string, filename: string): Promise<void> {

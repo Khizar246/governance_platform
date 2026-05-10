@@ -688,17 +688,20 @@ def export_results(
         if not summary_df.is_empty():
             results_data["SUMMARY"] = summary_df
 
+        _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
+        _user_sort_cols = [*_role_sort_cols, "USER_NAME"]
+
         if analysis_type in ("role", "both"):
             if role_sod_violations.height > 0:
-                results_data["ROLE_SOD"] = role_sod_violations.sort("CONTROL_NAME")
+                results_data["ROLE_SOD"] = role_sod_violations.sort(_role_sort_cols, nulls_last=True)
             if role_sa_violations.height > 0:
-                results_data["ROLE_SA"] = role_sa_violations.sort("CONTROL_NAME")
+                results_data["ROLE_SA"] = role_sa_violations.sort(_role_sort_cols, nulls_last=True)
 
         if analysis_type in ("user", "both"):
             if user_sod_violations.height > 0:
-                results_data["USER_SOD"] = user_sod_violations.sort("CONTROL_NAME")
+                results_data["USER_SOD"] = user_sod_violations.sort(_user_sort_cols, nulls_last=True)
             if user_sa_violations.height > 0:
-                results_data["USER_SA"] = user_sa_violations.sort("CONTROL_NAME")
+                results_data["USER_SA"] = user_sa_violations.sort(_user_sort_cols, nulls_last=True)
 
         output_buffer = io.BytesIO()
         workbook = xlsxwriter.Workbook(

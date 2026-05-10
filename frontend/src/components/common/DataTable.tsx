@@ -17,16 +17,20 @@ import { clsx } from 'clsx'
 import { TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Skeleton } from '@/components/ui/skeleton'
+import { ColumnFilter } from '@/components/common/ColumnFilter'
 
 const SKELETON_ROWS = 8
 const DROPDOWN_WIDTH = 224
+// Search box ~40px + max options list 208px + footer ~36px
+const DROPDOWN_MAX_HEIGHT = 290
 
 // ── Multi-select filter fn (registered in useReactTable filterFns) ─────────────
-const multiSelectFilter: FilterFn<unknown> = (row, columnId, filterValue: string[]) => {
-  if (!filterValue?.length) return true
+const multiSelectFilter: FilterFn<unknown> = (row, columnId, filterValue: string[] | undefined) => {
+  if (filterValue == null) return true
+  if (filterValue.length === 0) return false  // all deselected → show nothing
   return filterValue.includes(String(row.getValue(columnId) ?? ''))
 }
-multiSelectFilter.autoRemove = (val: string[]) => !val?.length
+multiSelectFilter.autoRemove = (val: string[]) => val == null
 
 // ── Interfaces ─────────────────────────────────────────────────────────────────
 
@@ -39,16 +43,16 @@ interface ServerSideProps {
 }
 
 interface ServerSideFilters {
-  values: Record<string, string>
-  onChange: (columnId: string, value: string) => void
-  /** Columns listed here get an Excel-style single-select dropdown. */
-  selectOptions?: Record<string, string[]>
+  values: Record<string, string[]>
+  onChange: (columnId: string, values: string[]) => void
+  onFetchOptions: (columnId: string) => Promise<string[]>
 }
 
 interface DataTableProps<T> {
   data: T[]
   columns: ColumnDef<T>[]
   defaultPageSize?: number
+  defaultSorting?: SortingState
   emptyMessage?: string
   /** Max height for the scrollable body (enables sticky header). Default 520px. */
   maxHeight?: string
@@ -59,6 +63,8 @@ interface DataTableProps<T> {
   serverSideFilters?: ServerSideFilters
   /** Increment to programmatically clear all active client-side filters. */
   filterResetKey?: number
+  /** Called whenever the active-filter state changes. */
+  onFiltersChange?: (hasActive: boolean) => void
 }
 
 // ── Component ──────────────────────────────────────────────────────────────────
@@ -67,20 +73,23 @@ export default function DataTable<T>({
   data,
   columns,
   defaultPageSize = 50,
+  defaultSorting,
   emptyMessage = 'No data to display',
   maxHeight = '520px',
   isLoading = false,
   serverSide,
   serverSideFilters,
   filterResetKey,
+  onFiltersChange,
 }: DataTableProps<T>) {
-  const [sorting, setSorting] = useState<SortingState>([])
+  const [sorting, setSorting] = useState<SortingState>(defaultSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
   // Excel filter state
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
   const [filterSearch, setFilterSearch] = useState('')
   const [dropdownAnchor, setDropdownAnchor] = useState<DOMRect | null>(null)
+  const [dropOpenUp, setDropOpenUp] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
   const table = useReactTable({
@@ -109,7 +118,7 @@ export default function DataTable<T>({
 
   // ── Compute unique values for client-side columns ──────────────────────────
   const uniqueValues = useMemo<Record<string, string[]>>(() => {
-    if (serverSide) return {}
+    if (serverSideFilters) return {}
     const map: Record<string, string[]> = {}
     for (const col of columns) {
       const def = col as Record<string, unknown>
@@ -131,13 +140,14 @@ export default function DataTable<T>({
       map[colId] = hasEmpty ? [...sorted, ''] : sorted
     }
     return map
-  }, [data, columns, serverSide])
+  }, [data, columns, serverSideFilters])
 
   // ── Close dropdown on outside click (deferred so opener click doesn't close) ─
   useEffect(() => {
     if (!openFilterCol) return
     let handler: ((e: MouseEvent) => void) | null = null
     const t = setTimeout(() => {
+      if (!dropdownRef.current) return
       handler = (e: MouseEvent) => {
         if (!dropdownRef.current?.contains(e.target as Node)) {
           setOpenFilterCol(null)
@@ -172,6 +182,15 @@ export default function DataTable<T>({
     setFilterSearch('')
   }, [filterResetKey])
 
+  // ── Notify parent when filter activity changes ───────────────────────────
+  useEffect(() => {
+    onFiltersChange?.(columnFilters.length > 0)
+  }, [columnFilters, onFiltersChange])
+
+  // ── Check if a column has an active filter entry (even if value is []) ───
+  const isColumnFilterActive = (colId: string): boolean =>
+    columnFilters.some(cf => cf.id === colId)
+
   // ── Client-side multi-select helpers ─────────────────────────────────────
   const getClientFilterValues = (colId: string): string[] => {
     const f = columnFilters.find(cf => cf.id === colId)
@@ -179,10 +198,11 @@ export default function DataTable<T>({
   }
 
   const toggleClientValue = (colId: string, value: string) => {
-    const current = getClientFilterValues(colId)
     const all = uniqueValues[colId] ?? []
+    const active = isColumnFilterActive(colId)
+    const current = getClientFilterValues(colId)
     let updated: string[]
-    if (current.length === 0) {
+    if (!active) {
       // No active filter — all values implicitly shown. Unchecking excludes this value.
       updated = all.filter(v => v !== value)
     } else {
@@ -190,9 +210,9 @@ export default function DataTable<T>({
         ? current.filter(v => v !== value)
         : [...current, value]
     }
-    // Clear filter when all values are re-included
+    // Clear filter (show all) when all values re-included; [] means show nothing
     table.getColumn(colId)?.setFilterValue(
-      updated.length === 0 || updated.length >= all.length ? undefined : updated,
+      updated.length >= all.length ? undefined : updated,
     )
   }
 
@@ -205,6 +225,8 @@ export default function DataTable<T>({
       return
     }
     const rect = e.currentTarget.getBoundingClientRect()
+    const spaceBelow = window.innerHeight - rect.bottom
+    setDropOpenUp(spaceBelow < DROPDOWN_MAX_HEIGHT + 4)
     setDropdownAnchor(rect)
     setOpenFilterCol(colId)
     setFilterSearch('')
@@ -229,7 +251,11 @@ export default function DataTable<T>({
   const dropLeft = dropdownAnchor
     ? Math.min(dropdownAnchor.left, window.innerWidth - DROPDOWN_WIDTH - 8)
     : 0
-  const dropTop = dropdownAnchor ? dropdownAnchor.bottom + 4 : 0
+  const dropTop = dropdownAnchor
+    ? dropOpenUp
+      ? Math.max(8, dropdownAnchor.top - DROPDOWN_MAX_HEIGHT - 4)
+      : dropdownAnchor.bottom + 4
+    : 0
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -248,13 +274,10 @@ export default function DataTable<T>({
                 <TableRow key={hg.id} className="hover:bg-transparent">
                   {hg.headers.map((header) => {
                     const colId = header.column.id
-                    const isServerSelectCol = !!(serverSide && serverSideFilters?.selectOptions?.[colId])
-                    const isServerTextCol = !!(serverSide && serverSideFilters && !isServerSelectCol)
-                    const isClientFilterCol = !!(header.column.getCanFilter() && !serverSide)
+                    const isClientFilterCol = !!(header.column.getCanFilter() && !serverSideFilters)
 
                     // Active state indicators
-                    const clientActive = isClientFilterCol && getClientFilterValues(colId).length > 0
-                    const serverSelectActive = isServerSelectCol && !!(serverSideFilters?.values[colId])
+                    const clientActive = isClientFilterCol && isColumnFilterActive(colId)
 
                     return (
                       <TableHead
@@ -268,7 +291,7 @@ export default function DataTable<T>({
                             'flex items-center gap-1 select-none whitespace-nowrap',
                             'text-[11px] font-semibold text-gray-500 uppercase tracking-[0.05em]',
                             header.column.getCanSort() && 'cursor-pointer hover:text-gray-700',
-                            (isClientFilterCol || isServerSelectCol || isServerTextCol) ? 'mb-1.5' : '',
+                            (isClientFilterCol || !!serverSideFilters) ? 'mb-1.5' : '',
                           )}
                           onClick={header.column.getToggleSortingHandler()}
                         >
@@ -306,43 +329,18 @@ export default function DataTable<T>({
                           </button>
                         )}
 
-                        {/* ── Excel filter button (server-side select columns) ── */}
-                        {isServerSelectCol && !isLoading && (
-                          <button
-                            onClick={(e) => openFilter(colId, e)}
-                            className={clsx(
-                              'flex items-center justify-between gap-1 w-full h-6 px-1.5 rounded border text-[11px] transition-colors',
-                              serverSelectActive
-                                ? 'border-[#FFD100] bg-yellow-50 text-gray-700'
-                                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300',
-                            )}
-                          >
-                            <span className="truncate flex-1 text-left">
-                              {serverSelectActive
-                                ? serverSideFilters!.values[colId]
-                                : 'Filter…'}
-                            </span>
-                            <Filter size={10} className="shrink-0" />
-                          </button>
+                        {/* ── Server-side Excel filter (ColumnFilter component) ── */}
+                        {serverSideFilters && !isLoading && (
+                          <ColumnFilter
+                            isOpen={openFilterCol === colId}
+                            onOpen={() => setOpenFilterCol(colId)}
+                            onClose={() => setOpenFilterCol(null)}
+                            selectedValues={serverSideFilters.values[colId] ?? []}
+                            fetchOptions={() => serverSideFilters.onFetchOptions(colId)}
+                            onApply={(vals) => serverSideFilters.onChange(colId, vals)}
+                            onClear={() => serverSideFilters.onChange(colId, [])}
+                          />
                         )}
-
-                        {/* ── Text input (server-side text columns) ── */}
-                        {isServerTextCol && !isLoading && (() => {
-                          const val = serverSideFilters!.values[colId] ?? ''
-                          return (
-                            <input
-                              value={val}
-                              onChange={(e) => { e.stopPropagation(); serverSideFilters!.onChange(colId, e.target.value) }}
-                              onClick={(e) => e.stopPropagation()}
-                              placeholder="Filter…"
-                              className={clsx(
-                                'w-full h-6 rounded border border-gray-200 bg-white',
-                                'px-2 text-[11px] text-gray-700 placeholder-gray-400',
-                                'focus:outline-none focus:border-ey-yellow transition-colors',
-                              )}
-                            />
-                          )
-                        })()}
                       </TableHead>
                     )
                   })}
@@ -451,7 +449,7 @@ export default function DataTable<T>({
               disabled={isLoading}
               className="border border-gray-200 rounded px-2 py-1 text-[13px] text-gray-600 bg-white focus:outline-none focus:border-ey-yellow disabled:opacity-50"
             >
-              {[25, 50, 100].map((sz) => (
+              {[50, 100, 200].map((sz) => (
                 <option key={sz} value={sz}>{sz} / page</option>
               ))}
             </select>
@@ -477,8 +475,8 @@ export default function DataTable<T>({
 
       </div>
 
-      {/* ── Excel filter dropdown (portaled to body) ── */}
-      {openFilterCol && dropdownAnchor && typeof document !== 'undefined' &&
+      {/* ── Excel filter dropdown (portaled to body, client-side mode only) ── */}
+      {!serverSideFilters && openFilterCol && dropdownAnchor && typeof document !== 'undefined' &&
         createPortal(
           <div
             ref={dropdownRef}
@@ -520,9 +518,10 @@ export default function DataTable<T>({
                     )
                   : allVals
                 const activeVals = getClientFilterValues(openFilterCol)
-                // Exclusion model: no filter = all implicitly selected
-                const effectiveSelected = activeVals.length === 0 ? allVals : activeVals
-                const allChecked = visible.length > 0 && visible.every(v => effectiveSelected.includes(v))
+                const isFilterActive = isColumnFilterActive(openFilterCol)
+                // Exclusion model: no filter = all implicitly selected; [] = none selected
+                const effectiveSelected = isFilterActive ? activeVals : allVals
+                const allChecked = !isFilterActive || (visible.length > 0 && visible.every(v => effectiveSelected.includes(v)))
 
                 if (visible.length === 0) {
                   return (
@@ -538,7 +537,7 @@ export default function DataTable<T>({
                         <input
                           type="checkbox"
                           checked={allChecked}
-                          onChange={() => table.getColumn(openFilterCol)?.setFilterValue(undefined)}
+                          onChange={() => table.getColumn(openFilterCol)?.setFilterValue(allChecked ? [] : undefined)}
                           className="h-3.5 w-3.5 rounded accent-[#FFD100]"
                         />
                         <span className="text-[12px] text-gray-500 italic">(Select All)</span>
@@ -564,55 +563,6 @@ export default function DataTable<T>({
                 )
               })()}
 
-              {/* ── Server-side: single-select from predefined selectOptions ── */}
-              {serverSide && serverSideFilters && openFilterCol && (() => {
-                const opts = serverSideFilters.selectOptions?.[openFilterCol] ?? []
-                const visible = filterSearch
-                  ? opts.filter(v => v.toLowerCase().includes(filterSearch.toLowerCase()))
-                  : opts
-                const activeVal = serverSideFilters.values[openFilterCol] ?? ''
-
-                return (
-                  <>
-                    {/* (All) */}
-                    {!filterSearch && (
-                      <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100">
-                        <input
-                          type="radio"
-                          checked={!activeVal}
-                          onChange={() => {
-                            serverSideFilters.onChange(openFilterCol, '')
-                            setOpenFilterCol(null)
-                            setFilterSearch('')
-                          }}
-                          name={`ss-filter-${openFilterCol}`}
-                          className="h-3.5 w-3.5 accent-[#FFD100]"
-                        />
-                        <span className="text-[12px] text-gray-500 italic">(All)</span>
-                      </label>
-                    )}
-                    {visible.map((val) => (
-                      <label
-                        key={val}
-                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50"
-                      >
-                        <input
-                          type="radio"
-                          checked={activeVal === val}
-                          onChange={() => {
-                            serverSideFilters.onChange(openFilterCol, val)
-                            setOpenFilterCol(null)
-                            setFilterSearch('')
-                          }}
-                          name={`ss-filter-${openFilterCol}`}
-                          className="h-3.5 w-3.5 accent-[#FFD100]"
-                        />
-                        <span className="text-[12px] text-gray-700">{val}</span>
-                      </label>
-                    ))}
-                  </>
-                )
-              })()}
 
             </div>
 

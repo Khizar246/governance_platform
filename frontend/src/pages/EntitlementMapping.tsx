@@ -11,7 +11,7 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults } from '../api/entitlementMapping'
+import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults, getFilterOptions } from '../api/entitlementMapping'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { UploadResponse, EntitlementMappingSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
@@ -82,8 +82,12 @@ export default function EntitlementMapping() {
   const [activeTab, setActiveTab] = useState<TabId>('all')
   const [confirmReset, setConfirmReset] = useState(false)
   const [tableRows, setTableRows] = useState<Record<string, unknown>[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [total, setTotal] = useState(0)
   const [isLoadingResults, setIsLoadingResults] = useState(false)
-  const [filterResetKey, setFilterResetKey] = useState(0)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
+  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
 
   useEffect(() => {
     if (step !== 'running' || !jobId) return
@@ -110,17 +114,27 @@ export default function EntitlementMapping() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  // Fetch all rows for active tab (client-side filtering via DataTable)
+  // Fetch current page on demand
   useEffect(() => {
     if (step !== 'results' || !jobId) return
     let cancelled = false
     setIsLoadingResults(true)
-    getResults(jobId, { page: 1, pageSize: 100000, tab: activeTab })
-      .then(res => { if (!cancelled) setTableRows(res.data) })
-      .catch(() => { if (!cancelled) toast.error('Failed to load results.') })
-      .finally(() => { if (!cancelled) setIsLoadingResults(false) })
+    getResults(jobId, { page, pageSize, tab: activeTab, filters: activeFilters })
+      .then(res => {
+        if (!cancelled) {
+          setTableRows(res.data)
+          setTotal(res.total)
+          setIsLoadingResults(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          toast.error('Failed to load results.')
+          setIsLoadingResults(false)
+        }
+      })
     return () => { cancelled = true }
-  }, [step, jobId, activeTab])
+  }, [step, jobId, activeTab, page, pageSize, activeFilters])
 
   const handleUpload = useCallback(async () => {
     if (!clientFile || !eyFile) return
@@ -176,8 +190,11 @@ export default function EntitlementMapping() {
     setActiveTab('all')
     setConfirmReset(false)
     setTableRows([])
+    setPage(1)
+    setPageSize(50)
+    setTotal(0)
     setIsLoadingResults(false)
-    setFilterResetKey(0)
+    setActiveFilters({})
   }, [jobId])
 
   const tabCounts = useMemo<Record<TabId, number>>(() => {
@@ -414,7 +431,7 @@ export default function EntitlementMapping() {
                   {TABS.map(({ id, label }) => (
                     <button
                       key={id}
-                      onClick={() => { setActiveTab(id); setFilterResetKey(k => k + 1) }}
+                      onClick={() => { setActiveTab(id); setPage(1); setActiveFilters({}) }}
                       className={clsx(
                         'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors duration-150',
                         activeTab === id
@@ -435,21 +452,35 @@ export default function EntitlementMapping() {
                   ))}
                 </nav>
                 <button
-                  onClick={() => setFilterResetKey(k => k + 1)}
-                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => { setActiveFilters({}); setPage(1) }}
+                  disabled={!hasActiveFilters}
+                  className="flex items-center gap-1 mr-4 text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
                 >
                   <X size={11} /> Clear All Filters
                 </button>
               </div>
 
-              {/* DataTable — client-side with Excel-style column filters */}
               <DataTable
                 data={tableRows}
                 columns={RESULT_COLUMNS}
                 maxHeight="400px"
                 emptyMessage="No results in this category"
                 isLoading={isLoadingResults}
-                filterResetKey={filterResetKey}
+                serverSide={{
+                  total,
+                  page,
+                  pageSize,
+                  onPageChange: (p) => setPage(p),
+                  onPageSizeChange: (sz) => { setPageSize(sz); setPage(1) },
+                }}
+                serverSideFilters={{
+                  values: activeFilters,
+                  onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                  onFetchOptions: (colId) => {
+                    const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
+                    return getFilterOptions(jobId!, colId, others)
+                  },
+                }}
               />
 
               {/* Actions */}

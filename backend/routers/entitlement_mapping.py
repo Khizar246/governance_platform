@@ -13,7 +13,8 @@ import logging
 import threading
 
 import pandas as pd
-from fastapi import APIRouter, UploadFile, File
+import polars as pl
+from fastapi import APIRouter, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
@@ -28,8 +29,8 @@ logger = logging.getLogger("governance_platform.entitlement_mapping")
 
 _REQUIRED_COLS = {"Entitlement Name", "Privilege Name", "Privilege Code"}
 
-# Stores full result records per job_id for paginated access; cleared on DELETE.
-_result_rows: dict[str, list[dict]] = {}
+# Stores result DataFrame per job_id for paginated access; cleared on DELETE.
+_result_rows: dict[str, pl.DataFrame] = {}
 
 
 def _is_full_coverage(s: str) -> bool:
@@ -88,7 +89,7 @@ def _run_thread(job_id: str, client_df: pd.DataFrame, ey_df: pd.DataFrame) -> No
             "results_preview": result_df.head(20).fillna("").to_dict(orient="records"),
         }
 
-        _result_rows[job_id] = result_df.fillna("").to_dict(orient="records")
+        _result_rows[job_id] = pl.from_pandas(result_df.fillna(""))
 
         buf = io.BytesIO()
         with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
@@ -275,18 +276,31 @@ async def download(job_id: str):
     )
 
 
+@router.get("/filter-options/{job_id}")
+async def filter_options(request: Request, job_id: str, column: str):
+    """Distinct values for one column after applying all other active column filters."""
+    if job_id not in _result_rows:
+        job_manager.get_job(job_id)
+        return JSONResponse(status_code=400, content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []})
+    df: pl.DataFrame = _result_rows[job_id]
+    _reserved = {"column"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col != column and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
+    if column not in df.columns:
+        return {"values": []}
+    return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
+
+
 @router.get("/results/{job_id}")
 async def results_page(
+    request: Request,
     job_id: str,
     page: int = 1,
     page_size: int = 50,
     tab: str = "all",
-    client_filter: str = "",
-    ey_filter: str = "",
-    confidence: str = "",
-    pmc_filter: str = "",
-    jaccard_filter: str = "",
-    runner_up_filter: str = "",
 ):
     if job_id not in _result_rows:
         job_manager.get_job(job_id)  # raises 404 if job is gone entirely
@@ -295,40 +309,37 @@ async def results_page(
             content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
         )
 
-    rows: list[dict] = _result_rows[job_id]
+    df: pl.DataFrame = _result_rows[job_id]
 
-    if tab == "exact":
-        rows = [r for r in rows if _is_full_coverage(r.get("Privilege Match Count", "")) and r.get("Jaccard Similarity (%)", "") == "100%"]
-    elif tab == "superset":
-        rows = [r for r in rows if _is_full_coverage(r.get("Privilege Match Count", "")) and r.get("Jaccard Similarity (%)", "") != "100%"]
-    elif tab == "no_match":
-        rows = [r for r in rows if r.get("EY Entitlement Match", "") == "—"]
-    elif tab == "partial":
-        rows = [r for r in rows if r.get("EY Entitlement Match", "") != "—" and not _is_full_coverage(r.get("Privilege Match Count", ""))]
+    # Tab filter — full-coverage detection via regex on Privilege Match Count
+    if tab and tab != "all":
+        num_expr = pl.col("Privilege Match Count").cast(pl.Utf8).str.extract(r"^(\d+)/(\d+)$", 1)
+        den_expr = pl.col("Privilege Match Count").cast(pl.Utf8).str.extract(r"^(\d+)/(\d+)$", 2)
+        full_cov = num_expr.is_not_null() & (num_expr == den_expr) & (num_expr != "0")
+        if tab == "exact":
+            df = df.filter(full_cov & (pl.col("Jaccard Similarity (%)") == "100%"))
+        elif tab == "superset":
+            df = df.filter(full_cov & (pl.col("Jaccard Similarity (%)") != "100%"))
+        elif tab == "no_match":
+            df = df.filter(pl.col("EY Entitlement Match") == "—")
+        elif tab == "partial":
+            df = df.filter((pl.col("EY Entitlement Match") != "—") & ~full_cov)
 
-    if client_filter:
-        q = client_filter.lower()
-        rows = [r for r in rows if q in str(r.get("Client Entitlement", "")).lower()]
-    if ey_filter:
-        q = ey_filter.lower()
-        rows = [r for r in rows if q in str(r.get("EY Entitlement Match", "")).lower()]
-    if confidence:
-        rows = [r for r in rows if r.get("Match Confidence", "") == confidence]
-    if pmc_filter:
-        q = pmc_filter.lower()
-        rows = [r for r in rows if q in str(r.get("Privilege Match Count", "")).lower()]
-    if jaccard_filter:
-        q = jaccard_filter.lower()
-        rows = [r for r in rows if q in str(r.get("Jaccard Similarity (%)", "")).lower()]
-    if runner_up_filter:
-        q = runner_up_filter.lower()
-        rows = [r for r in rows if q in str(r.get("Runner-Up EY Entitlements", "")).lower()]
+    _reserved = {"page", "page_size", "tab"}
+    for _col, _val in dict(request.query_params).items():
+        if _col not in _reserved and _col in df.columns and _val:
+            _vals = [v.strip() for v in _val.split(",") if v.strip()]
+            if _vals:
+                df = df.filter(pl.col(_col).is_in(_vals))
 
-    total = len(rows)
-    page_size = max(1, min(page_size, 200))
+    if "Client Entitlement" in df.columns:
+        df = df.sort("Client Entitlement")
+
+    total = df.height
+    page_size = max(1, page_size)
     page = max(1, page)
     start = (page - 1) * page_size
-    return {"data": rows[start: start + page_size], "total": total, "page": page, "page_size": page_size}
+    return {"data": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size}
 
 
 @router.delete("/job/{job_id}")

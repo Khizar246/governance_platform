@@ -14,7 +14,7 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Badge from '../components/common/Badge'
-import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults } from '../api/oracleComparator'
+import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults, getFilterOptions } from '../api/oracleComparator'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { OracleComparatorSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
@@ -119,8 +119,12 @@ export default function OracleComparator() {
   const [selectedDir, setSelectedDir] = useState<'1to2' | '2to1'>('1to2')
   const [selectedType, setSelectedType] = useState('')
   const [detailRows, setDetailRows] = useState<OracleRow[]>([])
+  const [page, setPage] = useState(1)
+  const [pageSize, setPageSize] = useState(50)
+  const [total, setTotal] = useState(0)
   const [detailLoading, setDetailLoading] = useState(false)
-  const [filterResetKey, setFilterResetKey] = useState(0)
+  const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
+  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
 
   const needsRbac = analysisType === 'rbac' || analysisType === 'both'
   const needsDsp  = analysisType === 'dsp'  || analysisType === 'both'
@@ -160,22 +164,28 @@ export default function OracleComparator() {
     return () => clearInterval(interval)
   }, [step, jobId])
 
-  const fetchDetail = useCallback(async () => {
-    if (!jobId || !selectedType) return
-    setDetailLoading(true)
-    try {
-      const res = await getResults(jobId, selectedDir, selectedType, 1, 100000)
-      setDetailRows(res.rows)
-    } catch {
-      setDetailRows([])
-    } finally {
-      setDetailLoading(false)
-    }
-  }, [jobId, selectedDir, selectedType])
-
+  // Fetch current page on demand
   useEffect(() => {
-    if (step === 'results') fetchDetail()
-  }, [step, fetchDetail])
+    if (step !== 'results' || !jobId || !selectedType) return
+    let cancelled = false
+    setDetailLoading(true)
+    getResults(jobId, selectedDir, selectedType, page, pageSize, undefined, undefined, activeFilters)
+      .then(res => {
+        if (!cancelled) {
+          setDetailRows(res.rows)
+          setTotal(res.total)
+          setDetailLoading(false)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDetailRows([])
+          setTotal(0)
+          setDetailLoading(false)
+        }
+      })
+    return () => { cancelled = true }
+  }, [step, jobId, selectedDir, selectedType, page, pageSize, activeFilters])
 
   const handleSelectType = useCallback((t: AnalysisType) => {
     setAnalysisType(t)
@@ -259,8 +269,11 @@ export default function OracleComparator() {
     setSelectedDir('1to2')
     setSelectedType('')
     setDetailRows([])
+    setPage(1)
+    setPageSize(50)
+    setTotal(0)
     setDetailLoading(false)
-    setFilterResetKey(0)
+    setActiveFilters({})
   }, [jobId])
 
   const availableCompTypes = useMemo(() => {
@@ -573,7 +586,7 @@ export default function OracleComparator() {
                   <span className="label-uppercase text-gray-500 shrink-0">Direction:</span>
                   <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-[13px]">
                     <button
-                      onClick={() => { setSelectedDir('1to2'); setFilterResetKey(k => k + 1) }}
+                      onClick={() => { setSelectedDir('1to2'); setPage(1); setActiveFilters({}) }}
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
                         selectedDir === '1to2'
@@ -584,7 +597,7 @@ export default function OracleComparator() {
                       {summary.env1_name} → {summary.env2_name}
                     </button>
                     <button
-                      onClick={() => { setSelectedDir('2to1'); setFilterResetKey(k => k + 1) }}
+                      onClick={() => { setSelectedDir('2to1'); setPage(1); setActiveFilters({}) }}
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap border-l border-gray-200',
                         selectedDir === '2to1'
@@ -604,7 +617,7 @@ export default function OracleComparator() {
                     {availableCompTypes.map(ct => (
                       <button
                         key={ct}
-                        onClick={() => { setSelectedType(ct); setFilterResetKey(k => k + 1) }}
+                        onClick={() => { setSelectedType(ct); setPage(1); setActiveFilters({}) }}
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors whitespace-nowrap',
                           selectedType === ct
@@ -620,8 +633,9 @@ export default function OracleComparator() {
 
                 {/* Clear All Filters */}
                 <button
-                  onClick={() => setFilterResetKey(k => k + 1)}
-                  className="flex items-center gap-1 ml-auto text-[11px] text-gray-400 hover:text-gray-600 transition-colors"
+                  onClick={() => { setActiveFilters({}); setPage(1) }}
+                  disabled={!hasActiveFilters}
+                  className="flex items-center gap-1 ml-auto text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
                 >
                   <X size={11} /> Clear All Filters
                 </button>
@@ -635,7 +649,21 @@ export default function OracleComparator() {
                   isLoading={detailLoading}
                   maxHeight="460px"
                   emptyMessage="No records for this selection"
-                  filterResetKey={filterResetKey}
+                  serverSide={{
+                    total,
+                    page,
+                    pageSize,
+                    onPageChange: (p) => setPage(p),
+                    onPageSizeChange: (sz) => { setPageSize(sz); setPage(1) },
+                  }}
+                  serverSideFilters={{
+                    values: activeFilters,
+                    onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                    onFetchOptions: (colId) => {
+                      const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
+                      return getFilterOptions(jobId!, selectedDir, selectedType, colId, others)
+                    },
+                  }}
                 />
               </div>
             </div>

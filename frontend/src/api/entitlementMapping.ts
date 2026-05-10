@@ -44,26 +44,30 @@ export async function getResults(
     page: number
     pageSize: number
     tab: string
-    clientFilter?: string
-    eyFilter?: string
-    confidence?: string
-    pmcFilter?: string
-    jaccardFilter?: string
-    runnerUpFilter?: string
+    filters?: Record<string, string[]>
   },
 ): Promise<ResultsPage> {
-  const response = await api.get(`/api/entitlement-mapping/results/${jobId}`, {
-    params: {
-      page: params.page,
-      page_size: params.pageSize,
-      tab: params.tab,
-      client_filter: params.clientFilter ?? '',
-      ey_filter: params.eyFilter ?? '',
-      confidence: params.confidence ?? '',
-      pmc_filter: params.pmcFilter ?? '',
-      jaccard_filter: params.jaccardFilter ?? '',
-      runner_up_filter: params.runnerUpFilter ?? '',
-    },
-  })
+  const queryParams: Record<string, string | number> = {
+    page: params.page,
+    page_size: params.pageSize,
+    tab: params.tab,
+  }
+  for (const [col, vals] of Object.entries(params.filters ?? {})) {
+    if (vals.length > 0) queryParams[col] = vals.join(',')
+  }
+  const response = await api.get(`/api/entitlement-mapping/results/${jobId}`, { params: queryParams })
   return response.data
+}
+
+export async function getFilterOptions(
+  jobId: string,
+  column: string,
+  otherFilters: Record<string, string[]>,
+): Promise<string[]> {
+  const params: Record<string, string> = { column }
+  for (const [col, vals] of Object.entries(otherFilters)) {
+    if (vals.length > 0) params[col] = vals.join(',')
+  }
+  const response = await api.get(`/api/entitlement-mapping/filter-options/${jobId}`, { params })
+  return response.data.values
 }
