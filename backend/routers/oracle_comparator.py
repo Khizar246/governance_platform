@@ -11,7 +11,6 @@ Endpoints:
 """
 
 import io
-import logging
 import threading
 from typing import Optional
 
@@ -25,13 +24,16 @@ from models.oracle_comparator import OracleRunConfig, ComparisonTypeSummary, Ora
 from services.job_manager import job_manager
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
 from shared.validators import validate_upload
+from shared.logger import get_logger
 from engines.oracle_comparator_engine import run_analysis, generate_report
 
 router = APIRouter(prefix="/api/oracle-comparator", tags=["Oracle Comparator"])
-logger = logging.getLogger("governance_platform.oracle_comparator")
+logger = get_logger("oracle_comparator")
 
 # { job_id: { "1to2": { comp_type: DataFrame }, "2to1": { comp_type: DataFrame } } }
+# Purged on DELETE and on TTL expiry via job_manager's cache registry.
 _result_data: dict[str, dict[str, dict[str, pl.DataFrame]]] = {}
+job_manager.register_result_cache(_result_data)
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -59,10 +61,13 @@ def _run_thread(
     env2_name: str,
 ) -> None:
     try:
+        logger.info(f"[{job_id}] Starting Oracle Comparator: analysis_type={analysis_type}, env1={env1_name}, env2={env2_name}")
+        logger.info(f"[{job_id}] Input files: {list(files.keys())}")
         callback = job_manager.make_progress_callback(job_id)
         result = run_analysis(files, analysis_type, env1_name, env2_name, progress_callback=callback)
 
         if not result.success:
+            logger.error(f"[{job_id}] Oracle Comparator analysis failed: {result.errors}")
             job_manager.fail_job(job_id, result.errors)
             return
 
@@ -72,9 +77,11 @@ def _run_thread(
             "1to2": {ct: df for ct, df in results_1to2.items() if df is not None},
             "2to1": {ct: df for ct, df in results_2to1.items() if df is not None},
         }
+        logger.info(f"[{job_id}] Analysis results cached: {list(_result_data[job_id].keys())}")
 
         report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
         if not report_result.success:
+            logger.error(f"[{job_id}] Report generation failed: {report_result.errors}")
             job_manager.fail_job(job_id, report_result.errors)
             return
 
@@ -108,10 +115,11 @@ def _run_thread(
 
         buf = io.BytesIO(report_result.data)
         fname = output_filename("Oracle_Comparison", f"{env1_name}_vs_{env2_name}")
+        logger.info(f"[{job_id}] Oracle Comparator complete. Output file: {fname}")
         job_manager.complete_job(job_id, summary, buf, fname)
 
     except Exception as exc:
-        logger.error("Oracle comparator thread error: %s", exc, exc_info=True)
+        logger.error(f"[{job_id}] Oracle Comparator failed with exception", exc_info=True)
         job_manager.fail_job(job_id, [str(exc)])
 
 
@@ -125,7 +133,9 @@ async def upload(
     env2_name: str = Form(...),
     analysis_type: str = Form(...),
 ):
+    logger.info(f"Oracle Comparator upload initiated: analysis_type={analysis_type}, env1={env1_name}, env2={env2_name}")
     if analysis_type not in ("rbac", "dsp", "both"):
+        logger.error(f"Invalid analysis_type: {analysis_type}")
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "analysis_type must be 'rbac', 'dsp', or 'both'.", "code": "VALIDATION_ERROR", "details": []},
@@ -158,22 +168,41 @@ async def upload(
             file_names[key] = uf.filename or key
 
     if errors:
+        logger.error(f"Oracle Comparator upload validation failed: {errors}")
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": errors[0], "code": "VALIDATION_ERROR", "details": errors},
         )
 
+    # ── Comprehensive bulk validation — collect all file loading errors ────────
+    load_errors: list[str] = []
     loaded: dict[str, pl.DataFrame] = {}
-    try:
-        for key in file_bytes:
+    for key in file_bytes:
+        try:
             loaded[key] = _load_file(file_bytes[key], file_names[key])
-    except Exception as exc:
+            logger.info(f"Loaded {key}: {loaded[key].height} rows")
+        except Exception as exc:
+            logger.error(f"Failed to load {file_names[key]}: {exc}", exc_info=True)
+            load_errors.append(f"{file_names[key]} ({key}): {exc}")
+
+    if load_errors:
+        logger.error(f"Oracle Comparator upload failed with {len(load_errors)} error(s): {load_errors}")
         return JSONResponse(
             status_code=400,
-            content={"error": True, "message": str(exc), "code": "FILE_FORMAT_ERROR", "details": []},
+            content={"error": True, "message": f"Found {len(load_errors)} file loading error(s). See details below.", "code": "FILE_FORMAT_ERROR", "details": load_errors},
+        )
+
+    # Verify that all required files were loaded
+    if not loaded:
+        error_msg = "No files were successfully loaded."
+        logger.error(error_msg)
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": error_msg, "code": "FILE_FORMAT_ERROR", "details": []},
         )
 
     job = job_manager.create_job("oracle_comparator")
+    logger.info(f"[{job.id}] Created job for Oracle Comparator")
     job_manager.store_files(job.id, loaded)
     job_manager.set_config(job.id, {
         "analysis_type": analysis_type,
@@ -181,6 +210,7 @@ async def upload(
         "env2_name": env2_name,
     })
     job_manager.set_status(job.id, JobStatus.VALIDATING, "Files validated.")
+    logger.info(f"[{job.id}] Files stored and validated. Ready for analysis.")
 
     return UploadResponse(
         job_id=job.id,
@@ -193,12 +223,20 @@ async def upload(
 async def run(job_id: str, config: OracleRunConfig):
     job = job_manager.get_job(job_id)
 
+    if job.status == JobStatus.RUNNING:
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
     if not job.files:
+        logger.error(f"[{job_id}] Run requested but no files found in job")
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "Files not found. Please upload again.", "code": "FILES_NOT_FOUND", "details": []},
         )
 
+    logger.info(f"[{job_id}] Starting analysis thread: analysis_type={config.analysis_type}")
     threading.Thread(
         target=_run_thread,
         args=(job_id, dict(job.files), config.analysis_type, config.env1_name, config.env2_name),
@@ -330,6 +368,5 @@ async def results_page(
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
-    _result_data.pop(job_id, None)
-    job_manager.delete_job(job_id)
+    job_manager.delete_job(job_id)  # also purges this router's registered result cache
     return {"message": "Job deleted."}

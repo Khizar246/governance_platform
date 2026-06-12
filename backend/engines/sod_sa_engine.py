@@ -3,9 +3,9 @@
 Algorithm:
   - create_entitlement_mappings(): join role hierarchy with privilege-to-entitlement map
     via two paths (inherited role codes + direct privileges)
-  - check_sod_violations_vectorized(): set-based intersection per control (A ∩ B = violators)
+  - check_sod_violations_vectorized(): single join of unpivoted control legs against
+    entitlements; an entity violates a control when both LHS and RHS legs match
   - check_sa_violations(): direct join on entitlement name
-  - analyze_users(): chunked processing (CHUNK_SIZE = 10,000) to bound memory usage
   - export_results(): xlsxwriter constant_memory mode, auto-split on EXCEL_MAX_ROWS
 
 Pure Polars engine. Pandas only at the Excel I/O boundary.
@@ -24,7 +24,6 @@ import xlsxwriter
 # ── Constants (ported verbatim from SOD Tool/app.py) ─────────────────────────
 
 EXCEL_MAX_ROWS   = 1_048_000
-CHUNK_SIZE       = 10_000
 EMPTY_PLACEHOLDER = "Not Provided in SOD SA Ruleset"
 
 INPUT_COLUMN_RENAME = {
@@ -99,6 +98,34 @@ SUPPLEMENTARY_COLUMNS = {
     "mapping": set(),
 }
 
+# Exact column order for the four exported violation tabs (Step 6 strict schema).
+# Any missing column is added blank; columns outside this list are dropped.
+ROLE_OUTPUT_COLUMNS = [
+    "CONTROL_NAME", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
+    "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason",
+]
+USER_OUTPUT_COLUMNS = [
+    "CONTROL_NAME", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
+    "GROUP_NAME", "USER_NAME",
+    "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason",
+]
+
+
+def reorder_to_output_schema(df: pl.DataFrame, schema: list[str]) -> pl.DataFrame:
+    """Return df with exactly the `schema` columns, in order.
+
+    Missing columns are filled with empty strings; extra columns are dropped.
+    Pure column projection — does not alter any row values.
+    """
+    if df.is_empty():
+        return df
+    missing = [c for c in schema if c not in df.columns]
+    if missing:
+        df = df.with_columns([pl.lit("").alias(c) for c in missing])
+    return df.select(schema)
+
 
 # ── Result type ───────────────────────────────────────────────────────────────
 
@@ -113,7 +140,7 @@ class EngineResult:
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
 
-def _upper_values(df: pl.DataFrame) -> pl.DataFrame:
+def upper_values(df: pl.DataFrame) -> pl.DataFrame:
     """Cast all columns to string, strip whitespace, uppercase values."""
     return df.with_columns([
         pl.col(c).cast(pl.Utf8).str.strip_chars().str.to_uppercase()
@@ -121,7 +148,7 @@ def _upper_values(df: pl.DataFrame) -> pl.DataFrame:
     ])
 
 
-def _apply_rename(df: pl.DataFrame, rename_map: dict[str, str]) -> pl.DataFrame:
+def apply_rename(df: pl.DataFrame, rename_map: dict[str, str]) -> pl.DataFrame:
     """Case-insensitive column rename. Keys in rename_map are matched case-insensitively."""
     norm_map = {k.strip().upper(): v for k, v in rename_map.items()}
     actual = {c: norm_map[c.strip().upper()] for c in df.columns if c.strip().upper() in norm_map}
@@ -165,16 +192,17 @@ def load_ruleset_sheets(
             ]
 
         def _load(sheet_name: str, rename_key: str) -> pl.DataFrame:
+            # Reuse the already-open ExcelFile — re-reading the BytesIO would
+            # re-parse the entire workbook once per sheet.
             df_pd = pd.read_excel(
-                io.BytesIO(file_bytes),
+                xls,
                 sheet_name=sheet_name,
                 dtype=str,
                 keep_default_na=False,
-                engine="openpyxl",
             )
             df = pl.from_pandas(df_pd)
-            df = _upper_values(df)
-            df = _apply_rename(df, INPUT_COLUMN_RENAME[rename_key])
+            df = upper_values(df)
+            df = apply_rename(df, INPUT_COLUMN_RENAME[rename_key])
             return df.unique()
 
         sod_df     = _load("SoD Ruleset",            "sod")
@@ -323,12 +351,11 @@ def check_sod_violations_vectorized(
 ) -> pl.DataFrame:
     """Set-based SOD violation detection: A ∩ B = violators.
 
-    For each SOD control:
-      Set A = entities with LHS entitlement
-      Set B = entities with RHS entitlement
-      Intersection(A, B) = violating entities → emit LHS + RHS rows
-
-    Ported verbatim from SOD Tool/app.py.
+    Vectorised: each control row is unpivoted into an LHS and an RHS leg, all
+    legs are joined against the entitlements in a single pass, and only
+    (control row, entity) pairs where BOTH legs matched are kept. The per-row
+    control ID preserves the original per-control-row semantics when the same
+    control name appears on multiple ruleset rows.
     """
     entity_key = entity_column or "ROLE_NAME"
 
@@ -336,65 +363,45 @@ def check_sod_violations_vectorized(
         pl.col(entity_key).alias("ENTITY_VALUE")
     )
 
-    all_violations: list[pl.DataFrame] = []
-
-    for control_row in sod_controls.iter_rows(named=True):
-        lhs_entitlement = control_row["LHS_ENTITLEMENT"]
-        rhs_entitlement = control_row["RHS_ENTITLEMENT"]
-
-        lhs_records = entitlements_with_entity.filter(
-            pl.col("ENTITLEMENT_NAME") == lhs_entitlement
-        )
-        rhs_records = entitlements_with_entity.filter(
-            pl.col("ENTITLEMENT_NAME") == rhs_entitlement
-        )
-
-        if lhs_records.height == 0 or rhs_records.height == 0:
-            continue
-
-        common_entities = lhs_records.join(
-            rhs_records.select(["ENTITY_VALUE"]).unique(),
-            on="ENTITY_VALUE",
-            how="inner",
-        )
-
-        if common_entities.height == 0:
-            continue
-
-        shared_cols = [
-            "CONTROL_NAME", "RISK_RANKING", "MODULES",
-            "ENTITY_VALUE",
-            pl.col("ENTITLEMENT_NAME").alias("ENTITLEMENT"),
-            "SIDE",
-            "ROLE_NAME", "ROLE_DISPLAY_NAME",
-            "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
-            "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME",
-        ]
-
-        lhs_violations = common_entities.with_columns([
-            pl.lit(control_row["CONTROL_NAME"]).alias("CONTROL_NAME"),
-            pl.lit(control_row["RISK_RANKING"]).alias("RISK_RANKING"),
-            pl.lit(control_row["MODULES"]).alias("MODULES"),
+    controls = sod_controls.with_row_index("_ctrl_id")
+    legs = pl.concat([
+        controls.select([
+            "_ctrl_id", "CONTROL_NAME", "RISK_RANKING", "MODULES",
+            pl.col("LHS_ENTITLEMENT").alias("ENTITLEMENT_NAME"),
             pl.lit("LHS").alias("SIDE"),
-        ]).select(shared_cols)
-
-        rhs_violations = rhs_records.join(
-            common_entities.select(["ENTITY_VALUE"]).unique(),
-            on="ENTITY_VALUE",
-            how="inner",
-        ).with_columns([
-            pl.lit(control_row["CONTROL_NAME"]).alias("CONTROL_NAME"),
-            pl.lit(control_row["RISK_RANKING"]).alias("RISK_RANKING"),
-            pl.lit(control_row["MODULES"]).alias("MODULES"),
+        ]),
+        controls.select([
+            "_ctrl_id", "CONTROL_NAME", "RISK_RANKING", "MODULES",
+            pl.col("RHS_ENTITLEMENT").alias("ENTITLEMENT_NAME"),
             pl.lit("RHS").alias("SIDE"),
-        ]).select(shared_cols)
+        ]),
+    ])
 
-        all_violations.append(pl.concat([lhs_violations, rhs_violations]))
-
-    if not all_violations:
+    matched = entitlements_with_entity.join(legs, on="ENTITLEMENT_NAME", how="inner")
+    if matched.is_empty():
         return pl.DataFrame()
 
-    final_violations = pl.concat(all_violations).unique()
+    # Keep only (control row, entity) pairs where both LHS and RHS matched
+    both_sides = (
+        matched
+        .group_by(["_ctrl_id", "ENTITY_VALUE"])
+        .agg(pl.col("SIDE").n_unique().alias("_n_sides"))
+        .filter(pl.col("_n_sides") == 2)
+        .select(["_ctrl_id", "ENTITY_VALUE"])
+    )
+    matched = matched.join(both_sides, on=["_ctrl_id", "ENTITY_VALUE"], how="semi")
+    if matched.is_empty():
+        return pl.DataFrame()
+
+    final_violations = matched.select([
+        "CONTROL_NAME", "RISK_RANKING", "MODULES",
+        "ENTITY_VALUE",
+        pl.col("ENTITLEMENT_NAME").alias("ENTITLEMENT"),
+        "SIDE",
+        "ROLE_NAME", "ROLE_DISPLAY_NAME",
+        "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+        "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME",
+    ]).unique()
 
     if entity_column:
         final_violations = final_violations.rename({"ENTITY_VALUE": entity_column})
@@ -445,6 +452,301 @@ def check_sa_violations(
     )
 
 
+# ── False Positive (FP) classification engine ─────────────────────────────────
+
+def _set_fp_where_pending(df: pl.DataFrame, tag: str) -> pl.DataFrame:
+    """Apply an FP classification carried in a `_reason` column.
+
+    Rows where `_reason` is non-null and FP? is still unset get FP?=tag and the
+    reason text; rows already classified by an earlier level are untouched.
+    Drops the `_reason` column.
+    """
+    return df.with_columns([
+        pl.when(
+            pl.col("_reason").is_not_null() & (pl.col("FP?") == "")
+        ).then(pl.lit(tag)).otherwise(pl.col("FP?")).alias("FP?"),
+        pl.when(
+            pl.col("_reason").is_not_null() & (pl.col("Reason") == "")
+        ).then(pl.col("_reason")).otherwise(pl.col("Reason")).alias("Reason"),
+    ]).drop("_reason")
+
+
+def _fp_level1(
+    df: pl.DataFrame,
+    no_action_df: pl.DataFrame,
+) -> pl.DataFrame:
+    """Level 1: Mark privileges in No_action_Privileges sheet as FP=YES.
+
+    Joins on PRIVILEGE_DISPLAY_NAME; preserves existing FP?/Reason for already-classified rows.
+    """
+    if no_action_df.is_empty():
+        return df
+
+    joined = df.join(
+        no_action_df.select([
+            "PRIVILEGE_DISPLAY_NAME",
+            pl.col("FALSE POSITIVE REASON").alias("_reason"),
+        ]).unique(subset=["PRIVILEGE_DISPLAY_NAME"], keep="first"),
+        on="PRIVILEGE_DISPLAY_NAME",
+        how="left",
+    )
+
+    return _set_fp_where_pending(joined, "YES")
+
+
+def _fp_level2(
+    df: pl.DataFrame,
+    work_area_df: pl.DataFrame,
+    role_hierarchy_df: pl.DataFrame,
+    entity_col: str,
+    user_role_df: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """Level 2: Work Area gatekeeper privilege check.
+
+    For users (entity_col == "USER_NAME"): checks if ANY assigned role grants the WA privilege.
+    For roles: checks only the specific role in the violation.
+    Marks as FP=YES if privilege is NOT granted.
+    """
+    if work_area_df.is_empty():
+        return df
+
+    wa_valid = work_area_df.filter(
+        pl.col("WORK_AREA_PRIVILEGE").is_not_null()
+        & (pl.col("WORK_AREA_PRIVILEGE") != "")
+        & (~pl.col("WORK_AREA_PRIVILEGE").is_in(["NAN", "NONE"]))
+    )
+
+    if wa_valid.is_empty():
+        return df
+
+    pending = df.filter(pl.col("FP?") == "")
+    if pending.is_empty():
+        return df
+
+    # Merge pending rows with work area rules
+    wa_merged = pending.join(
+        wa_valid.select(["PRIVILEGE_DISPLAY_NAME", "WORK_AREA_PRIVILEGE"]),
+        on="PRIVILEGE_DISPLAY_NAME",
+        how="inner",
+    )
+
+    if wa_merged.is_empty():
+        return df
+
+    # Build access lookup: role → privilege
+    role_gk = role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_DISPLAY_NAME"]).unique()
+
+    # Determine how to check for WA privilege satisfaction
+    if entity_col == "USER_NAME" and user_role_df is not None:
+        # User-level: check across ALL assigned roles
+        access_master = user_role_df.join(
+            role_gk,
+            on="ROLE_NAME",
+            how="inner",
+        ).select(["USER_NAME", "PRIVILEGE_DISPLAY_NAME"]).unique()
+        join_keys = ["USER_NAME", "WORK_AREA_PRIVILEGE"]
+        right_keys = ["USER_NAME", "PRIVILEGE_DISPLAY_NAME"]
+    else:
+        # Role-level: check only the specific role
+        access_master = role_gk
+        join_keys = ["ROLE_NAME", "WORK_AREA_PRIVILEGE"]
+        right_keys = ["ROLE_NAME", "PRIVILEGE_DISPLAY_NAME"]
+
+    # Find rows where WA privilege IS satisfied (inner join succeeds)
+    satisfied = wa_merged.join(
+        access_master,
+        left_on=join_keys,
+        right_on=right_keys,
+        how="inner",
+    ).select("_row_nr").unique()
+
+    # FP candidates: rows in wa_merged but NOT in satisfied
+    fp_ids = wa_merged.select("_row_nr").unique().join(
+        satisfied,
+        on="_row_nr",
+        how="anti",
+    )
+
+    if fp_ids.is_empty():
+        return df
+
+    # Build FP reasons
+    target_noun = "User" if entity_col == "USER_NAME" else "Role"
+    fp_reasons = wa_merged.join(fp_ids, on="_row_nr", how="inner").group_by("_row_nr").agg(
+        pl.col("WORK_AREA_PRIVILEGE").unique().sort().alias("_wa_list")
+    ).with_columns(
+        (pl.lit(f"{target_noun} lacks required work-area privilege(s) across all assignments: ") + pl.col("_wa_list").list.join(", ")).alias("_reason")
+    ).drop("_wa_list")
+
+    return _set_fp_where_pending(df.join(fp_reasons, on="_row_nr", how="left"), "YES")
+
+
+def _fp_level3(
+    df: pl.DataFrame,
+    entity_col: str,
+    is_sod: bool,
+) -> pl.DataFrame:
+    """Level 3: SL (Single Leg) vs True Conflict classification.
+
+    For SOD: count unique entitlements per (CONTROL_NAME, entity_col).
+      1 entitlement → SL, ≥2 → True Conflict.
+    For SA: all remaining rows → True Conflict.
+    """
+    entity_label = entity_col.lower().replace("_", " ")
+    pending = df.filter(pl.col("FP?") == "")
+    if pending.is_empty():
+        return df
+
+    if is_sod:
+        # Count entitlements per control & entity
+        pending_counted = pending.with_columns(
+            pl.col("ENTITLEMENT").n_unique().over(["CONTROL_NAME", entity_col]).alias("_ent_count")
+        )
+
+        sl_ids = pending_counted.filter(pl.col("_ent_count") == 1).select("_row_nr")
+        tc_ids = pending_counted.filter(pl.col("_ent_count") >= 2).select("_row_nr")
+
+        sl_reasons = pending_counted.join(sl_ids, on="_row_nr", how="inner").select([
+            "_row_nr",
+            (pl.lit(f"Single Leg — only one entitlement remains for {entity_label} '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
+        ])
+
+        tc_reasons = pending_counted.join(tc_ids, on="_row_nr", how="inner").select([
+            "_row_nr",
+            (pl.lit(f"True Conflict — both entitlements present for {entity_label} '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
+        ])
+
+        # Apply SL, then TC
+        df = _set_fp_where_pending(df.join(sl_reasons, on="_row_nr", how="left"), "SL")
+        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "True Conflict")
+    else:
+        # SA: all pending rows are True Conflict
+        tc_reason = f"True Conflict — Sensitive Access violation at {entity_label} level"
+        tc_reasons = pending.select("_row_nr").with_columns(pl.lit(tc_reason).alias("_reason"))
+        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "True Conflict")
+
+
+def run_fp_pipeline(
+    df: pl.DataFrame,
+    no_action_df: pl.DataFrame,
+    work_area_df: pl.DataFrame,
+    role_hierarchy_df: pl.DataFrame,
+    entity_col: str,
+    is_sod: bool,
+    user_role_df: pl.DataFrame | None = None,
+) -> pl.DataFrame:
+    """Run all 3 FP levels sequentially.
+
+    Adds _row_nr index for tracking, applies levels 1→2→3, drops index.
+    Returns DataFrame with FP? and Reason columns added.
+    """
+    df = df.with_row_index("_row_nr").with_columns([
+        pl.lit("").alias("FP?"),
+        pl.lit("").alias("Reason"),
+    ])
+    df = _fp_level1(df, no_action_df)
+    df = _fp_level2(df, work_area_df, role_hierarchy_df, entity_col, user_role_df)
+    df = _fp_level3(df, entity_col, is_sod)
+    return df.drop("_row_nr")
+
+
+# ── User grouping engine (post-analysis review efficiency) ──────────────────
+
+def _generate_user_groups(
+    user_role_df_filtered: pl.DataFrame,
+    group_prefix: str = "Group",
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Group users by identical role combinations.
+
+    Returns (user_to_group_map, group_export).
+    user_to_group_map: [USER_NAME, GROUP_NAME]
+    group_export: [GROUP_NAME, ROLE_NAME, NO_OF_USERS_IN_GROUP]
+    """
+    if user_role_df_filtered.is_empty():
+        return pl.DataFrame(), pl.DataFrame()
+
+    # Aggregate roles per user (sorted, deduplicated)
+    user_roles_agg = user_role_df_filtered.group_by("USER_NAME").agg(
+        pl.col("ROLE_NAME").unique().sort().alias("roles_list")
+    )
+
+    # Get unique role combinations
+    unique_groups = user_roles_agg.select("roles_list").unique()
+    unique_groups = unique_groups.with_columns(
+        pl.col("roles_list").list.join(",").alias("sort_key")
+    ).sort("sort_key").with_row_index(name="group_idx")
+
+    unique_groups = unique_groups.with_columns(
+        pl.format("{}_{}", pl.lit(group_prefix), pl.col("group_idx") + 1).alias("GROUP_NAME")
+    ).drop(["group_idx", "sort_key"])
+
+    # Map users to groups
+    user_to_group_map = user_roles_agg.join(unique_groups, on="roles_list", how="inner")
+
+    # Explode roles for group mapping export
+    group_roles_exploded = unique_groups.explode("roles_list").rename({"roles_list": "ROLE_NAME"})
+
+    # Count users per group
+    group_user_counts = user_to_group_map.group_by("GROUP_NAME").agg(
+        pl.col("USER_NAME").count().alias("NO_OF_USERS_IN_GROUP")
+    )
+
+    # Final export: GROUP_NAME, ROLE_NAME, NO_OF_USERS_IN_GROUP
+    group_mapping_export = group_roles_exploded.join(
+        group_user_counts,
+        on="GROUP_NAME",
+        how="left",
+    ).select(["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"])
+
+    return user_to_group_map.select(["USER_NAME", "GROUP_NAME"]), group_mapping_export
+
+
+def apply_grouping_to_violations(
+    user_violations_df: pl.DataFrame,
+    full_user_role_df: pl.DataFrame,
+    prefix: str = "Group",
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Apply user grouping to violation DataFrame.
+
+    Filters full_user_role_df to only violating users, generates groups,
+    joins GROUP_NAME and NO_OF_USERS_IN_GROUP back onto violations.
+    Returns (augmented_violations, group_mapping_export).
+    """
+    if user_violations_df.is_empty():
+        return pl.DataFrame(), pl.DataFrame()
+
+    violating_users = user_violations_df.select("USER_NAME").unique()
+    violating_user_roles = full_user_role_df.join(
+        violating_users,
+        on="USER_NAME",
+        how="inner",
+    )
+
+    user_to_group_map, group_export = _generate_user_groups(violating_user_roles, prefix)
+    if user_to_group_map.is_empty():
+        return user_violations_df, pl.DataFrame()
+
+    group_counts = group_export.select(["GROUP_NAME", "NO_OF_USERS_IN_GROUP"]).unique()
+    map_with_counts = user_to_group_map.join(group_counts, on="GROUP_NAME", how="left")
+    grouped_violations = user_violations_df.join(map_with_counts, on="USER_NAME", how="left")
+
+    # Reorder columns: GROUP_NAME and NO_OF_USERS_IN_GROUP after first 3 columns, USER_NAME at end
+    cols = list(grouped_violations.columns)
+    if "GROUP_NAME" in cols:
+        cols.remove("GROUP_NAME")
+    if "NO_OF_USERS_IN_GROUP" in cols:
+        cols.remove("NO_OF_USERS_IN_GROUP")
+    if "USER_NAME" in cols:
+        cols.remove("USER_NAME")
+
+    insert_idx = min(3, len(cols))
+    cols.insert(insert_idx, "GROUP_NAME")
+    cols.insert(insert_idx + 1, "NO_OF_USERS_IN_GROUP")
+    cols.append("USER_NAME")
+
+    return grouped_violations.select(cols), group_export
+
+
 # ── Analysis orchestrators ────────────────────────────────────────────────────
 
 def analyze_roles(
@@ -493,11 +795,11 @@ def analyze_users(
     logger: Any = None,
     progress_callback: Callable[[int, str], None] | None = None,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Analyse users for SOD and SA violations using CHUNK_SIZE batches.
+    """Analyse users for SOD and SA violations.
 
-    Users are processed in chunks of CHUNK_SIZE (10,000) to keep memory bounded.
+    SOD detection is fully vectorised (single leg-join pass), so no user
+    chunking is needed; SA detection is a single join.
     Returns (user_sod_violations, user_sa_violations).
-    Ported verbatim from SOD Tool/app.py.
     """
     _log = logger or logging.getLogger(__name__)
 
@@ -512,10 +814,8 @@ def analyze_users(
         _log.warning("No user-role expansions found")
         return pl.DataFrame(), pl.DataFrame()
 
-    unique_users = user_role_expanded.select("USER_NAME").unique()
-    num_users = unique_users.height
-    num_chunks = (num_users + CHUNK_SIZE - 1) // CHUNK_SIZE
-    _log.info("User analysis: %d users, %d chunks", num_users, num_chunks)
+    num_users = user_role_expanded.select("USER_NAME").unique().height
+    _log.info("User analysis: %d users", num_users)
 
     _cb(10, "Building user entitlement mappings…")
     all_user_entitlements = create_entitlement_mappings(user_role_expanded, entitlement_mapping_df)
@@ -530,49 +830,13 @@ def analyze_users(
         how="left",
     )
 
-    # ── SOD: chunked ─────────────────────────────────────────────────────────
-    _cb(20, f"Checking SOD violations for {num_users:,} users ({num_chunks} batch(es))…")
-    sod_batches: list[pl.DataFrame] = []
+    _cb(20, f"Checking SOD violations for {num_users:,} users…")
+    user_sod = check_sod_violations_vectorized(
+        all_user_entitlements, sod_controls_df, "USER_NAME"
+    )
 
-    for chunk_idx in range(num_chunks):
-        start_idx = chunk_idx * CHUNK_SIZE
-        end_idx   = min(start_idx + CHUNK_SIZE, num_users)
-        user_chunk = unique_users[start_idx:end_idx]
-        chunk_ents = all_user_entitlements.join(user_chunk, on="USER_NAME", how="inner")
-
-        if chunk_ents.height > 0:
-            chunk_viol = check_sod_violations_vectorized(
-                chunk_ents, sod_controls_df, "USER_NAME"
-            )
-            if chunk_viol.height > 0:
-                sod_batches.append(chunk_viol)
-
-        if (chunk_idx + 1) % 10 == 0 or chunk_idx + 1 == num_chunks:
-            pct = 20 + int((chunk_idx + 1) / num_chunks * 35)
-            _cb(pct, f"SOD violations: users {start_idx + 1:,}–{end_idx:,} of {num_users:,}…")
-
-    user_sod = pl.concat(sod_batches).unique() if sod_batches else pl.DataFrame()
-
-    # ── SA: chunked ───────────────────────────────────────────────────────────
-    _cb(58, f"Checking SA violations for {num_users:,} users ({num_chunks} batch(es))…")
-    sa_batches: list[pl.DataFrame] = []
-
-    for chunk_idx in range(num_chunks):
-        start_idx = chunk_idx * CHUNK_SIZE
-        end_idx   = min(start_idx + CHUNK_SIZE, num_users)
-        user_chunk = unique_users[start_idx:end_idx]
-        chunk_ents = all_user_entitlements.join(user_chunk, on="USER_NAME", how="inner")
-
-        if chunk_ents.height > 0:
-            chunk_viol = check_sa_violations(chunk_ents, sa_controls_df, "USER_NAME")
-            if chunk_viol.height > 0:
-                sa_batches.append(chunk_viol)
-
-        if (chunk_idx + 1) % 10 == 0 or chunk_idx + 1 == num_chunks:
-            pct = 58 + int((chunk_idx + 1) / num_chunks * 35)
-            _cb(pct, f"SA violations: users {start_idx + 1:,}–{end_idx:,} of {num_users:,}…")
-
-    user_sa = pl.concat(sa_batches).unique() if sa_batches else pl.DataFrame()
+    _cb(58, f"Checking SA violations for {num_users:,} users…")
+    user_sa = check_sa_violations(all_user_entitlements, sa_controls_df, "USER_NAME")
 
     _log.info("User analysis: SOD=%d SA=%d", user_sod.height, user_sa.height)
     _cb(95, "User analysis complete.")
@@ -593,68 +857,131 @@ def create_summary_sheet(
     """Build control-level violation summary DataFrame.
 
     Counts unique violating roles/users per control for both SOD and SA.
-    Ported verbatim from SOD Tool/app.py.
+    Counts are precomputed with one group_by per violation sheet instead of
+    one full-table filter per control.
     """
+    def _counts_by_control(df: pl.DataFrame, entity_col: str, enabled: bool) -> dict[str, int]:
+        if not enabled or df.height == 0 or entity_col not in df.columns:
+            return {}
+        return {
+            row["CONTROL_NAME"]: row["count"]
+            for row in df.group_by("CONTROL_NAME")
+            .agg(pl.col(entity_col).n_unique().alias("count"))
+            .iter_rows(named=True)
+        }
+
+    role_enabled = analysis_type in ("role", "both")
+    user_enabled = analysis_type in ("user", "both")
+
+    sod_role_counts = _counts_by_control(role_sod_violations, "ROLE_NAME", role_enabled)
+    sod_user_counts = _counts_by_control(user_sod_violations, "USER_NAME", user_enabled)
+    sa_role_counts  = _counts_by_control(role_sa_violations,  "ROLE_NAME", role_enabled)
+    sa_user_counts  = _counts_by_control(user_sa_violations,  "USER_NAME", user_enabled)
+
     summary_data: list[dict] = []
     index = 1
 
-    # SOD controls
-    for control_row in sod_controls_df.iter_rows(named=True):
-        control_name = control_row["CONTROL_NAME"]
-
-        role_count = 0
-        if analysis_type in ("role", "both") and role_sod_violations.height > 0:
-            viol = role_sod_violations.filter(pl.col("CONTROL_NAME") == control_name)
-            if viol.height > 0:
-                role_count = viol.select("ROLE_NAME").unique().height
-
-        user_count = 0
-        if analysis_type in ("user", "both") and user_sod_violations.height > 0:
-            viol = user_sod_violations.filter(pl.col("CONTROL_NAME") == control_name)
-            if viol.height > 0:
-                user_count = viol.select("USER_NAME").unique().height
-
-        summary_data.append({
-            "#":                        index,
-            "CONTROL_TYPE":             "SOD",
-            "CONTROL_NAME":             control_name,
-            "RISK_RANKING":             control_row["RISK_RANKING"],
-            "RISK_DESCRIPTION":         control_row.get("RISK_DESCRIPTION", EMPTY_PLACEHOLDER),
-            "MODULES":                  control_row["MODULES"],
-            "NO_OF_ROLES_IN_VIOLATION": role_count,
-            "NO_OF_USERS_IN_VIOLATION": user_count,
-        })
-        index += 1
-
-    # SA controls
-    for control_row in sa_controls_df.iter_rows(named=True):
-        control_name = control_row["CONTROL_NAME"]
-
-        role_count = 0
-        if analysis_type in ("role", "both") and role_sa_violations.height > 0:
-            viol = role_sa_violations.filter(pl.col("CONTROL_NAME") == control_name)
-            if viol.height > 0:
-                role_count = viol.select("ROLE_NAME").unique().height
-
-        user_count = 0
-        if analysis_type in ("user", "both") and user_sa_violations.height > 0:
-            viol = user_sa_violations.filter(pl.col("CONTROL_NAME") == control_name)
-            if viol.height > 0:
-                user_count = viol.select("USER_NAME").unique().height
-
-        summary_data.append({
-            "#":                        index,
-            "CONTROL_TYPE":             "SA",
-            "CONTROL_NAME":             control_name,
-            "RISK_RANKING":             control_row["RISK_RANKING"],
-            "RISK_DESCRIPTION":         control_row.get("RISK_DESCRIPTION", EMPTY_PLACEHOLDER),
-            "MODULES":                  control_row["MODULES"],
-            "NO_OF_ROLES_IN_VIOLATION": role_count,
-            "NO_OF_USERS_IN_VIOLATION": user_count,
-        })
-        index += 1
+    for control_type, controls_df, role_counts, user_counts in [
+        ("SOD", sod_controls_df, sod_role_counts, sod_user_counts),
+        ("SA",  sa_controls_df,  sa_role_counts,  sa_user_counts),
+    ]:
+        for control_row in controls_df.iter_rows(named=True):
+            control_name = control_row["CONTROL_NAME"]
+            summary_data.append({
+                "#":                        index,
+                "CONTROL_TYPE":             control_type,
+                "CONTROL_NAME":             control_name,
+                "RISK_RANKING":             control_row["RISK_RANKING"],
+                "RISK_DESCRIPTION":         control_row.get("RISK_DESCRIPTION", EMPTY_PLACEHOLDER),
+                "MODULES":                  control_row["MODULES"],
+                "NO_OF_ROLES_IN_VIOLATION": role_counts.get(control_name, 0),
+                "NO_OF_USERS_IN_VIOLATION": user_counts.get(control_name, 0),
+            })
+            index += 1
 
     return pl.DataFrame(summary_data) if summary_data else pl.DataFrame()
+
+
+def _write_safe_split_dataframe(
+    workbook: xlsxwriter.Workbook,
+    sheet_base_name: str,
+    df: pl.DataFrame,
+    entity_col: str,
+    max_rows: int = EXCEL_MAX_ROWS,
+) -> int:
+    """Entity-aware safe sheet splitting: never split a single entity's block.
+
+    Processes entities in order, adding complete entity blocks to current sheet
+    until the next entity would exceed max_rows. If so, starts a new sheet
+    (named "{base} Part N"). If a SINGLE entity block alone exceeds max_rows it
+    physically cannot fit on one sheet, so it is hard-split across sheets with
+    a warning — xlsxwriter's constant_memory mode would otherwise silently drop
+    every row past the Excel limit.
+    Returns number of sheets created.
+    """
+    if df.is_empty():
+        return 0
+
+    total_rows = df.height
+    if total_rows <= max_rows:
+        ws = workbook.add_worksheet(sheet_base_name[:31])
+        _write_sheet_batch(ws, df)
+        return 1
+
+    # Sort by entity and count rows per entity
+    df_sorted = df.sort(entity_col)
+    entity_counts = df_sorted.group_by(entity_col, maintain_order=True).agg(
+        pl.len().alias("count")
+    )
+    counts = entity_counts["count"].to_list()
+
+    start_row = 0
+    current_chunk_rows = 0
+    part_num = 1
+    sheets_created = 0
+
+    for count in counts:
+        if current_chunk_rows + count > max_rows and current_chunk_rows > 0:
+            # Flush the current sheet before starting this entity's block
+            end_row = start_row + current_chunk_rows
+            sheet_name = f"{sheet_base_name[:24]} Part {part_num}"
+            ws = workbook.add_worksheet(sheet_name[:31])
+            _write_sheet_batch(ws, df_sorted[start_row:end_row])
+            sheets_created += 1
+            start_row = end_row
+            current_chunk_rows = 0
+            part_num += 1
+
+        if count > max_rows:
+            # One entity exceeds the Excel row limit — split its block rather
+            # than lose rows.
+            logging.getLogger(__name__).warning(
+                "Sheet '%s': a single %s block has %d rows (> %d) and must span multiple sheets.",
+                sheet_base_name, entity_col, count, max_rows,
+            )
+            remaining = count
+            while remaining > 0:
+                take = min(remaining, max_rows)
+                end_row = start_row + take
+                sheet_name = f"{sheet_base_name[:24]} Part {part_num}"
+                ws = workbook.add_worksheet(sheet_name[:31])
+                _write_sheet_batch(ws, df_sorted[start_row:end_row])
+                sheets_created += 1
+                start_row = end_row
+                remaining -= take
+                part_num += 1
+        else:
+            current_chunk_rows += count
+
+    # Write final sheet
+    if current_chunk_rows > 0:
+        end_row = start_row + current_chunk_rows
+        sheet_name = f"{sheet_base_name[:24]} Part {part_num}" if part_num > 1 else sheet_base_name
+        ws = workbook.add_worksheet(sheet_name[:31])
+        _write_sheet_batch(ws, df_sorted[start_row:end_row])
+        sheets_created += 1
+
+    return sheets_created
 
 
 def export_results(
@@ -666,13 +993,15 @@ def export_results(
     sa_controls_df: pl.DataFrame,
     analysis_type: str,
     logger: Any = None,
+    sod_group_mapping: pl.DataFrame | None = None,
+    sa_group_mapping: pl.DataFrame | None = None,
+    role_hierarchy_df: pl.DataFrame | None = None,
 ) -> EngineResult:
     """Write SOD & SA results to an in-memory Excel workbook.
 
-    Sheet order: SUMMARY, then ROLE_SOD / ROLE_SA / USER_SOD / USER_SA as applicable.
-    Sheets exceeding EXCEL_MAX_ROWS are auto-split.
+    Sheet order: SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA.
+    Uses entity-aware splitting to keep complete user/role blocks together.
     Returns EngineResult with .data = io.BytesIO positioned at offset 0.
-    Ported verbatim from SOD Tool/app.py.
     """
     _log = logger or logging.getLogger(__name__)
 
@@ -684,61 +1013,84 @@ def export_results(
             analysis_type,
         )
 
-        results_data: dict[str, pl.DataFrame] = {}
-        if not summary_df.is_empty():
-            results_data["SUMMARY"] = summary_df
-
-        _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
-        _user_sort_cols = [*_role_sort_cols, "USER_NAME"]
-
-        if analysis_type in ("role", "both"):
-            if role_sod_violations.height > 0:
-                results_data["ROLE_SOD"] = role_sod_violations.sort(_role_sort_cols, nulls_last=True)
-            if role_sa_violations.height > 0:
-                results_data["ROLE_SA"] = role_sa_violations.sort(_role_sort_cols, nulls_last=True)
-
-        if analysis_type in ("user", "both"):
-            if user_sod_violations.height > 0:
-                results_data["USER_SOD"] = user_sod_violations.sort(_user_sort_cols, nulls_last=True)
-            if user_sa_violations.height > 0:
-                results_data["USER_SA"] = user_sa_violations.sort(_user_sort_cols, nulls_last=True)
-
         output_buffer = io.BytesIO()
         workbook = xlsxwriter.Workbook(
             output_buffer,
-            {"constant_memory": True, "strings_to_urls": False},
+            # strings_to_formulas=False: cell values that begin with '=' must be
+            # written as text, never as live formulas (formula-injection guard).
+            {"constant_memory": True, "strings_to_urls": False, "strings_to_formulas": False},
         )
 
         total_sheets = 0
 
-        for sheet_name, df in results_data.items():
-            total_rows = df.height
-            display_name = sheet_name.replace("_", " ")
+        # Write summary
+        if not summary_df.is_empty():
+            ws = workbook.add_worksheet("SUMMARY")
+            _write_sheet_batch(ws, summary_df)
+            total_sheets += 1
+            _log.info("Created sheet: SUMMARY")
 
-            if total_rows <= EXCEL_MAX_ROWS:
-                ws = workbook.add_worksheet(display_name)
-                _write_sheet_batch(ws, df)
-                total_sheets += 1
-                _log.info("Created sheet: %s (%d rows)", sheet_name, total_rows)
-            else:
-                num_parts = (total_rows + EXCEL_MAX_ROWS - 1) // EXCEL_MAX_ROWS
-                for part_num in range(num_parts):
-                    start_row = part_num * EXCEL_MAX_ROWS
-                    end_row   = min((part_num + 1) * EXCEL_MAX_ROWS, total_rows)
-                    chunk_df  = df[start_row:end_row]
+        # Write group mappings (if provided)
+        if sod_group_mapping is not None and not sod_group_mapping.is_empty():
+            sheets_created = _write_safe_split_dataframe(
+                workbook,
+                "Group to Role Map - User SoD",
+                sod_group_mapping.sort("GROUP_NAME"),
+                "GROUP_NAME",
+            )
+            total_sheets += sheets_created
+            _log.info("Created %d sheet(s) for SoD group mapping", sheets_created)
 
-                    part_name = f"{display_name} Part{part_num + 1}"
-                    if len(part_name) > 31:
-                        part_name = f"{display_name[:20]} P{part_num + 1}"
+        if sa_group_mapping is not None and not sa_group_mapping.is_empty():
+            sheets_created = _write_safe_split_dataframe(
+                workbook,
+                "Group to Role Map - User SA",
+                sa_group_mapping.sort("GROUP_NAME"),
+                "GROUP_NAME",
+            )
+            total_sheets += sheets_created
+            _log.info("Created %d sheet(s) for SA group mapping", sheets_created)
 
-                    ws = workbook.add_worksheet(part_name)
-                    _write_sheet_batch(ws, chunk_df)
-                    total_sheets += 1
-                    _log.info("Created sheet: %s (%d rows)", part_name, chunk_df.height)
+        # Write violation sheets
+        _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
+        _user_sort_cols = [*_role_sort_cols, "GROUP_NAME", "USER_NAME"]
+
+        sheet_order = [
+            ("ROLE_SOD", "ROLE_NAME", role_sod_violations, _role_sort_cols, ROLE_OUTPUT_COLUMNS),
+            ("ROLE_SA", "ROLE_NAME", role_sa_violations, _role_sort_cols, ROLE_OUTPUT_COLUMNS),
+            ("USER_SOD", "USER_NAME", user_sod_violations, _user_sort_cols, USER_OUTPUT_COLUMNS),
+            ("USER_SA", "USER_NAME", user_sa_violations, _user_sort_cols, USER_OUTPUT_COLUMNS),
+        ]
+
+        for sheet_name, entity_col, df, sort_cols, output_schema in sheet_order:
+            # "ROLE_SOD" → "role", "USER_SA" → "user" (split on underscore — a
+            # whitespace split here previously skipped every sheet for
+            # role-only / user-only runs).
+            if analysis_type not in ("both", sheet_name.lower().split("_")[0]):
+                continue
+            if df.is_empty():
+                continue
+
+            # Sort with available columns
+            available_sort = [c for c in sort_cols if c in df.columns]
+            if available_sort:
+                df = df.sort(available_sort, nulls_last=True)
+
+            # Project to the exact output schema (Step 6) after sorting
+            df = reorder_to_output_schema(df, output_schema)
+
+            sheets_created = _write_safe_split_dataframe(
+                workbook,
+                sheet_name,
+                df,
+                entity_col,
+            )
+            total_sheets += sheets_created
+            _log.info("Created %d sheet(s) for %s (%d rows)", sheets_created, sheet_name, df.height)
 
         workbook.close()
         file_size_mb = len(output_buffer.getvalue()) / (1024 * 1024)
-        _log.info("Export complete: %.1f MB, %d sheets", file_size_mb, total_sheets)
+        _log.info("Export complete: %.1f MB, %d sheets (ROLE DETAILS removed per spec)", file_size_mb, total_sheets)
 
         output_buffer.seek(0)
         return EngineResult(success=True, data=output_buffer)

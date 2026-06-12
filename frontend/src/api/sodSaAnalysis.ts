@@ -3,6 +3,8 @@ import type { UploadResponse, AnalysisResponse, JobResponse } from '../types'
 
 export interface SODSARunConfig {
   analysis_type: 'role' | 'user' | 'both'
+  with_fp?: boolean
+  selected_analyses?: string[]
 }
 
 export interface SODSASheetCount {
@@ -36,12 +38,14 @@ export async function uploadFiles(
   roleHierarchy: File,
   ruleset: File,
   userRole: File | null,
+  fpDb: File | null,
   onProgress: (p: number) => void,
 ): Promise<UploadResponse> {
   const formData = new FormData()
   formData.append('role_hierarchy', roleHierarchy)
   formData.append('ruleset', ruleset)
   if (userRole) formData.append('user_role', userRole)
+  if (fpDb) formData.append('fp_db', fpDb)
   const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress)
   return response.data
 }

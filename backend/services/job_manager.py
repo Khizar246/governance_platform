@@ -40,6 +40,20 @@ class JobManager:
         self._jobs: dict[str, Job] = {}
         self._lock = threading.Lock()
         self._total_created: int = 0
+        # Router-level result caches (dicts keyed by job_id). Registered caches
+        # are purged whenever a job is deleted or expires, so cached result
+        # DataFrames cannot outlive their job.
+        self._result_caches: list[dict[str, Any]] = []
+
+    def register_result_cache(self, cache: dict[str, Any]) -> None:
+        """Register a router-level result cache for automatic purging."""
+        with self._lock:
+            self._result_caches.append(cache)
+
+    def _purge_result_caches(self, job_id: str) -> None:
+        """Remove a job's entry from every registered result cache (lock held by caller)."""
+        for cache in self._result_caches:
+            cache.pop(job_id, None)
 
     # ── Job lifecycle ──────────────────────────────────────────────────────────
 
@@ -77,6 +91,7 @@ class JobManager:
         """Remove a job and free its memory (called by DELETE endpoint and TTL cleanup)."""
         with self._lock:
             self._jobs.pop(job_id, None)
+            self._purge_result_caches(job_id)
 
     # ── State mutation helpers (called by routers) ─────────────────────────────
 
@@ -190,6 +205,7 @@ class JobManager:
             ]
             for jid in expired:
                 self._jobs.pop(jid, None)
+                self._purge_result_caches(jid)
         return len(expired)
 
     def get_stats(self) -> dict[str, int]:

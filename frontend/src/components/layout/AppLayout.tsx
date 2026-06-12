@@ -3,11 +3,10 @@ import Sidebar from './Sidebar'
 import { ROUTES } from '../../utils/constants'
 
 const ROUTE_META: Record<string, string> = {
-  [ROUTES.HOME]:                'Dashboard',
-  [ROUTES.ENTITLEMENT_MAPPING]: 'Entitlement Mapping',
-  [ROUTES.FP_ANALYSIS]:         'FP Analysis',
-  [ROUTES.ORACLE_COMPARATOR]:   'Oracle Comparator',
-  [ROUTES.SOD_SA]:              'SOD & SA Analysis',
+  [ROUTES.HOME]:              'Dashboard',
+  [ROUTES.RULESET_MAPPING]:   'Ruleset Mapping',
+  [ROUTES.ORACLE_COMPARATOR]: 'Oracle Comparator',
+  [ROUTES.SOD_SA]:            'SOD & SA Analysis',
 }
 
 function Topbar({ pathname }: { pathname: string }) {

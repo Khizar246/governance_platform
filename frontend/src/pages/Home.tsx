@@ -15,17 +15,6 @@ const TOOLS = [
     files: '2 XLSX',
   },
   {
-    route: ROUTES.FP_ANALYSIS,
-    icon: IconFP,
-    name: 'False Positive Analysis',
-    desc: '3-level FP classification — False Positive, Single Leg, True Conflict — at privilege or aggregated entitlement level.',
-    accent: '#2563EB',
-    tag: 'Analysis',
-    tagStyle: { background: '#DBEAFE', color: '#1D4ED8' },
-    runtime: '28 sec',
-    files: '2 XLSX',
-  },
-  {
     route: ROUTES.ORACLE_COMPARATOR,
     icon: IconOracle,
     name: 'Oracle Comparator',
@@ -40,7 +29,7 @@ const TOOLS = [
     route: ROUTES.SOD_SA,
     icon: IconSod,
     name: 'SOD & SA Analysis',
-    desc: 'Segregation of Duties and Sensitive Access violation detection at role and user level with chunked processing.',
+    desc: 'Segregation of Duties and Sensitive Access violation detection at role and user level with optional false-positive detection.',
     accent: '#D97706',
     tag: 'Compliance',
     tagStyle: { background: '#FEE2E2', color: '#991B1B' },
@@ -50,7 +39,6 @@ const TOOLS = [
 ]
 
 const KPIS = [
-  { label: 'FP Analysis',         value: 12, accent: '#2563EB', icon: IconFP },
   { label: 'Ruleset Mapping',     value: 18, accent: '#7C3AED', icon: IconRuleset },
   { label: 'Oracle Comparator',   value: 9,  accent: '#16A34A', icon: IconOracle },
   { label: 'SOD & SA Runs',       value: 8,  accent: '#D97706', icon: IconSod },
@@ -60,9 +48,6 @@ const KPIS = [
 // ── Icons ─────────────────────────────────────────────────────────────────────
 function IconRuleset({ c, s }: { c: string; s: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><path d="M17.5 14v7M14 17.5h7" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>
-}
-function IconFP({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.6"/><circle cx="12" cy="12" r="3.5" stroke={c} strokeWidth="1.6"/><circle cx="12" cy="12" r="1" fill={c}/></svg>
 }
 function IconOracle({ c, s }: { c: string; s: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.6"/><path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="2" strokeLinecap="round"/></svg>
@@ -95,7 +80,7 @@ export default function Home() {
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {KPIS.map((k) => {
           const Icon = k.icon
           return (

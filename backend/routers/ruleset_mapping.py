@@ -10,7 +10,6 @@ Endpoints:
   DELETE /api/ruleset-mapping/job/{job_id}
 """
 
-import logging
 import threading
 
 import pandas as pd
@@ -23,10 +22,11 @@ from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStat
 from services.job_manager import job_manager
 from shared.file_io import load_excel_to_pandas, get_excel_sheet_names
 from shared.validators import validate_upload, validate_dataframe_schema
+from shared.logger import get_logger
 from engines.ruleset_mapping_engine import run_ruleset_mapping
 
 router = APIRouter(prefix="/api/ruleset-mapping", tags=["Ruleset Mapping"])
-logger = logging.getLogger("governance_platform.ruleset_mapping")
+logger = get_logger("ruleset_mapping")
 
 _XLSX_ONLY = {".xlsx"}
 
@@ -44,8 +44,9 @@ SHEET_REQUIRED_COLS: dict[str, set[str]] = {
     },
 }
 
-# Stores 3-tab result DataFrames per job_id; cleared on DELETE.
+# Stores 3-tab result DataFrames per job_id; purged on DELETE and on TTL expiry.
 _result_dfs: dict[str, dict[str, pl.DataFrame]] = {}
+job_manager.register_result_cache(_result_dfs)
 
 _SORT_COLS = {
     "sod": "Client Control Name",
@@ -84,6 +85,7 @@ def _run_thread(
     ey_e2p_df:     pd.DataFrame,
 ) -> None:
     try:
+        logger.info(f"[{job_id}] Starting Ruleset Mapping: client_sod={client_sod_df.shape[0]} rows, client_sa={client_sa_df.shape[0]} rows, client_e2p={client_e2p_df.shape[0]} rows, ey_sod={ey_sod_df.shape[0]} rows, ey_sa={ey_sa_df.shape[0]} rows, ey_e2p={ey_e2p_df.shape[0]} rows")
         cb = job_manager.make_progress_callback(job_id)
         result = run_ruleset_mapping(
             client_sod_df, client_sa_df, client_e2p_df,
@@ -92,6 +94,7 @@ def _run_thread(
         )
 
         if not result.success:
+            logger.error(f"[{job_id}] Ruleset Mapping failed: {result.errors}")
             job_manager.fail_job(job_id, result.errors)
             return
 
@@ -102,19 +105,20 @@ def _run_thread(
         excel_buf = data["excel_buffer"]
         summary   = data["summary"]
 
+        logger.info(f"[{job_id}] Mapping complete - SoD results: {sod_df.shape[0]} rows, SA results: {sa_df.shape[0]} rows, Entitlement results: {ent_df.shape[0]} rows")
+
         _result_dfs[job_id] = {
             "sod": pl.from_pandas(sod_df.fillna("")),
             "sa":  pl.from_pandas(sa_df.fillna("")),
             "ent": pl.from_pandas(ent_df.fillna("")),
         }
 
-        job_manager.complete_job(
-            job_id, summary, excel_buf,
-            output_filename("Ruleset_Mapping"),
-        )
+        output_file = output_filename("Ruleset_Mapping")
+        logger.info(f"[{job_id}] Ruleset Mapping complete. Output file: {output_file}")
+        job_manager.complete_job(job_id, summary, excel_buf, output_file)
 
     except Exception as exc:
-        logger.error("Ruleset mapping thread error: %s", exc, exc_info=True)
+        logger.error(f"[{job_id}] Ruleset Mapping failed with exception", exc_info=True)
         job_manager.fail_job(job_id, [str(exc)])
 
 
@@ -123,6 +127,7 @@ async def upload(
     client_file: UploadFile = File(..., description="Client Ruleset XLSX"),
     ey_file:     UploadFile = File(..., description="EY Ruleset XLSX"),
 ):
+    logger.info(f"Ruleset Mapping upload initiated. Files: {client_file.filename}, {ey_file.filename}")
     errors: list[str] = []
 
     for uf, label in [(client_file, "Client Ruleset"), (ey_file, "EY Ruleset")]:
@@ -131,6 +136,7 @@ async def upload(
             errors.append(f"{label}: {msg}")
 
     if errors:
+        logger.error(f"Ruleset Mapping upload validation failed: {errors}")
         return JSONResponse(
             status_code=400,
             content={
@@ -144,19 +150,21 @@ async def upload(
     client_name  = client_file.filename or "client.xlsx"
     ey_name      = ey_file.filename or "ey.xlsx"
 
-    # Validate sheet structure for both files
+    # ── Validate sheet structure for both files (collect all errors) ───────────
     loaded: dict[str, pd.DataFrame] = {}
     for file_bytes, filename, label in [
         (client_bytes, client_name, "Client Ruleset"),
         (ey_bytes,     ey_name,     "EY Ruleset"),
     ]:
+        # Try to get sheet names; if it fails, collect the error and continue
+        sheet_names: list[str] = []
         try:
             sheet_names = get_excel_sheet_names(file_bytes)
+            logger.info(f"Loaded {label} sheet names: {sheet_names}")
         except Exception as exc:
-            return JSONResponse(
-                status_code=400,
-                content={"error": True, "message": str(exc), "code": "FILE_FORMAT_ERROR", "details": []},
-            )
+            logger.error(f"Failed to load {label} sheet names: {exc}", exc_info=True)
+            errors.append(f"{label} ('{filename}'): Failed to read sheet names: {exc}")
+            continue
 
         prefix = "client" if label == "Client Ruleset" else "ey"
 
@@ -164,14 +172,16 @@ async def upload(
             actual_sheet = _find_sheet(sheet_names, target_sheet)
             if actual_sheet is None:
                 errors.append(
-                    f"{label} ('{filename}') is missing required sheet: '{target_sheet}'"
+                    f"{label} ('{filename}'): Missing required sheet '{target_sheet}'"
                 )
                 continue
 
             try:
                 df = load_excel_to_pandas(file_bytes, filename, actual_sheet, logger)
+                logger.info(f"Loaded {label} {actual_sheet}: {df.shape[0]} rows, {df.shape[1]} columns")
             except Exception as exc:
-                errors.append(f"{label}: {exc}")
+                logger.error(f"Failed to load {label} {actual_sheet}: {exc}", exc_info=True)
+                errors.append(f"{label} ('{filename}'), sheet '{actual_sheet}': {exc}")
                 continue
 
             required_cols = SHEET_REQUIRED_COLS[target_sheet]
@@ -180,7 +190,7 @@ async def upload(
                 for col in missing:
                     errors.append(
                         f"{label} ('{filename}'), sheet '{target_sheet}': "
-                        f"missing required column '{col}'"
+                        f"Missing required column '{col}'"
                     )
                 continue
 
@@ -188,10 +198,11 @@ async def upload(
             loaded[key] = df
 
     if errors:
+        logger.error(f"Ruleset Mapping upload failed with {len(errors)} error(s): {errors}")
         return JSONResponse(
             status_code=400,
             content={
-                "error": True, "message": errors[0],
+                "error": True, "message": f"Found {len(errors)} validation error(s). See details below.",
                 "code": "VALIDATION_ERROR", "details": errors,
             },
         )
@@ -205,6 +216,7 @@ async def upload(
     ey_e2p_df     = loaded["ey_entitlement_to_privilege"]
 
     job = job_manager.create_job("ruleset_mapping")
+    logger.info(f"[{job.id}] Created job for Ruleset Mapping")
     job_manager.store_files(job.id, {
         "client_sod_df": client_sod_df,
         "client_sa_df":  client_sa_df,
@@ -214,6 +226,7 @@ async def upload(
         "ey_e2p_df":     ey_e2p_df,
     })
     job_manager.set_status(job.id, JobStatus.VALIDATING, "Files validated.")
+    logger.info(f"[{job.id}] Files stored and validated. Ready for mapping.")
 
     return UploadResponse(
         job_id=job.id,
@@ -233,9 +246,16 @@ async def upload(
 async def run(job_id: str):
     job = job_manager.get_job(job_id)
 
+    if job.status == JobStatus.RUNNING:
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
     files = job.files
     required_keys = ["client_sod_df", "client_sa_df", "client_e2p_df", "ey_sod_df", "ey_sa_df", "ey_e2p_df"]
     if any(files.get(k) is None for k in required_keys):
+        logger.error(f"[{job_id}] Run requested but missing required files")
         return JSONResponse(
             status_code=400,
             content={
@@ -246,6 +266,7 @@ async def run(job_id: str):
             },
         )
 
+    logger.info(f"[{job_id}] Starting mapping thread")
     threading.Thread(
         target=_run_thread,
         args=(
@@ -353,6 +374,5 @@ async def results_page(
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
-    job_manager.delete_job(job_id)
-    _result_dfs.pop(job_id, None)
+    job_manager.delete_job(job_id)  # also purges this router's registered result cache
     return {"message": "Job deleted."}

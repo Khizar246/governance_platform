@@ -22,55 +22,33 @@ import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../compone
 import type { SODSASummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 
-type Step = 'type' | 'upload' | 'running' | 'results' | 'error'
+type Step = 'config' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'role' | 'user' | 'both'
 type SODRow = Record<string, unknown>
 
-const STEPS = ['Analysis Type', 'Upload Files', 'Processing', 'Results']
-const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 2, results: 3, error: 0 }
+const STEPS = ['Configure Analysis', 'Upload Files', 'Processing', 'Results']
+const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, results: 3, error: 0 }
+
+// The four analyses the user can toggle independently. Ticking any User box
+// requires the User Role Membership file; the role/user/both "type" is derived.
+const ANALYSIS_OPTIONS: { id: string; group: 'Role-level' | 'User-level'; label: string; sublabel: string }[] = [
+  { id: 'role_sod', group: 'Role-level', label: 'Role · Segregation of Duties', sublabel: 'SoD conflicts resolved within each role' },
+  { id: 'role_sa',  group: 'Role-level', label: 'Role · Sensitive Access',      sublabel: 'Sensitive access granted at role level' },
+  { id: 'user_sod', group: 'User-level', label: 'User · Segregation of Duties', sublabel: 'SoD conflicts attributed to named users' },
+  { id: 'user_sa',  group: 'User-level', label: 'User · Sensitive Access',      sublabel: 'Sensitive access attributed to named users' },
+]
 
 type Stage = { label: string; minPercent: number }
 
 const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
 const SHEET_LABELS: Record<string, string> = {
-  ROLE_SOD: 'Role SoD', ROLE_SA: 'Role SA', USER_SOD: 'User SoD', USER_SA: 'User SA',
+  ROLE_SOD: 'Role SoD',
+  ROLE_SA: 'Role SA',
+  USER_SOD: 'User SoD',
+  USER_SA: 'User SA',
+  GROUP_SOD_MAPPING: 'User Groups (SoD)',
+  GROUP_SA_MAPPING: 'User Groups (SA)',
 }
-
-const TYPE_CARDS = [
-  {
-    id: 'role' as AnalysisType,
-    icon: Shield,
-    title: 'Role Analysis',
-    description: 'Detect SOD and SA violations at the role level. Requires Role Hierarchy and Ruleset files only.',
-    accentColor: '#EAB308',
-    iconBg: 'bg-yellow-50',
-    iconColor: 'text-[#EAB308]',
-    meta: '2 files required',
-    recommended: false,
-  },
-  {
-    id: 'user' as AnalysisType,
-    icon: Users,
-    title: 'User Analysis',
-    description: 'Detect violations assigned to specific users. Requires all three files including User Role Membership.',
-    accentColor: '#3B82F6',
-    iconBg: 'bg-blue-50',
-    iconColor: 'text-[#3B82F6]',
-    meta: '3 files required',
-    recommended: false,
-  },
-  {
-    id: 'both' as AnalysisType,
-    icon: Layers,
-    title: 'Role + User',
-    description: 'Full analysis: detect violations at both role and user level. Most comprehensive option.',
-    accentColor: '#22C55E',
-    iconBg: 'bg-green-50',
-    iconColor: 'text-[#22C55E]',
-    meta: '3 files required',
-    recommended: true,
-  },
-]
 
 // ── Column definitions ─────────────────────────────────────────────────────────
 
@@ -80,6 +58,22 @@ const ROLE_COLUMNS: ColumnDef<SODRow>[] = [
   { id: 'ROLE_DISPLAY_NAME',          accessorKey: 'ROLE_DISPLAY_NAME',          header: 'Role Name' },
   { id: 'INHERITED_ROLE_DISPLAY_NAME',accessorKey: 'INHERITED_ROLE_DISPLAY_NAME',header: 'Inherited Role' },
   { id: 'PRIVILEGE_DISPLAY_NAME',     accessorKey: 'PRIVILEGE_DISPLAY_NAME',     header: 'Privilege Name' },
+  {
+    id: 'FP?',
+    accessorKey: 'FP?',
+    header: 'FP Status',
+    cell: ({ getValue }) => {
+      const val = getValue() as string
+      const bgColors: Record<string, string> = {
+        'YES': 'bg-green-100 text-green-800',
+        'SL': 'bg-yellow-100 text-yellow-800',
+        'True Conflict': 'bg-red-100 text-red-800',
+        'NOT ANALYSED': 'bg-gray-100 text-gray-800',
+      }
+      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
+    },
+  },
+  { id: 'Reason',                     accessorKey: 'Reason',                     header: 'FP Reason' },
 ]
 
 const USER_COLUMNS: ColumnDef<SODRow>[] = [
@@ -88,7 +82,30 @@ const USER_COLUMNS: ColumnDef<SODRow>[] = [
   { id: 'ROLE_DISPLAY_NAME',          accessorKey: 'ROLE_DISPLAY_NAME',          header: 'Role Name' },
   { id: 'INHERITED_ROLE_DISPLAY_NAME',accessorKey: 'INHERITED_ROLE_DISPLAY_NAME',header: 'Inherited Role' },
   { id: 'PRIVILEGE_DISPLAY_NAME',     accessorKey: 'PRIVILEGE_DISPLAY_NAME',     header: 'Privilege Name' },
+  { id: 'GROUP_NAME',                 accessorKey: 'GROUP_NAME',                 header: 'User Group' },
   { id: 'USER_NAME',                  accessorKey: 'USER_NAME',                  header: 'User Name' },
+  {
+    id: 'FP?',
+    accessorKey: 'FP?',
+    header: 'FP Status',
+    cell: ({ getValue }) => {
+      const val = getValue() as string
+      const bgColors: Record<string, string> = {
+        'YES': 'bg-green-100 text-green-800',
+        'SL': 'bg-yellow-100 text-yellow-800',
+        'True Conflict': 'bg-red-100 text-red-800',
+        'NOT ANALYSED': 'bg-gray-100 text-gray-800',
+      }
+      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
+    },
+  },
+  { id: 'Reason',                     accessorKey: 'Reason',                     header: 'FP Reason' },
+]
+
+const GROUP_MAPPING_COLUMNS: ColumnDef<SODRow>[] = [
+  { id: 'GROUP_NAME',                 accessorKey: 'GROUP_NAME',                 header: 'Group Name' },
+  { id: 'ROLE_NAME',                  accessorKey: 'ROLE_NAME',                  header: 'Role Name' },
+  { id: 'NO_OF_USERS_IN_GROUP',       accessorKey: 'NO_OF_USERS_IN_GROUP',       header: 'No. of Users' },
 ]
 
 const ROLE_DEFAULT_SORT = [
@@ -97,6 +114,7 @@ const ROLE_DEFAULT_SORT = [
   { id: 'ROLE_DISPLAY_NAME',           desc: false },
   { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
   { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+  { id: 'FP?',                         desc: false },
 ]
 
 const USER_DEFAULT_SORT = [
@@ -105,7 +123,9 @@ const USER_DEFAULT_SORT = [
   { id: 'ROLE_DISPLAY_NAME',           desc: false },
   { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
   { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
+  { id: 'GROUP_NAME',                  desc: false },
   { id: 'USER_NAME',                   desc: false },
+  { id: 'FP?',                         desc: false },
 ]
 
 // ── Insight card ───────────────────────────────────────────────────────────────
@@ -141,11 +161,13 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SODSAAnalysis() {
-  const [step, setStep] = useState<Step>('type')
-  const [analysisType, setAnalysisType] = useState<AnalysisType | null>(null)
+  const [step, setStep] = useState<Step>('config')
+  const [withFp, setWithFp] = useState(false)
+  const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
   const [roleHierarchyFile, setRoleHierarchyFile] = useState<File | null>(null)
   const [rulesetFile, setRulesetFile] = useState<File | null>(null)
   const [userRoleFile, setUserRoleFile] = useState<File | null>(null)
+  const [fpDbFile, setFpDbFile] = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
@@ -154,6 +176,7 @@ export default function SODSAAnalysis() {
   const [summary, setSummary] = useState<SODSASummary | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
+  const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Results step state
@@ -167,32 +190,75 @@ export default function SODSAAnalysis() {
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
   const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
 
+  // Derive the role/user/both "type" from whichever analyses are ticked.
+  const analysisType = useMemo<AnalysisType | null>(() => {
+    const hasRole = selectedAnalyses.some(a => a.startsWith('role_'))
+    const hasUser = selectedAnalyses.some(a => a.startsWith('user_'))
+    if (hasRole && hasUser) return 'both'
+    if (hasRole) return 'role'
+    if (hasUser) return 'user'
+    return null
+  }, [selectedAnalyses])
+
   const stages = useMemo((): Stage[] => {
-    if (analysisType === 'role') return [
-      { label: 'Initialising',                    minPercent: 0  },
-      { label: 'Building Entitlement Mappings',   minPercent: 5  },
-      { label: 'Checking SOD Violations',         minPercent: 30 },
-      { label: 'Checking SA Violations',          minPercent: 65 },
-      { label: 'Finalising',                      minPercent: 95 },
-    ]
-    if (analysisType === 'user') return [
-      { label: 'Initialising',                     minPercent: 0  },
-      { label: 'Expanding User-Role Memberships',  minPercent: 5  },
-      { label: 'Building User Entitlements',       minPercent: 10 },
-      { label: 'SOD Violations (chunked)',         minPercent: 20 },
-      { label: 'SA Violations (chunked)',          minPercent: 58 },
-      { label: 'Finalising',                       minPercent: 95 },
-    ]
-    return [  // 'both'
+    const withFP = withFp
+    if (analysisType === 'role') {
+      const baseStages: Stage[] = [
+        { label: 'Initialising',                    minPercent: 0  },
+        { label: 'Building Entitlement Mappings',   minPercent: 5  },
+        { label: 'Checking SOD Violations',         minPercent: 30 },
+        { label: 'Checking SA Violations',          minPercent: 65 },
+      ]
+      if (withFP) {
+        baseStages.push(
+          { label: 'Running FP Pipeline',           minPercent: 70 },
+          { label: 'Finalising',                    minPercent: 85 }
+        )
+      } else {
+        baseStages.push({ label: 'Finalising',      minPercent: 95 })
+      }
+      return baseStages
+    }
+    if (analysisType === 'user') {
+      const baseStages: Stage[] = [
+        { label: 'Initialising',                     minPercent: 0  },
+        { label: 'Expanding User-Role Memberships',  minPercent: 5  },
+        { label: 'Building User Entitlements',       minPercent: 10 },
+        { label: 'SOD Violations',                   minPercent: 20 },
+        { label: 'SA Violations',                    minPercent: 58 },
+      ]
+      if (withFP) {
+        baseStages.push(
+          { label: 'Running FP Pipeline',           minPercent: 70 },
+          { label: 'User Grouping',                 minPercent: 80 },
+          { label: 'Finalising',                    minPercent: 85 }
+        )
+      } else {
+        baseStages.push({ label: 'Finalising',      minPercent: 95 })
+      }
+      return baseStages
+    }
+    // 'both'
+    const baseStages: Stage[] = [
       { label: 'Initialising',                      minPercent: 0  },
       { label: 'Role — Entitlement Mappings',        minPercent: 2  },
       { label: 'Role — SOD & SA Checks',             minPercent: 15 },
       { label: 'User — Expanding Memberships',       minPercent: 52 },
       { label: 'User — Building Entitlements',       minPercent: 55 },
-      { label: 'User — SOD Violations (chunked)',    minPercent: 60 },
-      { label: 'User — SA Violations (chunked)',     minPercent: 79 },
+      { label: 'User — SOD Violations',              minPercent: 60 },
+      { label: 'User — SA Violations',               minPercent: 79 },
     ]
-  }, [analysisType])
+    if (withFP) {
+      baseStages.push(
+        { label: 'Running FP Pipeline',             minPercent: 82 },
+        { label: 'User Grouping',                   minPercent: 88 },
+        { label: 'Finalising',                      minPercent: 92 }
+      )
+    } else {
+      baseStages.push({ label: 'Finalising',        minPercent: 95 })
+    }
+    return baseStages
+  }, [analysisType, withFp])
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -200,6 +266,7 @@ export default function SODSAAnalysis() {
     roleHierarchyFile !== null &&
     rulesetFile !== null &&
     (!needsUserRole || userRoleFile !== null) &&
+    (!withFp || fpDbFile !== null) &&
     !isUploading
 
   // ── Poll for job completion ──────────────────────────────────────────────────
@@ -265,19 +332,36 @@ export default function SODSAAnalysis() {
   }, [step, jobId, activeTab, page, pageSize, activeFilters])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
-  const analyzedSheetIds = useMemo(
-    () => ALL_SHEET_IDS.filter(id => sodSaSummaryData?.sheet_counts[id]),
-    [sodSaSummaryData],
-  )
+  const analyzedSheetIds = useMemo(() => {
+    if (!sodSaSummaryData) return []
+    const violations = ALL_SHEET_IDS.filter(id => sodSaSummaryData.sheet_counts[id])
+    const groups: string[] = []
+    if (sodSaSummaryData.sheet_counts['GROUP_SOD_MAPPING']) groups.push('GROUP_SOD_MAPPING')
+    if (sodSaSummaryData.sheet_counts['GROUP_SA_MAPPING']) groups.push('GROUP_SA_MAPPING')
+    return [...violations, ...groups]
+  }, [sodSaSummaryData])
 
-  const selectedCard = TYPE_CARDS.find(c => c.id === analysisType)
+  const analysisTypeLabel =
+    analysisType === 'role' ? 'Role-level only'
+    : analysisType === 'user' ? 'User-level only'
+    : analysisType === 'both' ? 'Role + User'
+    : '—'
 
   // ── Handlers ─────────────────────────────────────────────────────────────────
-  const handleSelectType = useCallback((t: AnalysisType) => {
-    setAnalysisType(t)
-    if (t === 'role') setUserRoleFile(null)
-    setStep('upload')
+  const toggleAnalysis = useCallback((id: string, checked: boolean) => {
+    setSelectedAnalyses(prev => checked ? [...prev, id] : prev.filter(a => a !== id))
   }, [])
+
+  const handleContinueToUpload = useCallback(() => {
+    if (selectedAnalyses.length === 0) {
+      toast.error('Select at least one analysis to run.')
+      return
+    }
+    // Drop the user-role file if no user-level analysis is selected
+    if (!selectedAnalyses.some(a => a.startsWith('user_'))) setUserRoleFile(null)
+    if (!withFp) setFpDbFile(null)
+    setStep('upload')
+  }, [selectedAnalyses, withFp])
 
   const handleTabChange = useCallback((tab: string) => {
     setActiveTab(tab)
@@ -290,30 +374,31 @@ export default function SODSAAnalysis() {
     setIsUploading(true)
     setUploadProgress(0)
     setUploadError('')
+    setUploadErrorDetails([])
     try {
       const urFile = needsUserRole ? userRoleFile : null
-      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, setUploadProgress)
+      const fpFile = withFp ? fpDbFile : null
+      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, setUploadProgress)
       if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
       const id = resp.job_id
       setJobId(id)
-      await runAnalysis(id, { analysis_type: analysisType })
+      await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses })
       setStep('running')
       setProgress(0)
       setProgressMessage('Starting SOD & SA analysis…')
     } catch (err: unknown) {
-      setUploadError(
-        (err as { response?: { data?: { message?: string } } })?.response?.data?.message ||
-          'Upload or run failed. Please try again.',
-      )
+      const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
+      setUploadError(data?.message || 'Upload or run failed. Please try again.')
+      setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
     } finally {
       setIsUploading(false)
     }
-  }, [roleHierarchyFile, rulesetFile, userRoleFile, analysisType, needsUserRole])
+  }, [roleHierarchyFile, rulesetFile, userRoleFile, fpDbFile, analysisType, needsUserRole, withFp, selectedAnalyses])
 
   const handleTryAgain = useCallback(async () => {
     if (!jobId || !analysisType) { setStep('upload'); return }
     try {
-      await runAnalysis(jobId, { analysis_type: analysisType })
+      await runAnalysis(jobId, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses })
       setStep('running')
       setProgress(0)
       setProgressMessage('Restarting SOD & SA analysis…')
@@ -324,15 +409,17 @@ export default function SODSAAnalysis() {
           'Failed to restart. Please start over.',
       )
     }
-  }, [jobId, analysisType])
+  }, [jobId, analysisType, withFp, selectedAnalyses])
 
   const handleReset = useCallback(async () => {
     if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
-    setStep('type')
-    setAnalysisType(null)
+    setStep('config')
+    setWithFp(false)
+    setSelectedAnalyses(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
     setRoleHierarchyFile(null)
     setRulesetFile(null)
     setUserRoleFile(null)
+    setFpDbFile(null)
     setUploadProgress(0)
     setIsUploading(false)
     setJobId(null)
@@ -341,6 +428,7 @@ export default function SODSAAnalysis() {
     setSummary(null)
     setErrors([])
     setUploadError('')
+    setUploadErrorDetails([])
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
@@ -349,7 +437,6 @@ export default function SODSAAnalysis() {
     setPageSize(50)
     setTotal(0)
     setDataLoading(false)
-    setFilterResetKey(0)
   }, [jobId])
 
   // ── Render ───────────────────────────────────────────────────────────────────
@@ -367,7 +454,7 @@ export default function SODSAAnalysis() {
           <HelpStep num={2} text="Upload the Role Hierarchy CSV/XLSX — export from Oracle Fusion via Security Console → Roles → Export Hierarchy. Required columns: TOP_ROLE_CODE, TOP_ROLE_NAME, ROLE_TYPE_CODE, ROLE_CODE, ROLE_NAME, PRIVILEGE_CODE, PRIVILEGE_NAME." />
           <HelpStep num={3} text="Upload the SOD SA Ruleset XLSX — the standard EY ruleset file. Must contain three sheets: SoD Ruleset, SA Ruleset, and Entitlement to Privilege." />
           <HelpStep num={4} text="If running User Analysis, also upload the User Role Membership CSV. Required columns: User Name, Assigned Role Name." />
-          <HelpStep num={5} text="Click Run Analysis. A progress bar shows chunked processing. Export the output before closing — results are not stored between sessions." />
+          <HelpStep num={5} text="Click Run Analysis. A progress bar shows the processing milestones. Export the output before closing — results are not stored between sessions." />
         </HelpAccordion>
         <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
           <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The engine flattens the role hierarchy and checks every resolved privilege combination against the ruleset:</p>
@@ -375,7 +462,7 @@ export default function SODSAAnalysis() {
           <HelpPill label="SoD detection" note="Every pair of privileges within a role's flat set is checked against the SoD Ruleset. Matching pairs are recorded as violations with the conflicting function names." />
           <HelpPill label="SA detection" note="Each individual privilege is checked against the SA Ruleset independently. Sensitive access violations are reported separately from SoD." />
           <HelpPill label="User expansion" note="When User Analysis is included, each user's assigned roles are resolved through the hierarchy and the same checks applied, attributing violations to named users." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Large hierarchies are processed in chunks to avoid memory limits — the progress bar reflects chunk completion, not individual row count.</p>
+          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>The progress bar reflects pipeline milestones (mapping, SOD check, SA check, export), not individual row counts.</p>
         </HelpAccordion>
         <TemplateDownloads templates={[
           ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
@@ -388,44 +475,90 @@ export default function SODSAAnalysis() {
 
       <div className="relative">
 
-        {/* ── Step 0: Analysis Type ──────────────────────────────────────── */}
-        {step === 'type' && (
-          <div className="slide-in grid grid-cols-3 gap-4">
-            {TYPE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, meta, recommended }) => (
+        {/* ── Step 0: Configure Analysis ─────────────────────────────────── */}
+        {step === 'config' && (
+          <div className="slide-in max-w-3xl mx-auto space-y-5">
+            <div>
+              <h3 className="text-[15px] font-semibold text-gray-800">Select the analyses to run</h3>
+              <p className="text-[13px] text-gray-500 mt-1">
+                Tick any combination. Choosing a User-level analysis requires the User Role Membership file.
+              </p>
+            </div>
+
+            {(['Role-level', 'User-level'] as const).map(group => {
+              const GroupIcon = group === 'Role-level' ? Layers : Users
+              return (
+                <div key={group}>
+                  <div className="flex items-center gap-2 mb-2.5">
+                    <GroupIcon size={15} className="text-gray-400" strokeWidth={1.7} />
+                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em]">{group}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {ANALYSIS_OPTIONS.filter(o => o.group === group).map(opt => {
+                      const checked = selectedAnalyses.includes(opt.id)
+                      return (
+                        <label
+                          key={opt.id}
+                          className={clsx(
+                            'flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-shadow duration-150',
+                            checked
+                              ? 'bg-ey-yellow/5 border-ey-yellow/60 shadow-sm'
+                              : 'bg-white border-gray-200 hover:shadow-sm',
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={e => toggleAnalysis(opt.id, e.target.checked)}
+                            className="mt-0.5 w-4 h-4 accent-ey-yellow shrink-0"
+                          />
+                          <span className="flex flex-col">
+                            <span className="text-[14px] font-medium text-gray-800 leading-tight">{opt.label}</span>
+                            <span className="text-[12px] text-gray-500 mt-1 leading-snug">{opt.sublabel}</span>
+                          </span>
+                        </label>
+                      )
+                    })}
+                  </div>
+                </div>
+              )
+            })}
+
+            <label className="flex items-start gap-3 p-4 rounded-xl border border-blue-200 bg-blue-50/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={withFp}
+                onChange={e => setWithFp(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
+              />
+              <span className="flex flex-col">
+                <span className="text-[14px] font-medium text-gray-800 leading-tight">False-Positive Detection</span>
+                <span className="text-[12px] text-gray-500 mt-1 leading-snug">
+                  Apply 3-level false-positive filtering and user grouping. Requires the FP Database file.
+                </span>
+              </span>
+            </label>
+
+            <div className="flex items-center justify-between pt-1">
+              <span className="text-[12px] text-gray-500">
+                Scope: <span className="font-medium text-gray-700">{analysisTypeLabel}</span>
+                {selectedAnalyses.length === 0 && <span className="text-error ml-1">· select at least one</span>}
+              </span>
               <button
-                key={id}
-                onClick={() => handleSelectType(id)}
-                style={{ borderLeftColor: accentColor }}
-                className={clsx(
-                  'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
-                  'bg-white border border-gray-200 border-l-[3px] shadow-sm',
-                  'focus:outline-none hover:shadow-md transition-shadow duration-150',
-                  analysisType === id ? 'ring-2 ring-ey-yellow/60 shadow-md' : '',
-                )}
+                className="btn-gold"
+                disabled={selectedAnalyses.length === 0}
+                onClick={handleContinueToUpload}
               >
-                {recommended && (
-                  <span className="absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-ey-yellow text-gray-900 leading-none">
-                    Recommended
-                  </span>
-                )}
-                <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
-                  <Icon size={20} className={iconColor} strokeWidth={1.5} />
-                </div>
-                <h3 className="text-[15px] font-semibold text-gray-800 mb-2">{title}</h3>
-                <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
-                <div className="flex items-center justify-between mt-4">
-                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{meta}</span>
-                  <span className="text-[13px] text-gray-400">Select →</span>
-                </div>
+                Continue to Upload →
               </button>
-            ))}
+            </div>
           </div>
         )}
 
-        {/* ── Step 1: Upload Files ───────────────────────────────────────── */}
+        {/* ── Step 2: Upload Files ───────────────────────────────────────── */}
         {step === 'upload' && analysisType && (
           <div className="slide-in space-y-5">
-            <div className="grid grid-cols-2 gap-4">
+            <div className={clsx('grid gap-4', withFp ? 'grid-cols-3' : 'grid-cols-2')}>
               <div>
                 <p className="label-uppercase mb-2">Role Hierarchy Report</p>
                 <FileUpload
@@ -449,6 +582,20 @@ export default function SODSAAnalysis() {
                   onRemove={() => setRulesetFile(null)}
                 />
               </div>
+              {withFp && (
+                <div>
+                  <p className="label-uppercase mb-2">FP Database</p>
+                  <FileUpload
+                    label="FP Database XLSX"
+                    accept=".xlsx,.xls"
+                    hint="Must contain No_action_Privileges and WorkArea_Privileges sheets"
+                    status={fpDbFile ? 'success' : 'idle'}
+                    fileInfo={fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size } : null}
+                    onUpload={setFpDbFile}
+                    onRemove={() => setFpDbFile(null)}
+                  />
+                </div>
+              )}
             </div>
 
             {needsUserRole && (
@@ -470,12 +617,15 @@ export default function SODSAAnalysis() {
 
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
               <span>
-                <span className="font-medium">Analysis Type:</span>{' '}
-                {selectedCard?.title}
+                <span className="font-medium">Selected:</span>{' '}
+                {selectedAnalyses.length} {selectedAnalyses.length === 1 ? 'analysis' : 'analyses'}
+                {' · '}
+                <span className="font-medium">Scope:</span> {analysisTypeLabel}
+                {withFp && <span className="ml-1 text-blue-600">· FP detection on</span>}
               </span>
               <button
                 className="ml-auto text-[#3B82F6] hover:underline text-[12px]"
-                onClick={() => setStep('type')}
+                onClick={() => setStep('config')}
               >
                 Change
               </button>
@@ -499,15 +649,27 @@ export default function SODSAAnalysis() {
             {uploadError && (
               <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span className="flex-1">{uploadError}</span>
-                <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
+                <div className="flex-1 space-y-1.5">
+                  <span>{uploadError}</span>
+                  {uploadErrorDetails.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {uploadErrorDetails.map((d, i) => (
+                        <li key={i} className="break-words">{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setUploadError(''); setUploadErrorDetails([]) }}
+                  className="text-error/60 hover:text-error shrink-0"
+                >
                   <X size={14} />
                 </button>
               </div>
             )}
 
             <div className="flex items-center justify-between pt-2">
-              <button className="btn-secondary" onClick={() => setStep('type')}>← Change Type</button>
+              <button className="btn-secondary" onClick={() => setStep('config')}>← Back to Configure</button>
               <button
                 className="btn-gold"
                 disabled={!canRun || isUploading}
@@ -619,8 +781,20 @@ export default function SODSAAnalysis() {
                 <div className="p-4">
                   <DataTable
                     data={pageRows}
-                    columns={activeTab.startsWith('USER') ? USER_COLUMNS : ROLE_COLUMNS}
-                    defaultSorting={activeTab.startsWith('USER') ? USER_DEFAULT_SORT : ROLE_DEFAULT_SORT}
+                    columns={
+                      activeTab.startsWith('GROUP')
+                        ? GROUP_MAPPING_COLUMNS
+                        : activeTab.startsWith('USER')
+                        ? USER_COLUMNS
+                        : ROLE_COLUMNS
+                    }
+                    defaultSorting={
+                      activeTab.startsWith('GROUP')
+                        ? [{ id: 'GROUP_NAME', desc: false }]
+                        : activeTab.startsWith('USER')
+                        ? USER_DEFAULT_SORT
+                        : ROLE_DEFAULT_SORT
+                    }
                     isLoading={dataLoading}
                     emptyMessage="No violations found"
                     maxHeight="460px"

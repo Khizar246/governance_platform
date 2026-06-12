@@ -10,10 +10,11 @@ Endpoints:
   DELETE /api/sod-sa/job/{job_id}
 """
 
-import logging
+import io
 import threading
 from typing import Optional
 
+import pandas as pd
 import polars as pl
 from fastapi import APIRouter, Request, UploadFile, File
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -24,29 +25,135 @@ from models.sod_sa_analysis import SODSARunConfig, ViolationCounts, SODSASummary
 from services.job_manager import job_manager
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
 from shared.validators import validate_upload
+from shared.logger import get_logger
 from engines.sod_sa_engine import (
     load_ruleset_sheets, analyze_roles, analyze_users, export_results,
-    INPUT_COLUMN_RENAME, _apply_rename, _upper_values,
+    run_fp_pipeline, apply_grouping_to_violations,
+    INPUT_COLUMN_RENAME, apply_rename, upper_values,
 )
 
 router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
-logger = logging.getLogger("governance_platform.sod_sa")
+logger = get_logger("sod_sa_analysis")
 
 # Columns exposed per sheet through the paginated results endpoint
-_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
-_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "USER_NAME"]
+_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason"]
+_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME", "FP?", "Reason"]
 _SHEET_COLS = {
     "ROLE_SOD": _ROLE_COLS,
     "ROLE_SA":  _ROLE_COLS,
     "USER_SOD": _USER_COLS,
     "USER_SA":  _USER_COLS,
+    "GROUP_SOD_MAPPING": ["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"],
+    "GROUP_SA_MAPPING":  ["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"],
 }
 
 _ROLE_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
-_USER_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "USER_NAME"]
+_USER_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME"]
 
-# Per-sheet DataFrames keyed by job_id; cleared on DELETE
+# Per-sheet DataFrames keyed by job_id; purged on DELETE and on TTL expiry
 _result_dfs: dict[str, dict[str, pl.DataFrame]] = {}
+job_manager.register_result_cache(_result_dfs)
+
+
+# ── Comprehensive upfront schema validation ─────────────────────────────────
+# Required headers exactly as they appear in the user's file (case-insensitive).
+_CSV_HEADER_ENCODINGS = ("utf-8-sig", "utf-8", "latin1", "cp1252", "iso-8859-1")
+
+_RH_REQUIRED_COLS = [
+    "TOP_ROLE_CODE", "TOP_ROLE_NAME", "ROLE_CODE", "ROLE_NAME",
+    "PRIVILEGE_CODE", "PRIVILEGE_NAME",
+]
+_UR_REQUIRED_COLS = ["User Name", "Assigned Role Name"]
+_RULESET_SHEET_SCHEMA = {
+    "SoD Ruleset": ["Control Name", "Risk Ranking", "LHS Entitlement", "RHS Entitlement", "Module(s)", "Risk Description"],
+    "SA Ruleset":  ["Control Name", "Risk Ranking", "Entitlement", "Side", "Module(s)", "Risk Description"],
+    "Entitlement to Privilege": ["Entitlement Name", "Privilege Code"],
+}
+_FP_SHEET_SCHEMA = {
+    "No_action_Privileges": ["PRIVILEGE_DISPLAY_NAME", "FALSE POSITIVE REASON"],
+    "WorkArea_Privileges":  ["PRIVILEGE_DISPLAY_NAME", "WORK_AREA_PRIVILEGE"],
+}
+
+
+def _norm(s: str) -> str:
+    return s.strip().upper()
+
+
+def _missing_columns(actual_cols: list[str], required: list[str], file_label: str, sheet_label: Optional[str] = None) -> list[str]:
+    present = {_norm(c) for c in actual_cols}
+    errors: list[str] = []
+    for col in required:
+        if _norm(col) not in present:
+            if sheet_label:
+                errors.append(f"{file_label} -> {sheet_label} -> Missing Column: {col}")
+            else:
+                errors.append(f"{file_label} -> Missing Column: {col}")
+    return errors
+
+
+def _read_header_columns(file_bytes: bytes, filename: str, sheet_name: Optional[str] = None) -> list[str]:
+    """Read ONLY the header row (nrows=0) so 10M-row files stay cheap."""
+    ext = ("." + filename.rsplit(".", 1)[-1].lower()) if "." in filename else ""
+    if ext == ".csv":
+        for enc in _CSV_HEADER_ENCODINGS:
+            try:
+                return list(pd.read_csv(io.StringIO(file_bytes.decode(enc)), nrows=0).columns)
+            except Exception:
+                continue
+        raise ValueError("could not decode CSV header with any supported encoding")
+    # For a flat (single-sheet) Excel file no sheet name is given; pd.read_excel
+    # would then return a {name: DataFrame} dict, so target the first sheet explicitly.
+    target_sheet = 0 if sheet_name is None else sheet_name
+    return list(pd.read_excel(io.BytesIO(file_bytes), sheet_name=target_sheet, nrows=0).columns)
+
+
+def _validate_flat_file(file_bytes: bytes, filename: str, file_label: str, required_cols: list[str]) -> list[str]:
+    """Validate a single-sheet/CSV file's columns. Aggregates every missing column."""
+    try:
+        cols = _read_header_columns(file_bytes, filename)
+    except Exception as exc:
+        return [f"{file_label} -> file could not be read: {exc}"]
+    return _missing_columns(cols, required_cols, file_label)
+
+
+def _validate_multisheet_file(file_bytes: bytes, filename: str, file_label: str, sheet_schema: dict[str, list[str]]) -> list[str]:
+    """Validate an XLSX: report every missing sheet AND every missing column at once."""
+    try:
+        sheet_names = pd.ExcelFile(io.BytesIO(file_bytes)).sheet_names
+    except Exception as exc:
+        return [f"{file_label} -> file could not be read as Excel: {exc}"]
+
+    norm_to_actual = {_norm(s): s for s in sheet_names}
+    errors: list[str] = []
+    for sheet, required_cols in sheet_schema.items():
+        actual = norm_to_actual.get(_norm(sheet))
+        if actual is None:
+            errors.append(f"{file_label} -> Missing Sheet: {sheet}")
+            continue
+        try:
+            cols = _read_header_columns(file_bytes, filename, actual)
+        except Exception as exc:
+            errors.append(f"{file_label} -> {sheet} -> could not be read: {exc}")
+            continue
+        errors.extend(_missing_columns(cols, required_cols, file_label, sheet))
+    return errors
+
+
+def _validate_all_schemas(
+    rh_bytes: bytes, rh_name: str,
+    ruleset_bytes: bytes, ruleset_name: str,
+    ur_bytes: Optional[bytes], ur_name: Optional[str],
+    fp_bytes: Optional[bytes], fp_name: Optional[str],
+) -> list[str]:
+    """Scan every uploaded file, sheet and column upfront; return ALL issues together."""
+    errors: list[str] = []
+    errors += _validate_flat_file(rh_bytes, rh_name, "Role Hierarchy", _RH_REQUIRED_COLS)
+    errors += _validate_multisheet_file(ruleset_bytes, ruleset_name, "Ruleset", _RULESET_SHEET_SCHEMA)
+    if ur_bytes is not None and ur_name is not None:
+        errors += _validate_flat_file(ur_bytes, ur_name, "User Role", _UR_REQUIRED_COLS)
+    if fp_bytes is not None and fp_name is not None:
+        errors += _validate_multisheet_file(fp_bytes, fp_name, "FP Database", _FP_SHEET_SCHEMA)
+    return errors
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -74,8 +181,26 @@ def _run_thread(
     entitlement_mapping_df: pl.DataFrame,
     user_role_df: Optional[pl.DataFrame],
     analysis_type: str,
+    with_fp: bool = False,
+    no_action_df: Optional[pl.DataFrame] = None,
+    work_area_df: Optional[pl.DataFrame] = None,
+    selected_analyses: Optional[list[str]] = None,
 ) -> None:
     try:
+        logger.info(f"[{job_id}] Starting SOD & SA Analysis: analysis_type={analysis_type}, with_fp={with_fp}, selected_analyses={selected_analyses}")
+        logger.info(f"[{job_id}] Input data - Role Hierarchy: {role_hierarchy_df.height} rows, SoD Controls: {sod_controls_df.height} rows, SA Controls: {sa_controls_df.height} rows, Entitlement Mapping: {entitlement_mapping_df.height} rows")
+        if user_role_df is not None:
+            logger.info(f"[{job_id}] User Role file: {user_role_df.height} rows")
+
+        # If selected_analyses is empty or None, default to all analyses based on analysis_type
+        if not selected_analyses:
+            if analysis_type == "both":
+                selected_analyses = ["role_sod", "role_sa", "user_sod", "user_sa"]
+            elif analysis_type == "role":
+                selected_analyses = ["role_sod", "role_sa"]
+            else:  # "user"
+                selected_analyses = ["user_sod", "user_sa"]
+
         callback = job_manager.make_progress_callback(job_id)
 
         if analysis_type == "both":
@@ -93,7 +218,9 @@ def _run_thread(
         user_sod = pl.DataFrame()
         user_sa = pl.DataFrame()
 
-        if analysis_type in ("role", "both"):
+        # Only run role analysis if role_sod or role_sa is selected
+        if ("role_sod" in selected_analyses or "role_sa" in selected_analyses) and analysis_type in ("role", "both"):
+            logger.info(f"[{job_id}] Analyzing Role SoD and SA violations...")
             role_sod, role_sa = analyze_roles(
                 role_hierarchy_df,
                 sod_controls_df,
@@ -102,8 +229,13 @@ def _run_thread(
                 logger=logger,
                 progress_callback=role_callback,
             )
+            logger.info(f"[{job_id}] Role analysis complete - Role SoD: {role_sod.height} violations, Role SA: {role_sa.height} violations")
+        elif analysis_type in ("role", "both"):
+            logger.info(f"[{job_id}] Role analysis skipped (not in selected_analyses)")
 
-        if analysis_type in ("user", "both") and user_role_df is not None:
+        # Only run user analysis if user_sod or user_sa is selected
+        if ("user_sod" in selected_analyses or "user_sa" in selected_analyses) and analysis_type in ("user", "both") and user_role_df is not None:
+            logger.info(f"[{job_id}] Analyzing User SoD and SA violations...")
             user_sod, user_sa = analyze_users(
                 role_hierarchy_df,
                 user_role_df,
@@ -113,6 +245,105 @@ def _run_thread(
                 logger=logger,
                 progress_callback=user_callback,
             )
+            logger.info(f"[{job_id}] User analysis complete - User SoD: {user_sod.height} violations, User SA: {user_sa.height} violations")
+        elif analysis_type in ("user", "both") and user_role_df is not None:
+            logger.info(f"[{job_id}] User analysis skipped (not in selected_analyses)")
+
+        # Honor dynamic analysis selection: discard any analysis the user did not tick.
+        # (analyze_roles/analyze_users each compute SOD+SA together, so we filter here.)
+        if "role_sod" not in selected_analyses:
+            role_sod = pl.DataFrame()
+        if "role_sa" not in selected_analyses:
+            role_sa = pl.DataFrame()
+        if "user_sod" not in selected_analyses:
+            user_sod = pl.DataFrame()
+        if "user_sa" not in selected_analyses:
+            user_sa = pl.DataFrame()
+        logger.info(f"[{job_id}] Selected analyses applied: {selected_analyses}")
+
+        # ── FP Pipeline (if enabled) ──────────────────────────────────────────
+        sod_group_mapping: Optional[pl.DataFrame] = None
+        sa_group_mapping: Optional[pl.DataFrame] = None
+
+        if with_fp and no_action_df is not None and work_area_df is not None:
+            callback(55, "Running 3-level FP pipeline for Role SoD…")
+            if not role_sod.is_empty():
+                role_sod = run_fp_pipeline(
+                    role_sod,
+                    no_action_df,
+                    work_area_df,
+                    role_hierarchy_df,
+                    "ROLE_NAME",
+                    is_sod=True,
+                    user_role_df=None,
+                )
+
+            callback(60, "Running 3-level FP pipeline for Role SA…")
+            if not role_sa.is_empty():
+                role_sa = run_fp_pipeline(
+                    role_sa,
+                    no_action_df,
+                    work_area_df,
+                    role_hierarchy_df,
+                    "ROLE_NAME",
+                    is_sod=False,
+                    user_role_df=None,
+                )
+
+            callback(65, "Running 3-level FP pipeline for User SoD…")
+            if not user_sod.is_empty():
+                user_sod = run_fp_pipeline(
+                    user_sod,
+                    no_action_df,
+                    work_area_df,
+                    role_hierarchy_df,
+                    "USER_NAME",
+                    is_sod=True,
+                    user_role_df=user_role_df,
+                )
+
+            callback(70, "Running 3-level FP pipeline for User SA…")
+            if not user_sa.is_empty():
+                user_sa = run_fp_pipeline(
+                    user_sa,
+                    no_action_df,
+                    work_area_df,
+                    role_hierarchy_df,
+                    "USER_NAME",
+                    is_sod=False,
+                    user_role_df=user_role_df,
+                )
+        else:
+            # FP disabled: still attach FP?/Reason so the output schema stays complete.
+            def _mark_not_analysed(df: pl.DataFrame) -> pl.DataFrame:
+                if df.is_empty():
+                    return df
+                return df.with_columns([
+                    pl.lit("NOT ANALYSED").alias("FP?"),
+                    pl.lit("FP engine disabled during run configuration").alias("Reason"),
+                ])
+            role_sod = _mark_not_analysed(role_sod)
+            role_sa = _mark_not_analysed(role_sa)
+            user_sod = _mark_not_analysed(user_sod)
+            user_sa = _mark_not_analysed(user_sa)
+
+        # ── User Grouping (post-analysis, for User sheets) ────────────────────
+        if user_role_df is not None and analysis_type in ("user", "both"):
+            callback(75, "Generating user portfolio groupings for User SoD…")
+            if not user_sod.is_empty():
+                user_sod, sod_group_mapping = apply_grouping_to_violations(
+                    user_sod,
+                    user_role_df,
+                    prefix="Group_SoD",
+                )
+
+            callback(80, "Generating user portfolio groupings for User SA…")
+            if not user_sa.is_empty():
+                user_sa, sa_group_mapping = apply_grouping_to_violations(
+                    user_sa,
+                    user_role_df,
+                    prefix="Group_SA",
+                )
 
         total_roles = (
             role_hierarchy_df.select("ROLE_NAME").unique().height
@@ -126,18 +357,21 @@ def _run_thread(
         )
 
         # Cache per-sheet rows (restricted columns) for paginated/summary access
-        cache: dict[str, list[dict]] = {}
+        cache: dict[str, pl.DataFrame] = {}
         for _sheet_name, _df in [
             ("ROLE_SOD", role_sod),
             ("ROLE_SA",  role_sa),
             ("USER_SOD", user_sod),
             ("USER_SA",  user_sa),
+            ("GROUP_SOD_MAPPING", sod_group_mapping),
+            ("GROUP_SA_MAPPING", sa_group_mapping),
         ]:
-            if _df.height == 0:
+            if _df is None or _df.is_empty():
                 continue
-            _cols = _SHEET_COLS[_sheet_name]
+            _cols = _SHEET_COLS.get(_sheet_name, [])
             _available = [c for c in _cols if c in _df.columns]
-            cache[_sheet_name] = _df.select(_available)
+            if _available:
+                cache[_sheet_name] = _df.select(_available)
         _result_dfs[job_id] = cache
 
         summary = SODSASummary(
@@ -152,6 +386,8 @@ def _run_thread(
             total_users_analyzed=total_users,
         ).model_dump()
 
+        callback(85, "Bundling final compliance reports into workbook…")
+        logger.info(f"[{job_id}] Exporting results to Excel workbook...")
         export_result = export_results(
             role_sod,
             role_sa,
@@ -161,15 +397,22 @@ def _run_thread(
             sa_controls_df,
             analysis_type,
             logger=logger,
+            sod_group_mapping=sod_group_mapping,
+            sa_group_mapping=sa_group_mapping,
+            role_hierarchy_df=role_hierarchy_df,
         )
         if not export_result.success:
+            logger.error(f"[{job_id}] Export failed: {export_result.errors}")
             job_manager.fail_job(job_id, export_result.errors)
             return
 
-        job_manager.complete_job(job_id, summary, export_result.data, output_filename("SOD_SA_Analysis", analysis_type.capitalize()))
+        callback(95, "Export complete.")
+        output_file = output_filename("SOD_SA_Analysis", analysis_type.capitalize())
+        logger.info(f"[{job_id}] SOD & SA analysis complete. Output file: {output_file}")
+        job_manager.complete_job(job_id, summary, export_result.data, output_file)
 
     except Exception as exc:
-        logger.error("SOD SA thread error: %s", exc, exc_info=True)
+        logger.error(f"[{job_id}] SOD & SA analysis failed with exception", exc_info=True)
         job_manager.fail_job(job_id, [str(exc)])
 
 
@@ -178,7 +421,9 @@ async def upload(
     role_hierarchy: UploadFile = File(..., description="Role Hierarchy Report XLSX/CSV"),
     ruleset: UploadFile = File(..., description="SOD SA Ruleset XLSX (3 sheets)"),
     user_role: Optional[UploadFile] = File(None, description="User Role Membership XLSX/CSV"),
+    fp_db: Optional[UploadFile] = File(None, description="FP Database XLSX"),
 ):
+    logger.info(f"SOD & SA upload initiated. Files: {role_hierarchy.filename}, {ruleset.filename}")
     errors: list[str] = []
 
     ok, msg = await validate_upload(role_hierarchy, MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS)
@@ -194,7 +439,13 @@ async def upload(
         if not ok:
             errors.append(f"User Role: {msg}")
 
+    if fp_db is not None:
+        ok, msg = await validate_upload(fp_db, MAX_UPLOAD_SIZE_BYTES, {".xlsx", ".xls"})
+        if not ok:
+            errors.append(f"FP Database: {msg}")
+
     if errors:
+        logger.error(f"SOD & SA upload validation failed: {errors}")
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": errors[0], "code": "VALIDATION_ERROR", "details": errors},
@@ -203,49 +454,135 @@ async def upload(
     rh_bytes = await role_hierarchy.read()
     ruleset_bytes = await ruleset.read()
     ur_bytes = (await user_role.read()) if user_role is not None else None
+    fp_bytes = (await fp_db.read()) if fp_db is not None else None
+
+    rh_name = role_hierarchy.filename or "role_hierarchy.xlsx"
+    ruleset_name = ruleset.filename or "ruleset.xlsx"
+    ur_name = (user_role.filename or "user_role.xlsx") if user_role is not None else None
+    fp_name = (fp_db.filename or "fp_db.xlsx") if fp_db is not None else None
+
+    # ── Step 1: comprehensive upfront schema scan ───────────────────────────────
+    # Reports EVERY missing sheet and column across ALL files at once, so the user
+    # fixes everything in one pass instead of one-error-at-a-time.
+    schema_errors = _validate_all_schemas(
+        rh_bytes, rh_name, ruleset_bytes, ruleset_name, ur_bytes, ur_name, fp_bytes, fp_name,
+    )
+    if schema_errors:
+        logger.error(f"SOD & SA schema validation failed with {len(schema_errors)} issue(s):")
+        for _e in schema_errors:
+            logger.error(f"  • {_e}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": True,
+                "message": f"Found {len(schema_errors)} schema issue(s) across your files. Fix every item listed below, then re-upload.",
+                "code": "SCHEMA_VALIDATION_ERROR",
+                "details": schema_errors,
+            },
+        )
+
+    # ── Step 2: load the validated files (collect any remaining data errors) ─────
+    all_errors: list[str] = []
+    rh_df = None
+    sod_df = None
+    sa_df = None
+    mapping_df = None
+    ur_df: Optional[pl.DataFrame] = None
+    no_action_df: Optional[pl.DataFrame] = None
+    work_area_df: Optional[pl.DataFrame] = None
 
     # Load and normalise role hierarchy
     try:
         rh_df = _load_file(rh_bytes, role_hierarchy.filename or "role_hierarchy.xlsx")
-        rh_df = _apply_rename(_upper_values(rh_df), INPUT_COLUMN_RENAME["role"])
+        rh_df = apply_rename(upper_values(rh_df), INPUT_COLUMN_RENAME["role"])
+        logger.info(f"Loaded Role Hierarchy: {rh_df.height} rows, columns: {rh_df.columns}")
     except Exception as exc:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": f"Role Hierarchy: {exc}", "code": "FILE_FORMAT_ERROR", "details": []},
-        )
+        logger.error(f"Failed to load Role Hierarchy: {exc}", exc_info=True)
+        all_errors.append(f"Role Hierarchy ({role_hierarchy.filename or 'role_hierarchy.xlsx'}): {exc}")
 
-    # Engine-level ruleset loading validates sheet structure and required columns
+    # Load ruleset — engine-level validation aggregates sheet/column errors
     sod_df, sa_df, mapping_df, ruleset_errors = load_ruleset_sheets(
         ruleset_bytes, ruleset.filename or "ruleset.xlsx", logger
     )
     if ruleset_errors:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": ruleset_errors[0], "code": "FILE_FORMAT_ERROR", "details": ruleset_errors},
-        )
+        all_errors.extend([f"Ruleset ({ruleset.filename or 'ruleset.xlsx'}): {err}" for err in ruleset_errors])
 
-    # Load and normalise user-role file if provided
-    ur_df: Optional[pl.DataFrame] = None
+    # Load user-role file if provided
     if ur_bytes is not None:
         try:
             ur_df = _load_file(ur_bytes, user_role.filename or "user_role.xlsx")
-            ur_df = _apply_rename(_upper_values(ur_df), INPUT_COLUMN_RENAME["user"])
+            ur_df = apply_rename(upper_values(ur_df), INPUT_COLUMN_RENAME["user"])
+            logger.info(f"Loaded User Role: {ur_df.height} rows, columns: {ur_df.columns}")
         except Exception as exc:
-            return JSONResponse(
-                status_code=400,
-                content={"error": True, "message": f"User Role: {exc}", "code": "FILE_FORMAT_ERROR", "details": []},
-            )
+            logger.error(f"Failed to load User Role: {exc}", exc_info=True)
+            all_errors.append(f"User Role ({user_role.filename or 'user_role.xlsx'}): {exc}")
+
+    # Load FP database sheets if provided
+    if fp_bytes is not None:
+        try:
+            no_action_df = load_excel_to_polars(fp_bytes, fp_db.filename or "fp_db.xlsx", "No_action_Privileges", {}, logger)
+            work_area_df = load_excel_to_polars(fp_bytes, fp_db.filename or "fp_db.xlsx", "WorkArea_Privileges", {}, logger)
+            # Schema validation is case-insensitive but the FP engine joins on the
+            # exact upper-case names — normalise headers so e.g. "Work_Area_Privilege"
+            # cannot pass validation and then crash mid-run.
+            no_action_df = no_action_df.rename({c: c.strip().upper() for c in no_action_df.columns})
+            work_area_df = work_area_df.rename({c: c.strip().upper() for c in work_area_df.columns})
+            logger.info(f"Loaded FP Database: No_action_Privileges {no_action_df.height} rows, WorkArea_Privileges {work_area_df.height} rows")
+        except Exception as exc:
+            logger.error(f"Failed to load FP Database: {exc}", exc_info=True)
+            all_errors.append(f"FP Database ({fp_db.filename or 'fp_db.xlsx'}): {exc}")
+
+    # Reject files that validated but contain zero data rows — otherwise the run
+    # "succeeds" with silently empty results.
+    for _df, _label in [
+        (rh_df, "Role Hierarchy"),
+        (sod_df, "Ruleset -> SoD Ruleset"),
+        (sa_df, "Ruleset -> SA Ruleset"),
+        (mapping_df, "Ruleset -> Entitlement to Privilege"),
+        (ur_df, "User Role"),
+    ]:
+        if _df is not None and _df.height == 0:
+            all_errors.append(f"{_label}: contains no data rows after loading.")
+
+    # If any errors collected, return them all at once
+    if all_errors:
+        logger.error(f"SOD & SA upload failed with {len(all_errors)} error(s): {all_errors}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": f"Found {len(all_errors)} validation error(s). See details below.", "code": "FILE_FORMAT_ERROR", "details": all_errors},
+        )
+
+    # Verify that critical files loaded successfully
+    if rh_df is None or sod_df is None or sa_df is None or mapping_df is None:
+        missing = []
+        if rh_df is None:
+            missing.append("Role Hierarchy")
+        if sod_df is None or sa_df is None or mapping_df is None:
+            missing.append("Ruleset")
+        error_msg = f"Could not load required files: {', '.join(missing)}"
+        logger.error(error_msg)
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": error_msg, "code": "FILE_FORMAT_ERROR", "details": []},
+        )
 
     job = job_manager.create_job("sod_sa_analysis")
+    logger.info(f"[{job.id}] Created job for SOD & SA analysis")
     job_manager.store_files(job.id, {
         "role_hierarchy_df": rh_df,
         "sod_controls_df": sod_df,
         "sa_controls_df": sa_df,
         "entitlement_mapping_df": mapping_df,
         "user_role_df": ur_df,
+        "no_action_df": no_action_df,
+        "work_area_df": work_area_df,
     })
-    job_manager.set_config(job.id, {"has_user_role": ur_df is not None})
+    job_manager.set_config(job.id, {
+        "has_user_role": ur_df is not None,
+        "has_fp_db": fp_bytes is not None,
+    })
     job_manager.set_status(job.id, JobStatus.VALIDATING, "Files validated.")
+    logger.info(f"[{job.id}] Files stored and validated. Ready for analysis.")
 
     preview_files: dict[str, FilePreview] = {
         "role_hierarchy": _build_preview(rh_df, role_hierarchy.filename or "role_hierarchy"),
@@ -271,7 +608,14 @@ async def upload(
 async def run(job_id: str, config: SODSARunConfig):
     job = job_manager.get_job(job_id)
 
+    if job.status == JobStatus.RUNNING:
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
     if not job.files:
+        logger.error(f"[{job_id}] Run requested but no files found in job")
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "Files not found. Please upload again.", "code": "FILES_NOT_FOUND", "details": []},
@@ -279,6 +623,7 @@ async def run(job_id: str, config: SODSARunConfig):
 
     has_user_role = job.config.get("has_user_role", False)
     if config.analysis_type in ("user", "both") and not has_user_role:
+        logger.warning(f"[{job_id}] User-level analysis requested but no user-role file provided")
         return JSONResponse(
             status_code=400,
             content={
@@ -288,6 +633,9 @@ async def run(job_id: str, config: SODSARunConfig):
                 "details": [],
             },
         )
+
+    has_fp_db = job.config.get("has_fp_db", False) and config.with_fp
+    logger.info(f"[{job_id}] Starting analysis thread: analysis_type={config.analysis_type}, with_fp={has_fp_db}, selected_analyses={config.selected_analyses}")
 
     threading.Thread(
         target=_run_thread,
@@ -299,6 +647,10 @@ async def run(job_id: str, config: SODSARunConfig):
             job.files["entitlement_mapping_df"],
             job.files.get("user_role_df"),
             config.analysis_type,
+            has_fp_db,
+            job.files.get("no_action_df") if has_fp_db else None,
+            job.files.get("work_area_df") if has_fp_db else None,
+            config.selected_analyses,
         ),
         daemon=True,
     ).start()
@@ -465,6 +817,5 @@ async def results_page(
 @router.delete("/job/{job_id}")
 async def cancel(job_id: str):
     job_manager.get_job(job_id)
-    job_manager.delete_job(job_id)
-    _result_dfs.pop(job_id, None)
+    job_manager.delete_job(job_id)  # also purges this router's registered result cache
     return {"message": "Job deleted."}

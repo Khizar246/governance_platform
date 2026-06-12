@@ -100,28 +100,29 @@ def compare(
     if missing.is_empty():
         result = matched
     else:
-        # Per-column presence sets for structured mismatch diagnosis
-        tgt_col_sets = {c: set(tgt[c].cast(pl.Utf8).to_list()) for c in cols}
-
-        reasons: list[str] = []
-        for row in missing.iter_rows(named=True):
-            absent_cols = [
-                c for c in cols
-                if str(row[c]).strip() not in tgt_col_sets[c]
-            ]
-            if absent_cols:
-                reasons.append(
-                    f"Value(s) missing in {target_env_name}: {', '.join(absent_cols)}"
-                )
-            else:
-                reasons.append(
-                    f"Combination not found in {target_env_name} "
-                    f"(individual values exist separately)"
-                )
+        # Vectorised per-column presence check for structured mismatch diagnosis:
+        # collect the names of columns whose value is absent from the target,
+        # then build the reason string in one expression.
+        absent_names = pl.concat_list([
+            pl.when(
+                ~pl.col(c).cast(pl.Utf8).fill_null("None").str.strip_chars()
+                  .is_in(tgt[c].cast(pl.Utf8).drop_nulls().unique().to_list())
+            ).then(pl.lit(c)).otherwise(pl.lit(None, dtype=pl.Utf8))
+            for c in cols
+        ]).list.drop_nulls()
 
         missing = missing.with_columns(
             pl.lit(f"Missing in {target_env_name}").alias("Status"),
-            pl.Series("Reason", reasons),
+            pl.when(absent_names.list.len() > 0)
+              .then(
+                  pl.lit(f"Value(s) missing in {target_env_name}: ")
+                  + absent_names.list.join(", ")
+              )
+              .otherwise(pl.lit(
+                  f"Combination not found in {target_env_name} "
+                  f"(individual values exist separately)"
+              ))
+              .alias("Reason"),
         )
 
         result = pl.concat([matched, missing], how="diagonal")
@@ -217,7 +218,13 @@ def generate_report(
     try:
         buf = io.BytesIO()
 
-        with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+        # strings_to_formulas=False: cell values that begin with '=' must be
+        # written as text, never as live formulas (formula-injection guard).
+        with pd.ExcelWriter(
+            buf,
+            engine="xlsxwriter",
+            engine_kwargs={"options": {"strings_to_formulas": False, "strings_to_urls": False}},
+        ) as writer:
             wb = writer.book
             hdr_fmt   = wb.add_format({"bold": True, "bg_color": "#D7E4BC", "border": 1})
             match_fmt = wb.add_format({"bg_color": "#d4edda"})

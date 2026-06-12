@@ -4,7 +4,6 @@ import { useAppStore } from '../../stores/useAppStore'
 
 const NAV_ITEMS = [
   { to: ROUTES.HOME,                icon: IconHome,    label: 'Dashboard',            accent: '#E8A900' },
-  { to: ROUTES.FP_ANALYSIS,         icon: IconFP,      label: 'FP Analysis',          accent: '#2563EB' },
   { to: ROUTES.RULESET_MAPPING,     icon: IconRuleset, label: 'Ruleset Mapping',      accent: '#7C3AED' },
   { to: ROUTES.ORACLE_COMPARATOR,   icon: IconOracle,  label: 'Oracle Role Comparison', accent: '#16A34A' },
   { to: ROUTES.SOD_SA,              icon: IconSod,     label: 'SOD & SA Analysis',    accent: '#D97706' },
@@ -16,15 +15,6 @@ function IconHome({ c, s }: { c: string; s: number }) {
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
       <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke={c} strokeWidth="1.6"/>
       <path d="M9 21V12h6v9" stroke={c} strokeWidth="1.6"/>
-    </svg>
-  )
-}
-function IconFP({ c, s }: { c: string; s: number }) {
-  return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="12" cy="12" r="9" stroke={c} strokeWidth="1.6"/>
-      <circle cx="12" cy="12" r="3.5" stroke={c} strokeWidth="1.6"/>
-      <circle cx="12" cy="12" r="1" fill={c}/>
     </svg>
   )
 }

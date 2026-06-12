@@ -50,29 +50,6 @@ export interface ErrorResponse {
 
 // ── Tool-specific summary types ───────────────────────────────────────────────
 
-export interface EntitlementMappingSummary {
-  total_mappings: number
-  exact_matches: number
-  supersets: number
-  partial_matches: number
-  no_matches: number
-}
-
-export interface FPSheetSummary {
-  sheet: string
-  total: number
-  fp_count: number
-  sl_count: number
-  tc_count: number
-  reduction_pct: number
-}
-
-export interface FPAnalysisSummary {
-  mode: string
-  sheets_analyzed: string[]
-  sheet_summaries: FPSheetSummary[]
-}
-
 export interface ComparisonTypeSummary {
   comp_type: string
   direction: string

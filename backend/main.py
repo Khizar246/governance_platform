@@ -7,7 +7,7 @@ Responsibilities:
 - Global GovernanceError exception handler → structured JSON
 - Lifespan: creates temp/ and logs/ on startup, cancels cleanup task on shutdown
 - Background TTL cleanup task (runs every 5 minutes)
-- Router registration for all four governance tools
+- Router registration for the governance tools
 """
 
 import uuid
@@ -164,9 +164,8 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-from routers import fp_analysis, oracle_comparator, sod_sa_analysis, ruleset_mapping  # noqa: E402
+from routers import oracle_comparator, sod_sa_analysis, ruleset_mapping  # noqa: E402
 
-app.include_router(fp_analysis.router)
 app.include_router(oracle_comparator.router)
 app.include_router(sod_sa_analysis.router)
 app.include_router(ruleset_mapping.router)

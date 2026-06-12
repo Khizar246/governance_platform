@@ -18,13 +18,11 @@ TEMP_DIR = Path("temp")
 LOG_DIR = Path("logs")
 
 # ── Job management ────────────────────────────────────────────────────────────
-MAX_CONCURRENT_JOBS = 20
+# Each job holds full DataFrames (and on completion the exported workbook) in
+# memory until the TTL, so the concurrency cap is deliberately conservative.
+MAX_CONCURRENT_JOBS = 5
 JOB_TTL_SECONDS = 3600        # 1 hour
 CLEANUP_INTERVAL_SECONDS = 300  # 5 minutes
-
-# ── Processing ────────────────────────────────────────────────────────────────
-EXCEL_MAX_ROWS = 1_048_000
-CHUNK_SIZE = 10_000
 
 
 def output_filename(tool_name: str, context: str = "") -> str:

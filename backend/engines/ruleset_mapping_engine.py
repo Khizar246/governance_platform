@@ -242,7 +242,13 @@ def _map_sa_controls(
 def _build_excel(sod_df: pd.DataFrame, sa_df: pd.DataFrame, ent_df: pd.DataFrame) -> io.BytesIO:
     """Build a 3-tab Excel workbook and return as BytesIO."""
     buf = io.BytesIO()
-    with pd.ExcelWriter(buf, engine="xlsxwriter") as writer:
+    # strings_to_formulas=False: cell values that begin with '=' must be
+    # written as text, never as live formulas (formula-injection guard).
+    with pd.ExcelWriter(
+        buf,
+        engine="xlsxwriter",
+        engine_kwargs={"options": {"strings_to_formulas": False, "strings_to_urls": False}},
+    ) as writer:
         wb = writer.book
         hdr_fmt = wb.add_format({"bold": True, "bg_color": "#D7E4BC", "border": 1})
 

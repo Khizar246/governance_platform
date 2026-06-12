@@ -27,10 +27,14 @@ api.interceptors.response.use(
     //   - Network error (no response object)
     //   - 5xx server error
     // 4xx errors are NOT retried (client error, retrying won't help).
+    // Only GETs are retried: a POST (upload, /run) may have reached the server
+    // even though the response was lost — retrying it would start a duplicate
+    // analysis thread on the same job.
     const isNetworkError = !error.response
     const is5xx = error.response?.status >= 500
+    const isIdempotent = (config?.method ?? 'get').toLowerCase() === 'get'
 
-    if ((isNetworkError || is5xx) && config) {
+    if ((isNetworkError || is5xx) && config && isIdempotent) {
       config._retryCount = config._retryCount ?? 0
 
       if (config._retryCount < 2) {
@@ -55,12 +59,13 @@ api.interceptors.response.use(
 
 // ── Upload helper ─────────────────────────────────────────────────────────────
 
-/** POST FormData with real-time upload progress reporting. Default timeout 60 s. */
+/** POST FormData with real-time upload progress reporting. Default timeout 5 min
+ *  (uploads up to 200 MB on slow office networks easily exceed 60 s). */
 export async function uploadWithProgress(
   url: string,
   formData: FormData,
   onProgress: (percent: number) => void,
-  timeout = 60_000,
+  timeout = 300_000,
 ): Promise<AxiosResponse> {
   return api.post(url, formData, {
     timeout,
