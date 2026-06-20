@@ -1138,11 +1138,14 @@ def export_results(
         _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
         _user_sort_cols = [*_role_sort_cols, "GROUP_NAME", "USER_NAME"]
 
+        _fp_cols = {"Potential FP", "Reason"}
+        _role_schema = ROLE_OUTPUT_COLUMNS if fp_enabled else [c for c in ROLE_OUTPUT_COLUMNS if c not in _fp_cols]
+        _user_schema = USER_OUTPUT_COLUMNS if fp_enabled else [c for c in USER_OUTPUT_COLUMNS if c not in _fp_cols]
         sheet_order = [
-            ("ROLE_SOD", "ROLE_NAME", role_sod_violations, _role_sort_cols, ROLE_OUTPUT_COLUMNS),
-            ("ROLE_SA", "ROLE_NAME", role_sa_violations, _role_sort_cols, ROLE_OUTPUT_COLUMNS),
-            ("USER_SOD", "USER_NAME", user_sod_violations, _user_sort_cols, USER_OUTPUT_COLUMNS),
-            ("USER_SA", "USER_NAME", user_sa_violations, _user_sort_cols, USER_OUTPUT_COLUMNS),
+            ("ROLE_SOD", "ROLE_NAME", role_sod_violations, _role_sort_cols, _role_schema),
+            ("ROLE_SA", "ROLE_NAME", role_sa_violations, _role_sort_cols, _role_schema),
+            ("USER_SOD", "USER_NAME", user_sod_violations, _user_sort_cols, _user_schema),
+            ("USER_SA", "USER_NAME", user_sa_violations, _user_sort_cols, _user_schema),
         ]
 
         _sheet_steps = {"ROLE_SOD": 17, "ROLE_SA": 18, "USER_SOD": 19, "USER_SA": 20}

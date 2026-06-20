@@ -342,19 +342,8 @@ def _run_thread(
                     is_sod=False,
                     user_role_df=user_role_df,
                 )
-        else:
-            # FP disabled: still attach FP?/Reason so the output schema stays complete.
-            def _mark_not_analysed(df: pl.DataFrame) -> pl.DataFrame:
-                if df.is_empty():
-                    return df
-                return df.with_columns([
-                    pl.lit("NOT ANALYSED").alias("Potential FP"),
-                    pl.lit("FP engine disabled during run configuration").alias("Reason"),
-                ])
-            role_sod = _mark_not_analysed(role_sod)
-            role_sa = _mark_not_analysed(role_sa)
-            user_sod = _mark_not_analysed(user_sod)
-            user_sa = _mark_not_analysed(user_sa)
+        # FP disabled: leave DataFrames without FP columns; engine and cache
+        # populate will both omit them from output when fp_enabled=False.
 
         total_roles = (
             role_hierarchy_df.select("ROLE_NAME").unique().height
