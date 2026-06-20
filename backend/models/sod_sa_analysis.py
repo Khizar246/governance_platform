@@ -11,6 +11,8 @@ class SODSARunConfig(BaseModel):
     # Dynamic analysis selection: which specific analyses to run
     # Allowed values: "role_sod", "role_sa", "user_sod", "user_sa"
     selected_analyses: list[str] = []
+    with_observation: bool = False
+    project_name: str = ""
 
     @field_validator("selected_analyses")
     @classmethod

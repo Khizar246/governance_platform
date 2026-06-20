@@ -30,14 +30,15 @@ from engines.sod_sa_engine import (
     load_ruleset_sheets, analyze_roles, analyze_users, export_results,
     run_fp_pipeline, compute_user_groups,
     INPUT_COLUMN_RENAME, apply_rename, upper_values,
+    BUCKET_DETAILS_REQUIRED_COLS,
 )
 
 router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
 logger = get_logger("sod_sa_analysis")
 
 # Columns exposed per sheet through the paginated results endpoint
-_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason"]
-_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME", "Potential FP", "Reason"]
+_ROLE_COLS = ["CONTROL_NAME", "CONTROL_BUCKET", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason"]
+_USER_COLS = ["CONTROL_NAME", "CONTROL_BUCKET", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME", "Potential FP", "Reason"]
 _SHEET_COLS = {
     "ROLE_SOD": _ROLE_COLS,
     "ROLE_SA":  _ROLE_COLS,
@@ -184,6 +185,9 @@ def _run_thread(
     no_action_df: Optional[pl.DataFrame] = None,
     work_area_df: Optional[pl.DataFrame] = None,
     selected_analyses: Optional[list[str]] = None,
+    with_observation: bool = False,
+    project_name: str = "",
+    bucket_details_df: Optional[pl.DataFrame] = None,
 ) -> None:
     try:
         logger.info(f"[{job_id}] Starting SOD & SA Analysis: analysis_type={analysis_type}, with_fp={with_fp}, selected_analyses={selected_analyses}")
@@ -405,6 +409,9 @@ def _run_thread(
             role_hierarchy_df=role_hierarchy_df,
             fp_enabled=with_fp,
             step_callback=_export_step,
+            project_name=project_name,
+            with_observation=with_observation,
+            bucket_details_df=bucket_details_df,
         )
         if not export_result.success:
             logger.error(f"[{job_id}] Export failed: {export_result.errors}")
@@ -506,9 +513,11 @@ async def upload(
         all_errors.append(f"Role Hierarchy ({role_hierarchy.filename or 'role_hierarchy.xlsx'}): {exc}")
 
     # Load ruleset — engine-level validation aggregates sheet/column errors
-    sod_df, sa_df, mapping_df, ruleset_errors = load_ruleset_sheets(
+    bucket_details_df: Optional[pl.DataFrame] = None
+    sod_df, sa_df, mapping_df, bucket_details_df_loaded, ruleset_errors = load_ruleset_sheets(
         ruleset_bytes, ruleset.filename or "ruleset.xlsx", logger
     )
+    bucket_details_df = bucket_details_df_loaded
     if ruleset_errors:
         all_errors.extend([f"Ruleset ({ruleset.filename or 'ruleset.xlsx'}): {err}" for err in ruleset_errors])
 
@@ -581,6 +590,7 @@ async def upload(
         "user_role_df": ur_df,
         "no_action_df": no_action_df,
         "work_area_df": work_area_df,
+        "bucket_details_df": bucket_details_df,
     })
     job_manager.set_config(job.id, {
         "has_user_role": ur_df is not None,
@@ -640,6 +650,44 @@ async def run(job_id: str, config: SODSARunConfig):
         )
 
     has_fp_db = job.config.get("has_fp_db", False) and config.with_fp
+
+    # Bucket cross-reference validation: every Control Bucket value (except UNCATEGORIZED)
+    # must have a matching row in Bucket Details.
+    _sod_df = job.files.get("sod_controls_df")
+    _bd_df = job.files.get("bucket_details_df")
+    if (
+        config.with_observation
+        and _sod_df is not None
+        and not _sod_df.is_empty()
+        and "CONTROL_BUCKET" in _sod_df.columns
+    ):
+        _used_buckets = set(
+            _sod_df.filter(
+                pl.col("CONTROL_BUCKET").is_not_null()
+                & (pl.col("CONTROL_BUCKET") != "")
+                & (pl.col("CONTROL_BUCKET") != "UNCATEGORIZED")
+            )["CONTROL_BUCKET"].unique().to_list()
+        )
+        if _used_buckets:
+            _known_buckets: set[str] = set()
+            if _bd_df is not None and not _bd_df.is_empty() and "BUCKET_NAME" in _bd_df.columns:
+                _known_buckets = set(_bd_df["BUCKET_NAME"].unique().to_list())
+            _missing_buckets = sorted(_used_buckets - _known_buckets)
+            if _missing_buckets:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": True,
+                        "message": (
+                            f"Observation tab requested but {len(_missing_buckets)} Control Bucket(s) "
+                            "have no matching row in the 'Bucket Details' sheet. "
+                            "Add the missing rows or remove the bucket from 'Control Bucket' column."
+                        ),
+                        "code": "SCHEMA_VALIDATION_ERROR",
+                        "details": [f"Missing Bucket Details row for: {b}" for b in _missing_buckets],
+                    },
+                )
+
     logger.info(f"[{job_id}] Starting analysis thread: analysis_type={config.analysis_type}, with_fp={has_fp_db}, selected_analyses={config.selected_analyses}")
 
     threading.Thread(
@@ -656,6 +704,9 @@ async def run(job_id: str, config: SODSARunConfig):
             job.files.get("no_action_df") if has_fp_db else None,
             job.files.get("work_area_df") if has_fp_db else None,
             config.selected_analyses,
+            config.with_observation,
+            config.project_name,
+            job.files.get("bucket_details_df"),
         ),
         daemon=True,
     ).start()

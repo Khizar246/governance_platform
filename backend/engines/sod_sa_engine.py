@@ -16,6 +16,7 @@ import io
 import logging
 import time
 from dataclasses import dataclass, field
+from datetime import date
 from typing import Any, Callable
 
 import pandas as pd
@@ -43,12 +44,18 @@ INPUT_COLUMN_RENAME = {
         "Assigned Role Display Name": "ROLE_DISPLAY_NAME",
     },
     "sod": {
-        "Control Name":   "CONTROL_NAME",
-        "Risk Ranking":   "RISK_RANKING",
-        "LHS Entitlement":"LHS_ENTITLEMENT",
-        "RHS Entitlement":"RHS_ENTITLEMENT",
-        "Module(s)":      "MODULES",
+        "Control Name":    "CONTROL_NAME",
+        "Risk Ranking":    "RISK_RANKING",
+        "LHS Entitlement": "LHS_ENTITLEMENT",
+        "RHS Entitlement": "RHS_ENTITLEMENT",
+        "Module(s)":       "MODULES",
         "Risk Description":"RISK_DESCRIPTION",
+        "Control Bucket":  "CONTROL_BUCKET",
+    },
+    "bucket_details": {
+        "Bucket Name":       "BUCKET_NAME",
+        "Risk":              "RISK",
+        "EY Recommendations":"EY_RECOMMENDATIONS",
     },
     "sa": {
         "Control Name":   "CONTROL_NAME",
@@ -99,6 +106,9 @@ SUPPLEMENTARY_COLUMNS = {
     "mapping": set(),
 }
 
+# Columns required in the Bucket Details sheet
+BUCKET_DETAILS_REQUIRED_COLS = {"BUCKET_NAME", "RISK", "EY_RECOMMENDATIONS"}
+
 # Exact column order for the four exported violation tabs (Step 6 strict schema).
 # Any missing column is added blank; columns outside this list are dropped.
 ROLE_OUTPUT_COLUMNS = [
@@ -108,6 +118,19 @@ ROLE_OUTPUT_COLUMNS = [
 ]
 USER_OUTPUT_COLUMNS = [
     "CONTROL_NAME", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
+    "GROUP_NAME", "USER_NAME",
+    "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason",
+]
+
+# SOD-only output columns when Observation tab is requested (adds CONTROL_BUCKET after CONTROL_NAME)
+ROLE_SOD_OUTPUT_COLUMNS_WITH_BUCKET = [
+    "CONTROL_NAME", "CONTROL_BUCKET", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
+    "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason",
+]
+USER_SOD_OUTPUT_COLUMNS_WITH_BUCKET = [
+    "CONTROL_NAME", "CONTROL_BUCKET", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
     "GROUP_NAME", "USER_NAME",
     "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
     "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason",
@@ -184,14 +207,16 @@ def load_ruleset_sheets(
     file_bytes: bytes,
     filename: str,
     logger: Any = None,
-) -> tuple[pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame | None, list[str]]:
-    """Load SoD Ruleset, SA Ruleset, and Entitlement to Privilege sheets.
+) -> tuple[pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame, list[str]]:
+    """Load SoD Ruleset, SA Ruleset, Entitlement to Privilege, and optional Bucket Details sheets.
 
     Applies INPUT_COLUMN_RENAME for each sheet, normalises values (uppercase/strip),
     validates required columns, validates critical columns, fills supplementary columns.
+    CONTROL_BUCKET blanks in sod_df are filled with "Uncategorized".
 
-    Returns (sod_df, sa_df, mapping_df, errors). Any None in the tuple signals failure.
-    Ported from SOD Tool/app.py — load_ruleset_sheets + load_file_cached.
+    Returns (sod_df, sa_df, mapping_df, bucket_details_df, errors).
+    Any None in the first three signals failure; bucket_details_df is always a DataFrame
+    (empty if the sheet is absent).
     """
     _log = logger or logging.getLogger(__name__)
     errors: list[str] = []
@@ -201,7 +226,7 @@ def load_ruleset_sheets(
         xls = pd.ExcelFile(io.BytesIO(file_bytes), engine="openpyxl")
         missing_sheets = required_sheets - set(xls.sheet_names)
         if missing_sheets:
-            return None, None, None, [
+            return None, None, None, pl.DataFrame(), [
                 f"Ruleset is missing required sheets: {missing_sheets}. "
                 f"Found: {xls.sheet_names}"
             ]
@@ -235,7 +260,7 @@ def load_ruleset_sheets(
                 errors.append(f"'{label}' missing required columns: {missing_cols}")
 
         if errors:
-            return None, None, None, errors
+            return None, None, None, pl.DataFrame(), errors
 
         # Critical column (non-empty) validation
         ok, crit_errors = validate_critical_columns(sod_df, sa_df, mapping_df)
@@ -243,19 +268,56 @@ def load_ruleset_sheets(
             errs: list[str] = []
             for sheet_name, msgs in crit_errors.items():
                 errs.append(f"{sheet_name}: " + "; ".join(msgs))
-            return None, None, None, errs
+            return None, None, None, pl.DataFrame(), errs
 
         # Fill empty supplementary columns with placeholder
         sod_df     = _fill_supplementary(sod_df,     "sod")
         sa_df      = _fill_supplementary(sa_df,      "sa")
         mapping_df = _fill_supplementary(mapping_df, "mapping")
 
-        _log.info("Ruleset loaded: sod=%d sa=%d mapping=%d", sod_df.height, sa_df.height, mapping_df.height)
-        return sod_df, sa_df, mapping_df, []
+        # CONTROL_BUCKET: optional column; blank/absent → "Uncategorized"
+        if "CONTROL_BUCKET" not in sod_df.columns:
+            sod_df = sod_df.with_columns(pl.lit("UNCATEGORIZED").alias("CONTROL_BUCKET"))
+        else:
+            sod_df = sod_df.with_columns(
+                pl.when(
+                    pl.col("CONTROL_BUCKET").is_null()
+                    | (pl.col("CONTROL_BUCKET").str.strip_chars() == "")
+                )
+                .then(pl.lit("UNCATEGORIZED"))
+                .otherwise(pl.col("CONTROL_BUCKET"))
+                .alias("CONTROL_BUCKET")
+            )
+
+        # Load Bucket Details sheet (optional)
+        bucket_details_df = pl.DataFrame()
+        norm_sheets = {s.strip().upper(): s for s in xls.sheet_names}
+        if "BUCKET DETAILS" in norm_sheets:
+            bd_pd = pd.read_excel(
+                xls,
+                sheet_name=norm_sheets["BUCKET DETAILS"],
+                dtype=str,
+                keep_default_na=False,
+            )
+            bd = pl.from_pandas(bd_pd)
+            bd = upper_values(bd)
+            bd = apply_rename(bd, INPUT_COLUMN_RENAME["bucket_details"])
+            missing_bd_cols = BUCKET_DETAILS_REQUIRED_COLS - set(bd.columns)
+            if not missing_bd_cols:
+                bucket_details_df = bd.filter(
+                    pl.col("BUCKET_NAME").is_not_null()
+                    & (pl.col("BUCKET_NAME").str.strip_chars() != "")
+                )
+
+        _log.info(
+            "Ruleset loaded: sod=%d sa=%d mapping=%d bucket_details=%d",
+            sod_df.height, sa_df.height, mapping_df.height, bucket_details_df.height,
+        )
+        return sod_df, sa_df, mapping_df, bucket_details_df, []
 
     except Exception as exc:
         _log.error("Ruleset loading error: %s", exc, exc_info=True)
-        return None, None, None, [f"Ruleset error in '{filename}': {exc}"]
+        return None, None, None, pl.DataFrame(), [f"Ruleset error in '{filename}': {exc}"]
 
 
 # ── Validation ────────────────────────────────────────────────────────────────
@@ -379,14 +441,17 @@ def check_sod_violations_vectorized(
     )
 
     controls = sod_controls.with_row_index("_ctrl_id")
+    _ctrl_extra = ["CONTROL_BUCKET"] if "CONTROL_BUCKET" in controls.columns else []
     legs = pl.concat([
         controls.select([
             "_ctrl_id", "CONTROL_NAME", "RISK_RANKING", "MODULES",
+            *_ctrl_extra,
             pl.col("LHS_ENTITLEMENT").alias("ENTITLEMENT_NAME"),
             pl.lit("LHS").alias("SIDE"),
         ]),
         controls.select([
             "_ctrl_id", "CONTROL_NAME", "RISK_RANKING", "MODULES",
+            *_ctrl_extra,
             pl.col("RHS_ENTITLEMENT").alias("ENTITLEMENT_NAME"),
             pl.lit("RHS").alias("SIDE"),
         ]),
@@ -408,8 +473,10 @@ def check_sod_violations_vectorized(
     if matched.is_empty():
         return pl.DataFrame()
 
+    _viol_extra = ["CONTROL_BUCKET"] if "CONTROL_BUCKET" in matched.columns else []
     final_violations = matched.select([
         "CONTROL_NAME", "RISK_RANKING", "MODULES",
+        *_viol_extra,
         "ENTITY_VALUE",
         pl.col("ENTITLEMENT_NAME").alias("ENTITLEMENT"),
         "SIDE",
@@ -1061,6 +1128,169 @@ def _write_safe_split_dataframe(
     return sheets_created
 
 
+def _write_cover_page(workbook: xlsxwriter.Workbook, ws: Any, project_name: str) -> None:
+    """Write a professional EY-branded cover page to the given worksheet."""
+    # Formats
+    gold_bg   = workbook.add_format({"bg_color": "#FFD100", "border": 0})
+    navy_bg   = workbook.add_format({"bg_color": "#0F1E3D", "border": 0})
+    title_fmt = workbook.add_format({
+        "bold": True, "font_size": 20, "font_color": "#0F1E3D",
+        "align": "center", "valign": "vcenter", "font_name": "Calibri",
+    })
+    label_fmt = workbook.add_format({
+        "bold": True, "font_size": 12, "font_color": "#0F1E3D",
+        "align": "right", "valign": "vcenter", "font_name": "Calibri",
+    })
+    value_fmt = workbook.add_format({
+        "font_size": 12, "font_color": "#0F1E3D",
+        "align": "left", "valign": "vcenter", "font_name": "Calibri",
+    })
+
+    ws.set_column("A:F", 18)
+    ws.set_row(0, 30)   # gold bar
+    ws.set_row(1, 10)   # spacer
+    ws.set_row(2, 50)   # title
+    ws.set_row(3, 10)   # spacer
+    ws.set_row(4, 25)   # project name
+    ws.set_row(5, 25)   # date
+    ws.set_row(6, 25)   # version
+    ws.set_row(7, 10)   # spacer
+    ws.set_row(8, 30)   # navy bar
+
+    # Gold bar (row 0)
+    ws.merge_range("A1:F1", "", gold_bg)
+
+    # Title (row 2)
+    ws.merge_range("A3:F3", "SOD & SA Access Governance Analysis", title_fmt)
+
+    # Metadata rows (rows 4-6): label in col C, value in col D
+    ws.write("C5", "Project Name:", label_fmt)
+    ws.write("D5", project_name, value_fmt)
+    ws.write("C6", "Date:", label_fmt)
+    ws.write("D6", date.today().strftime("%d %B %Y"), value_fmt)
+    ws.write("C7", "Version:", label_fmt)
+    ws.write("D7", "1", value_fmt)
+
+    # Navy bar (row 8)
+    ws.merge_range("A9:F9", "", navy_bg)
+
+
+def _write_observation_tab(
+    workbook: xlsxwriter.Workbook,
+    role_sod_violations: pl.DataFrame,
+    bucket_details_df: pl.DataFrame,
+    fp_enabled: bool = False,
+) -> None:
+    """Write one observation block per Control Bucket to an 'Observation' sheet."""
+    ws = workbook.add_worksheet("Observation")
+
+    # Formats
+    header_fmt = workbook.add_format({
+        "bold": True, "font_size": 13, "font_color": "#FFFFFF",
+        "bg_color": "#0F1E3D", "align": "center", "valign": "vcenter",
+        "font_name": "Calibri",
+    })
+    subheader_fmt = workbook.add_format({
+        "italic": True, "font_size": 10, "font_color": "#0F1E3D",
+        "bg_color": "#F2F2F2", "align": "left", "valign": "vcenter",
+        "font_name": "Calibri",
+    })
+    col_hdr_fmt = workbook.add_format({
+        "bold": True, "font_size": 10, "font_color": "#0F1E3D",
+        "bg_color": "#FFD100", "border": 1,
+        "align": "center", "valign": "vcenter", "font_name": "Calibri",
+    })
+    num_fmt = workbook.add_format({
+        "font_size": 10, "align": "center", "valign": "top",
+        "border": 1, "text_wrap": True, "font_name": "Calibri",
+    })
+    text_fmt = workbook.add_format({
+        "font_size": 10, "align": "left", "valign": "top",
+        "border": 1, "text_wrap": True, "font_name": "Calibri",
+    })
+
+    ws.set_column("A:A", 5)
+    ws.set_column("B:B", 55)
+    ws.set_column("C:C", 50)
+    ws.set_column("D:D", 55)
+
+    # Build bucket → role count map (TC-only when FP is enabled)
+    bucket_role_counts: dict[str, int] = {}
+    if not role_sod_violations.is_empty() and "CONTROL_BUCKET" in role_sod_violations.columns and "ROLE_NAME" in role_sod_violations.columns:
+        count_df = role_sod_violations
+        if fp_enabled and "Potential FP" in count_df.columns:
+            count_df = count_df.filter(pl.col("Potential FP") == "TC")
+        for row in (
+            count_df
+            .group_by("CONTROL_BUCKET")
+            .agg(pl.col("ROLE_NAME").n_unique().alias("cnt"))
+            .iter_rows(named=True)
+        ):
+            bucket_role_counts[row["CONTROL_BUCKET"]] = row["cnt"]
+
+    # Build bucket details lookup
+    bucket_details: dict[str, dict] = {}
+    if not bucket_details_df.is_empty():
+        for row in bucket_details_df.iter_rows(named=True):
+            bucket_details[row["BUCKET_NAME"]] = row
+
+    # Determine bucket order: Bucket Details order first, then any extra (e.g. UNCATEGORIZED)
+    ordered_buckets: list[str] = []
+    if not bucket_details_df.is_empty():
+        ordered_buckets = bucket_details_df["BUCKET_NAME"].to_list()
+    # Add any buckets present in violations but not in Bucket Details (e.g. UNCATEGORIZED)
+    for b in bucket_role_counts:
+        if b not in ordered_buckets:
+            ordered_buckets.append(b)
+
+    current_row = 0
+    obs_index = 1
+
+    for bucket in ordered_buckets:
+        role_count = bucket_role_counts.get(bucket, 0)
+        details = bucket_details.get(bucket, {})
+        risk_text = details.get("RISK", "")
+        rec_text = details.get("EY_RECOMMENDATIONS", "")
+        bucket_display = bucket.title() if bucket == "UNCATEGORIZED" else bucket
+
+        # Header row
+        ws.set_row(current_row, 22)
+        ws.merge_range(current_row, 0, current_row, 3, "Observations & Recommendations", header_fmt)
+        current_row += 1
+
+        # Sub-header row
+        ws.set_row(current_row, 18)
+        ws.merge_range(
+            current_row, 0, current_row, 3,
+            "Below listed are Oracle Security SOD/SA Analysis Observations related to the Project",
+            subheader_fmt,
+        )
+        current_row += 1
+
+        # Column headers
+        ws.set_row(current_row, 18)
+        for ci, label in enumerate(["#", "Observations", "Risk", "EY Recommendations"]):
+            ws.write(current_row, ci, label, col_hdr_fmt)
+        current_row += 1
+
+        # Data row
+        obs_text = (
+            f"There are {role_count} roles identified with inherent SOD violations "
+            f"with access to both {bucket_display} controls."
+        )
+        row_height = max(60, 15 * (len(obs_text) // 70 + 1))
+        ws.set_row(current_row, row_height)
+        ws.write(current_row, 0, obs_index, num_fmt)
+        ws.write(current_row, 1, obs_text, text_fmt)
+        ws.write(current_row, 2, risk_text, text_fmt)
+        ws.write(current_row, 3, rec_text, text_fmt)
+        current_row += 1
+
+        # Blank separator
+        current_row += 1
+        obs_index += 1
+
+
 def export_results(
     role_sod_violations: pl.DataFrame,
     role_sa_violations: pl.DataFrame,
@@ -1074,10 +1304,14 @@ def export_results(
     role_hierarchy_df: pl.DataFrame | None = None,
     fp_enabled: bool = False,
     step_callback: Callable[[int, str], None] | None = None,
+    project_name: str = "",
+    with_observation: bool = False,
+    bucket_details_df: pl.DataFrame | None = None,
 ) -> EngineResult:
     """Write SOD & SA results to an in-memory Excel workbook.
 
-    Sheet order: SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA.
+    Sheet order: Cover Page, SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA,
+    and optionally an Observation tab (when with_observation=True and role data is present).
     Uses entity-aware splitting to keep complete user/role blocks together.
     Returns EngineResult with .data = io.BytesIO positioned at offset 0.
     When fp_enabled=True the SUMMARY sheet counts only True Conflict rows.
@@ -1113,6 +1347,13 @@ def export_results(
             if step_callback:
                 step_callback(n, msg)
 
+        # Cover Page (always first)
+        _scb(14, "Writing cover page…")
+        cover_ws = workbook.add_worksheet("Cover Page")
+        _write_cover_page(workbook, cover_ws, project_name)
+        total_sheets += 1
+        _log.info("Created sheet: Cover Page")
+
         # Write summary
         if not summary_df.is_empty():
             _scb(15, "Writing summary sheet…")
@@ -1139,13 +1380,16 @@ def export_results(
         _user_sort_cols = [*_role_sort_cols, "GROUP_NAME", "USER_NAME"]
 
         _fp_cols = {"Potential FP", "Reason"}
-        _role_schema = ROLE_OUTPUT_COLUMNS if fp_enabled else [c for c in ROLE_OUTPUT_COLUMNS if c not in _fp_cols]
-        _user_schema = USER_OUTPUT_COLUMNS if fp_enabled else [c for c in USER_OUTPUT_COLUMNS if c not in _fp_cols]
+        _role_schema     = ROLE_OUTPUT_COLUMNS if fp_enabled else [c for c in ROLE_OUTPUT_COLUMNS if c not in _fp_cols]
+        _user_schema     = USER_OUTPUT_COLUMNS if fp_enabled else [c for c in USER_OUTPUT_COLUMNS if c not in _fp_cols]
+        # SOD tabs get CONTROL_BUCKET only when Observation is requested
+        _role_sod_schema = (ROLE_SOD_OUTPUT_COLUMNS_WITH_BUCKET if fp_enabled else [c for c in ROLE_SOD_OUTPUT_COLUMNS_WITH_BUCKET if c not in _fp_cols]) if with_observation else _role_schema
+        _user_sod_schema = (USER_SOD_OUTPUT_COLUMNS_WITH_BUCKET if fp_enabled else [c for c in USER_SOD_OUTPUT_COLUMNS_WITH_BUCKET if c not in _fp_cols]) if with_observation else _user_schema
         sheet_order = [
-            ("ROLE_SOD", "ROLE_NAME", role_sod_violations, _role_sort_cols, _role_schema),
-            ("ROLE_SA", "ROLE_NAME", role_sa_violations, _role_sort_cols, _role_schema),
-            ("USER_SOD", "USER_NAME", user_sod_violations, _user_sort_cols, _user_schema),
-            ("USER_SA", "USER_NAME", user_sa_violations, _user_sort_cols, _user_schema),
+            ("ROLE_SOD", "ROLE_NAME", role_sod_violations, _role_sort_cols, _role_sod_schema),
+            ("ROLE_SA",  "ROLE_NAME", role_sa_violations,  _role_sort_cols, _role_schema),
+            ("USER_SOD", "USER_NAME", user_sod_violations, _user_sort_cols, _user_sod_schema),
+            ("USER_SA",  "USER_NAME", user_sa_violations,  _user_sort_cols, _user_schema),
         ]
 
         _sheet_steps = {"ROLE_SOD": 17, "ROLE_SA": 18, "USER_SOD": 19, "USER_SA": 20}
@@ -1188,6 +1432,18 @@ def export_results(
                 "Created %d sheet(s) for %s (%d rows) in %.1fs",
                 sheets_created, sheet_name, df.height, time.perf_counter() - sheet_start,
             )
+
+        # Observation tab (optional, role data only)
+        if with_observation and analysis_type in ("role", "both") and not role_sod_violations.is_empty():
+            _scb(21, "Writing observation tab…")
+            _write_observation_tab(
+                workbook,
+                role_sod_violations,
+                bucket_details_df if bucket_details_df is not None else pl.DataFrame(),
+                fp_enabled=fp_enabled,
+            )
+            total_sheets += 1
+            _log.info("Created sheet: Observation")
 
         _log.info("All sheets written; finalising workbook (this can take a while for large files)…")
         workbook.close()

@@ -5,6 +5,8 @@ export interface SODSARunConfig {
   analysis_type: 'role' | 'user' | 'both'
   with_fp?: boolean
   selected_analyses?: string[]
+  with_observation?: boolean
+  project_name?: string
 }
 
 export interface SODSASheetCount {
