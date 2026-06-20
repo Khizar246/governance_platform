@@ -39,14 +39,14 @@ export async function uploadFiles(
   ruleset: File,
   userRole: File | null,
   fpDb: File | null,
-  onProgress: (p: number) => void,
+  onProgress?: (p: number) => void,
 ): Promise<UploadResponse> {
   const formData = new FormData()
   formData.append('role_hierarchy', roleHierarchy)
   formData.append('ruleset', ruleset)
   if (userRole) formData.append('user_role', userRole)
   if (fpDb) formData.append('fp_db', fpDb)
-  const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress)
+  const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress ?? (() => {}))
   return response.data
 }
 

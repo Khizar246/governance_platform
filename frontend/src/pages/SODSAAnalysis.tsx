@@ -165,7 +165,6 @@ export default function SODSAAnalysis() {
   const [rulesetFile, setRulesetFile] = useState<File | null>(null)
   const [userRoleFile, setUserRoleFile] = useState<File | null>(null)
   const [fpDbFile, setFpDbFile] = useState<File | null>(null)
-  const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -353,13 +352,12 @@ export default function SODSAAnalysis() {
   const handleRunAnalysis = useCallback(async () => {
     if (!roleHierarchyFile || !rulesetFile || !analysisType) return
     setIsUploading(true)
-    setUploadProgress(0)
     setUploadError('')
     setUploadErrorDetails([])
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
-      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, setUploadProgress)
+      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile)
       if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
       const id = resp.job_id
       setJobId(id)
@@ -401,7 +399,6 @@ export default function SODSAAnalysis() {
     setRulesetFile(null)
     setUserRoleFile(null)
     setFpDbFile(null)
-    setUploadProgress(0)
     setIsUploading(false)
     setJobId(null)
     setProgress(0)
@@ -616,21 +613,6 @@ export default function SODSAAnalysis() {
                 Change
               </button>
             </div>
-
-            {isUploading && (
-              <div>
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
-                  <span>Validating files and ruleset structure…</span>
-                  <span>{uploadProgress}%</span>
-                </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
-                  <div
-                    className="h-full rounded-full transition-[width] duration-300 ease-out"
-                    style={{ width: `${uploadProgress}%`, background: '#EAB308' }}
-                  />
-                </div>
-              </div>
-            )}
 
             {uploadError && (
               <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
