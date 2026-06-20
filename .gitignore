@@ -42,8 +42,8 @@ desktop.ini
 # Local Claude Code settings
 .claude/
 
-# Generated stress-test data (regenerate via scripts/generate_sod_sa_stress_data.py)
-Data/SODSAAnalysis/StressTest/
+# Local data files — only templates belong in the repo
+Data/
 
 # Local documentation
 EY_Access_Governance_Platform_Documentation.docx
