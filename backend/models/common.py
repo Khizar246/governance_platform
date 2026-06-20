@@ -24,6 +24,7 @@ class JobResponse(BaseModel):
     status: JobStatus
     progress: int = 0                    # 0–100
     progress_message: str = ""
+    step: int = 0                        # Explicit step number (tool-specific; 0 = not started)
     created_at: datetime
     errors: list[str] = []
     warnings: list[str] = []

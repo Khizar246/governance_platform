@@ -28,7 +28,7 @@ from shared.validators import validate_upload
 from shared.logger import get_logger
 from engines.sod_sa_engine import (
     load_ruleset_sheets, analyze_roles, analyze_users, export_results,
-    run_fp_pipeline, apply_grouping_to_violations,
+    run_fp_pipeline, compute_user_groups,
     INPUT_COLUMN_RENAME, apply_rename, upper_values,
 )
 
@@ -36,15 +36,14 @@ router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
 logger = get_logger("sod_sa_analysis")
 
 # Columns exposed per sheet through the paginated results endpoint
-_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason"]
-_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME", "FP?", "Reason"]
+_ROLE_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason"]
+_USER_COLS = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "GROUP_NAME", "USER_NAME", "Potential FP", "Reason"]
 _SHEET_COLS = {
     "ROLE_SOD": _ROLE_COLS,
     "ROLE_SA":  _ROLE_COLS,
     "USER_SOD": _USER_COLS,
     "USER_SA":  _USER_COLS,
-    "GROUP_SOD_MAPPING": ["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"],
-    "GROUP_SA_MAPPING":  ["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"],
+    "GROUP_MAPPING": ["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"],
 }
 
 _ROLE_SORT = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
@@ -70,8 +69,8 @@ _RULESET_SHEET_SCHEMA = {
     "Entitlement to Privilege": ["Entitlement Name", "Privilege Code"],
 }
 _FP_SHEET_SCHEMA = {
-    "No_action_Privileges": ["PRIVILEGE_DISPLAY_NAME", "FALSE POSITIVE REASON"],
-    "WorkArea_Privileges":  ["PRIVILEGE_DISPLAY_NAME", "WORK_AREA_PRIVILEGE"],
+    "No_action_Privileges": ["PRIVILEGE_NAME", "False Positive Reason"],
+    "WorkArea_Privileges":  ["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"],
 }
 
 
@@ -203,15 +202,38 @@ def _run_thread(
 
         callback = job_manager.make_progress_callback(job_id)
 
+        def _step(n: int, pct: int, msg: str) -> None:
+            """Advance step counter and update progress in one call."""
+            job_manager.set_step(job_id, n)
+            callback(pct, msg)
+
+        _step(3, 2, "Initiating SOD SA Analysis…")
+
+        # Compute user groups once from the full user-role membership file.
+        # Groups users with identical role portfolios; joined onto violations after analysis.
+        user_to_group_map: Optional[pl.DataFrame] = None
+        group_mapping_export: Optional[pl.DataFrame] = None
+        if user_role_df is not None and analysis_type in ("user", "both"):
+            user_to_group_map, group_mapping_export = compute_user_groups(user_role_df)
+
         if analysis_type == "both":
             def role_callback(pct: int, msg: str) -> None:
+                job_manager.set_step(job_id, 5 if "SA violations" in msg else 4)
                 callback(pct // 2, msg)
 
             def user_callback(pct: int, msg: str) -> None:
+                job_manager.set_step(job_id, 7 if "SA violations" in msg else 6)
                 callback(50 + pct // 2, msg)
-        else:
-            role_callback = callback if analysis_type == "role" else None
-            user_callback = callback if analysis_type == "user" else None
+        elif analysis_type == "role":
+            def role_callback(pct: int, msg: str) -> None:
+                job_manager.set_step(job_id, 5 if "SA violations" in msg else 4)
+                callback(pct, msg)
+            user_callback = None
+        else:  # "user"
+            role_callback = None
+            def user_callback(pct: int, msg: str) -> None:
+                job_manager.set_step(job_id, 7 if "SA violations" in msg else 6)
+                callback(pct, msg)
 
         role_sod = pl.DataFrame()
         role_sa = pl.DataFrame()
@@ -261,12 +283,19 @@ def _run_thread(
             user_sa = pl.DataFrame()
         logger.info(f"[{job_id}] Selected analyses applied: {selected_analyses}")
 
-        # ── FP Pipeline (if enabled) ──────────────────────────────────────────
-        sod_group_mapping: Optional[pl.DataFrame] = None
-        sa_group_mapping: Optional[pl.DataFrame] = None
+        # ── Join GROUP_NAME onto user violations from the pre-computed group map ──
+        if user_to_group_map is not None and not user_to_group_map.is_empty():
+            _group_col = user_to_group_map.select(["USER_NAME", "GROUP_NAME"])
+            if not user_sod.is_empty() and "USER_NAME" in user_sod.columns:
+                user_sod = user_sod.join(_group_col, on="USER_NAME", how="left")
+            if not user_sa.is_empty() and "USER_NAME" in user_sa.columns:
+                user_sa = user_sa.join(_group_col, on="USER_NAME", how="left")
 
+        # ── FP Pipeline (if enabled) ──────────────────────────────────────────
         if with_fp and no_action_df is not None and work_area_df is not None:
-            callback(55, "Running 3-level FP pipeline for Role SoD…")
+            _step(8, 53, "Initiating False Positive Analysis…")
+
+            _step(9, 55, "FP analysis on role SOD…")
             if not role_sod.is_empty():
                 role_sod = run_fp_pipeline(
                     role_sod,
@@ -278,7 +307,7 @@ def _run_thread(
                     user_role_df=None,
                 )
 
-            callback(60, "Running 3-level FP pipeline for Role SA…")
+            _step(10, 60, "FP analysis on role SA…")
             if not role_sa.is_empty():
                 role_sa = run_fp_pipeline(
                     role_sa,
@@ -290,7 +319,7 @@ def _run_thread(
                     user_role_df=None,
                 )
 
-            callback(65, "Running 3-level FP pipeline for User SoD…")
+            _step(11, 65, "FP analysis on user SOD…")
             if not user_sod.is_empty():
                 user_sod = run_fp_pipeline(
                     user_sod,
@@ -302,7 +331,7 @@ def _run_thread(
                     user_role_df=user_role_df,
                 )
 
-            callback(70, "Running 3-level FP pipeline for User SA…")
+            _step(12, 70, "FP analysis on user SA…")
             if not user_sa.is_empty():
                 user_sa = run_fp_pipeline(
                     user_sa,
@@ -319,31 +348,13 @@ def _run_thread(
                 if df.is_empty():
                     return df
                 return df.with_columns([
-                    pl.lit("NOT ANALYSED").alias("FP?"),
+                    pl.lit("NOT ANALYSED").alias("Potential FP"),
                     pl.lit("FP engine disabled during run configuration").alias("Reason"),
                 ])
             role_sod = _mark_not_analysed(role_sod)
             role_sa = _mark_not_analysed(role_sa)
             user_sod = _mark_not_analysed(user_sod)
             user_sa = _mark_not_analysed(user_sa)
-
-        # ── User Grouping (post-analysis, for User sheets) ────────────────────
-        if user_role_df is not None and analysis_type in ("user", "both"):
-            callback(75, "Generating user portfolio groupings for User SoD…")
-            if not user_sod.is_empty():
-                user_sod, sod_group_mapping = apply_grouping_to_violations(
-                    user_sod,
-                    user_role_df,
-                    prefix="Group_SoD",
-                )
-
-            callback(80, "Generating user portfolio groupings for User SA…")
-            if not user_sa.is_empty():
-                user_sa, sa_group_mapping = apply_grouping_to_violations(
-                    user_sa,
-                    user_role_df,
-                    prefix="Group_SA",
-                )
 
         total_roles = (
             role_hierarchy_df.select("ROLE_NAME").unique().height
@@ -359,12 +370,11 @@ def _run_thread(
         # Cache per-sheet rows (restricted columns) for paginated/summary access
         cache: dict[str, pl.DataFrame] = {}
         for _sheet_name, _df in [
-            ("ROLE_SOD", role_sod),
-            ("ROLE_SA",  role_sa),
-            ("USER_SOD", user_sod),
-            ("USER_SA",  user_sa),
-            ("GROUP_SOD_MAPPING", sod_group_mapping),
-            ("GROUP_SA_MAPPING", sa_group_mapping),
+            ("ROLE_SOD",      role_sod),
+            ("ROLE_SA",       role_sa),
+            ("USER_SOD",      user_sod),
+            ("USER_SA",       user_sa),
+            ("GROUP_MAPPING", group_mapping_export),
         ]:
             if _df is None or _df.is_empty():
                 continue
@@ -386,8 +396,13 @@ def _run_thread(
             total_users_analyzed=total_users,
         ).model_dump()
 
-        callback(85, "Bundling final compliance reports into workbook…")
+        _step(14, 82, "All analysis complete — building Excel report…")
         logger.info(f"[{job_id}] Exporting results to Excel workbook...")
+
+        def _export_step(n: int, msg: str) -> None:
+            job_manager.set_step(job_id, n)
+            callback(82 + n - 14, msg)
+
         export_result = export_results(
             role_sod,
             role_sa,
@@ -397,16 +412,17 @@ def _run_thread(
             sa_controls_df,
             analysis_type,
             logger=logger,
-            sod_group_mapping=sod_group_mapping,
-            sa_group_mapping=sa_group_mapping,
+            group_mapping=group_mapping_export,
             role_hierarchy_df=role_hierarchy_df,
+            fp_enabled=with_fp,
+            step_callback=_export_step,
         )
         if not export_result.success:
             logger.error(f"[{job_id}] Export failed: {export_result.errors}")
             job_manager.fail_job(job_id, export_result.errors)
             return
 
-        callback(95, "Export complete.")
+        _step(21, 98, "Finalising workbook…")
         output_file = output_filename("SOD_SA_Analysis", analysis_type.capitalize())
         logger.info(f"[{job_id}] SOD & SA analysis complete. Output file: {output_file}")
         job_manager.complete_job(job_id, summary, export_result.data, output_file)

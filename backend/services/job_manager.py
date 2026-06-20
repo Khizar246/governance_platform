@@ -24,6 +24,7 @@ class Job:
     tool: str = ""
     progress: int = 0
     progress_message: str = ""
+    step: int = 0                        # Tool-specific step counter; 0 = not started
     files: dict[str, Any] = field(default_factory=dict)     # Loaded DataFrames (released after export)
     config: dict[str, Any] = field(default_factory=dict)    # Run configuration from the /run request
     results: dict[str, Any] = field(default_factory=dict)   # Analysis summary (serialisable dict)
@@ -136,6 +137,13 @@ class JobManager:
                 job.progress_message = message
                 job.status = JobStatus.RUNNING
 
+    def set_step(self, job_id: str, step: int) -> None:
+        """Set the current step number (tool-specific). Does not change progress or status."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job:
+                job.step = step
+
     def make_progress_callback(self, job_id: str) -> Callable[[int, str], None]:
         """Return a closure suitable for passing to engine functions as `progress_callback`.
 
@@ -184,6 +192,7 @@ class JobManager:
             status=job.status,
             progress=job.progress,
             progress_message=job.progress_message,
+            step=job.step,
             created_at=job.created_at,
             errors=list(job.errors),
             warnings=list(job.warnings),

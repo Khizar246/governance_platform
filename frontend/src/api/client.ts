@@ -80,22 +80,22 @@ export async function uploadWithProgress(
 
 // ── Download helper ───────────────────────────────────────────────────────────
 
-/** GET a blob and trigger a browser file-download via a temporary <a> element. */
-export async function downloadFile(url: string, filename: string): Promise<void> {
-  try {
-    const response = await api.get(url, { responseType: 'blob', timeout: 300_000 })
-    const blobUrl = URL.createObjectURL(new Blob([response.data]))
-    const link = document.createElement('a')
-    link.href = blobUrl
-    link.download = filename
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    URL.revokeObjectURL(blobUrl)
-  } catch {
-    toast.error('Download failed. Please try again.')
-    throw new Error('Download failed')
-  }
+/** Trigger a native browser download by anchoring directly at the file URL.
+ *  We deliberately do NOT fetch the file into a JS blob first: result workbooks
+ *  can be hundreds of MB, and buffering the whole response in memory (plus the
+ *  extra Blob copy) stalls/OOMs the tab so nothing ever saves. The backend sends
+ *  `Content-Disposition: attachment`, so the browser streams straight to disk
+ *  with its own progress UI. */
+export function downloadFile(url: string, filename: string): Promise<void> {
+  const base = import.meta.env.VITE_API_URL || ''
+  const link = document.createElement('a')
+  link.href = `${base}${url}`
+  link.download = filename
+  link.rel = 'noopener'
+  document.body.appendChild(link)
+  link.click()
+  document.body.removeChild(link)
+  return Promise.resolve()
 }
 
 export default api

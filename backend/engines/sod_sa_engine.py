@@ -14,6 +14,7 @@ No FastAPI, no Pydantic, no HTTP.
 
 import io
 import logging
+import time
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -103,13 +104,13 @@ SUPPLEMENTARY_COLUMNS = {
 ROLE_OUTPUT_COLUMNS = [
     "CONTROL_NAME", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
     "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
-    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason",
 ]
 USER_OUTPUT_COLUMNS = [
     "CONTROL_NAME", "ENTITLEMENT", "SIDE", "RISK_RANKING", "MODULES",
     "GROUP_NAME", "USER_NAME",
     "ROLE_NAME", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
-    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "FP?", "Reason",
+    "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason",
 ]
 
 
@@ -155,12 +156,26 @@ def apply_rename(df: pl.DataFrame, rename_map: dict[str, str]) -> pl.DataFrame:
     return df.rename(actual) if actual else df
 
 
-def _write_sheet_batch(ws: xlsxwriter.workbook.Worksheet, df: pl.DataFrame) -> None:
-    """Write headers + rows from a Polars DataFrame into an xlsxwriter worksheet."""
+def _write_sheet_batch(
+    ws: xlsxwriter.workbook.Worksheet,
+    df: pl.DataFrame,
+    logger: Any = None,
+    sheet_label: str = "",
+    log_every: int = 500_000,
+) -> None:
+    """Write headers + rows from a Polars DataFrame into an xlsxwriter worksheet.
+
+    Logs a heartbeat every `log_every` rows so that a stall while writing a very
+    large sheet (millions of rows) is visible in the logs and we can see exactly
+    where it stops.
+    """
     for ci, col in enumerate(df.columns):
         ws.write(0, ci, col)
+    total = df.height
     for ri, row in enumerate(df.iter_rows(), start=1):
         ws.write_row(ri, 0, list(row))
+        if logger is not None and ri % log_every == 0:
+            logger.info("    … writing '%s': %d/%d rows", sheet_label, ri, total)
 
 
 # ── Ruleset file loading ──────────────────────────────────────────────────────
@@ -463,8 +478,8 @@ def _set_fp_where_pending(df: pl.DataFrame, tag: str) -> pl.DataFrame:
     """
     return df.with_columns([
         pl.when(
-            pl.col("_reason").is_not_null() & (pl.col("FP?") == "")
-        ).then(pl.lit(tag)).otherwise(pl.col("FP?")).alias("FP?"),
+            pl.col("_reason").is_not_null() & (pl.col("Potential FP") == "")
+        ).then(pl.lit(tag)).otherwise(pl.col("Potential FP")).alias("Potential FP"),
         pl.when(
             pl.col("_reason").is_not_null() & (pl.col("Reason") == "")
         ).then(pl.col("_reason")).otherwise(pl.col("Reason")).alias("Reason"),
@@ -477,21 +492,21 @@ def _fp_level1(
 ) -> pl.DataFrame:
     """Level 1: Mark privileges in No_action_Privileges sheet as FP=YES.
 
-    Joins on PRIVILEGE_DISPLAY_NAME; preserves existing FP?/Reason for already-classified rows.
+    Joins on PRIVILEGE_NAME; preserves existing FP?/Reason for already-classified rows.
     """
     if no_action_df.is_empty():
         return df
 
     joined = df.join(
         no_action_df.select([
-            "PRIVILEGE_DISPLAY_NAME",
+            "PRIVILEGE_NAME",
             pl.col("FALSE POSITIVE REASON").alias("_reason"),
-        ]).unique(subset=["PRIVILEGE_DISPLAY_NAME"], keep="first"),
-        on="PRIVILEGE_DISPLAY_NAME",
+        ]).unique(subset=["PRIVILEGE_NAME"], keep="first"),
+        on="PRIVILEGE_NAME",
         how="left",
     )
 
-    return _set_fp_where_pending(joined, "YES")
+    return _set_fp_where_pending(joined, "FP")
 
 
 def _fp_level2(
@@ -511,30 +526,30 @@ def _fp_level2(
         return df
 
     wa_valid = work_area_df.filter(
-        pl.col("WORK_AREA_PRIVILEGE").is_not_null()
-        & (pl.col("WORK_AREA_PRIVILEGE") != "")
-        & (~pl.col("WORK_AREA_PRIVILEGE").is_in(["NAN", "NONE"]))
+        pl.col("WORK_AREA_PRIVILEGE_CODE").is_not_null()
+        & (pl.col("WORK_AREA_PRIVILEGE_CODE") != "")
+        & (~pl.col("WORK_AREA_PRIVILEGE_CODE").is_in(["NAN", "NONE"]))
     )
 
     if wa_valid.is_empty():
         return df
 
-    pending = df.filter(pl.col("FP?") == "")
+    pending = df.filter(pl.col("Potential FP") == "")
     if pending.is_empty():
         return df
 
     # Merge pending rows with work area rules
     wa_merged = pending.join(
-        wa_valid.select(["PRIVILEGE_DISPLAY_NAME", "WORK_AREA_PRIVILEGE"]),
-        on="PRIVILEGE_DISPLAY_NAME",
+        wa_valid.select(["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+        on="PRIVILEGE_NAME",
         how="inner",
     )
 
     if wa_merged.is_empty():
         return df
 
-    # Build access lookup: role → privilege
-    role_gk = role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_DISPLAY_NAME"]).unique()
+    # Build access lookup: role → privilege code
+    role_gk = role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_NAME"]).unique()
 
     # Determine how to check for WA privilege satisfaction
     if entity_col == "USER_NAME" and user_role_df is not None:
@@ -543,14 +558,14 @@ def _fp_level2(
             role_gk,
             on="ROLE_NAME",
             how="inner",
-        ).select(["USER_NAME", "PRIVILEGE_DISPLAY_NAME"]).unique()
-        join_keys = ["USER_NAME", "WORK_AREA_PRIVILEGE"]
-        right_keys = ["USER_NAME", "PRIVILEGE_DISPLAY_NAME"]
+        ).select(["USER_NAME", "PRIVILEGE_NAME"]).unique()
+        join_keys = ["USER_NAME", "WORK_AREA_PRIVILEGE_CODE"]
+        right_keys = ["USER_NAME", "PRIVILEGE_NAME"]
     else:
         # Role-level: check only the specific role
         access_master = role_gk
-        join_keys = ["ROLE_NAME", "WORK_AREA_PRIVILEGE"]
-        right_keys = ["ROLE_NAME", "PRIVILEGE_DISPLAY_NAME"]
+        join_keys = ["ROLE_NAME", "WORK_AREA_PRIVILEGE_CODE"]
+        right_keys = ["ROLE_NAME", "PRIVILEGE_NAME"]
 
     # Find rows where WA privilege IS satisfied (inner join succeeds)
     satisfied = wa_merged.join(
@@ -567,18 +582,26 @@ def _fp_level2(
         how="anti",
     )
 
+    # Annotate rows that satisfy the WA check with their privilege code for TC reason in level 3
+    if not satisfied.is_empty():
+        satisfied_wa = wa_merged.join(satisfied, on="_row_nr", how="semi")
+        wa_code_map = satisfied_wa.group_by("_row_nr").agg(
+            pl.col("WORK_AREA_PRIVILEGE_CODE").sort().first().alias("_wa_code")
+        )
+        df = df.join(wa_code_map, on="_row_nr", how="left")
+
     if fp_ids.is_empty():
         return df
 
     # Build FP reasons
     target_noun = "User" if entity_col == "USER_NAME" else "Role"
     fp_reasons = wa_merged.join(fp_ids, on="_row_nr", how="inner").group_by("_row_nr").agg(
-        pl.col("WORK_AREA_PRIVILEGE").unique().sort().alias("_wa_list")
+        pl.col("WORK_AREA_PRIVILEGE_CODE").unique().sort().alias("_wa_list")
     ).with_columns(
-        (pl.lit(f"{target_noun} lacks required work-area privilege(s) across all assignments: ") + pl.col("_wa_list").list.join(", ")).alias("_reason")
+        (pl.lit(f"False Positive - {target_noun} lacks required work-area privilege(s) to perform this activity: ") + pl.col("_wa_list").list.join(", ")).alias("_reason")
     ).drop("_wa_list")
 
-    return _set_fp_where_pending(df.join(fp_reasons, on="_row_nr", how="left"), "YES")
+    return _set_fp_where_pending(df.join(fp_reasons, on="_row_nr", how="left"), "FP")
 
 
 def _fp_level3(
@@ -592,8 +615,7 @@ def _fp_level3(
       1 entitlement → SL, ≥2 → True Conflict.
     For SA: all remaining rows → True Conflict.
     """
-    entity_label = entity_col.lower().replace("_", " ")
-    pending = df.filter(pl.col("FP?") == "")
+    pending = df.filter(pl.col("Potential FP") == "")
     if pending.is_empty():
         return df
 
@@ -608,22 +630,41 @@ def _fp_level3(
 
         sl_reasons = pending_counted.join(sl_ids, on="_row_nr", how="inner").select([
             "_row_nr",
-            (pl.lit(f"Single Leg — only one entitlement remains for {entity_label} '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
+            (pl.lit("Single Leg - Only one entitlement remains after identifying the false positive for '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
         ])
 
-        tc_reasons = pending_counted.join(tc_ids, on="_row_nr", how="inner").select([
-            "_row_nr",
-            (pl.lit(f"True Conflict — both entitlements present for {entity_label} '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
-        ])
+        tc_rows = pending_counted.join(tc_ids, on="_row_nr", how="inner")
+        if "_wa_code" in tc_rows.columns:
+            tc_reasons = tc_rows.select([
+                "_row_nr",
+                pl.when(pl.col("_wa_code").is_not_null())
+                  .then(pl.lit("True Conflict - The role has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
+                  .otherwise(pl.lit("True Conflict — Both entitlements required by the control are present."))
+                  .alias("_reason"),
+            ])
+        else:
+            tc_reasons = tc_rows.select([
+                "_row_nr",
+                pl.lit("True Conflict — Both entitlements required by the control are present.").alias("_reason"),
+            ])
 
         # Apply SL, then TC
         df = _set_fp_where_pending(df.join(sl_reasons, on="_row_nr", how="left"), "SL")
-        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "True Conflict")
+        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "TC")
     else:
         # SA: all pending rows are True Conflict
-        tc_reason = f"True Conflict — Sensitive Access violation at {entity_label} level"
-        tc_reasons = pending.select("_row_nr").with_columns(pl.lit(tc_reason).alias("_reason"))
-        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "True Conflict")
+        if "_wa_code" in pending.columns:
+            tc_reasons = pending.select(["_row_nr", "_wa_code"]).with_columns(
+                pl.when(pl.col("_wa_code").is_not_null())
+                  .then(pl.lit("True Conflict - The role has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
+                  .otherwise(pl.lit("True Conflict — Both entitlements required by the control are present."))
+                  .alias("_reason")
+            ).drop("_wa_code")
+        else:
+            tc_reasons = pending.select("_row_nr").with_columns(
+                pl.lit("True Conflict — Both entitlements required by the control are present.").alias("_reason")
+            )
+        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "TC")
 
 
 def run_fp_pipeline(
@@ -641,13 +682,14 @@ def run_fp_pipeline(
     Returns DataFrame with FP? and Reason columns added.
     """
     df = df.with_row_index("_row_nr").with_columns([
-        pl.lit("").alias("FP?"),
+        pl.lit("").alias("Potential FP"),
         pl.lit("").alias("Reason"),
     ])
     df = _fp_level1(df, no_action_df)
     df = _fp_level2(df, work_area_df, role_hierarchy_df, entity_col, user_role_df)
     df = _fp_level3(df, entity_col, is_sod)
-    return df.drop("_row_nr")
+    cols_to_drop = [c for c in ["_row_nr", "_wa_code"] if c in df.columns]
+    return df.drop(cols_to_drop)
 
 
 # ── User grouping engine (post-analysis review efficiency) ──────────────────
@@ -699,6 +741,21 @@ def _generate_user_groups(
     ).select(["GROUP_NAME", "ROLE_NAME", "NO_OF_USERS_IN_GROUP"])
 
     return user_to_group_map.select(["USER_NAME", "GROUP_NAME"]), group_mapping_export
+
+
+def compute_user_groups(
+    user_role_df: pl.DataFrame,
+    prefix: str = "Group",
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """Compute user groups from the full user-role membership file (all users, not just violators).
+
+    Returns (user_to_group_map, group_mapping_export):
+    - user_to_group_map: USER_NAME → GROUP_NAME (join key for violation DFs)
+    - group_mapping_export: GROUP_NAME, ROLE_NAME, NO_OF_USERS_IN_GROUP (the sheet written to Excel)
+    """
+    if user_role_df is None or user_role_df.is_empty():
+        return pl.DataFrame(), pl.DataFrame()
+    return _generate_user_groups(user_role_df, prefix)
 
 
 def apply_grouping_to_violations(
@@ -853,10 +910,13 @@ def create_summary_sheet(
     user_sod_violations: pl.DataFrame,
     user_sa_violations: pl.DataFrame,
     analysis_type: str,
+    fp_enabled: bool = False,
 ) -> pl.DataFrame:
     """Build control-level violation summary DataFrame.
 
     Counts unique violating roles/users per control for both SOD and SA.
+    When fp_enabled=True, only True Conflict (TC) rows are counted — FP and SL
+    rows are excluded because they are not genuine violations after FP analysis.
     Counts are precomputed with one group_by per violation sheet instead of
     one full-table filter per control.
     """
@@ -869,6 +929,16 @@ def create_summary_sheet(
             .agg(pl.col(entity_col).n_unique().alias("count"))
             .iter_rows(named=True)
         }
+
+    if fp_enabled:
+        def _tc_only(df: pl.DataFrame) -> pl.DataFrame:
+            if "Potential FP" in df.columns:
+                return df.filter(pl.col("Potential FP") == "TC")
+            return df
+        role_sod_violations = _tc_only(role_sod_violations)
+        role_sa_violations  = _tc_only(role_sa_violations)
+        user_sod_violations = _tc_only(user_sod_violations)
+        user_sa_violations  = _tc_only(user_sa_violations)
 
     role_enabled = analysis_type in ("role", "both")
     user_enabled = analysis_type in ("user", "both")
@@ -908,6 +978,7 @@ def _write_safe_split_dataframe(
     df: pl.DataFrame,
     entity_col: str,
     max_rows: int = EXCEL_MAX_ROWS,
+    logger: Any = None,
 ) -> int:
     """Entity-aware safe sheet splitting: never split a single entity's block.
 
@@ -925,7 +996,7 @@ def _write_safe_split_dataframe(
     total_rows = df.height
     if total_rows <= max_rows:
         ws = workbook.add_worksheet(sheet_base_name[:31])
-        _write_sheet_batch(ws, df)
+        _write_sheet_batch(ws, df, logger=logger, sheet_label=sheet_base_name[:31])
         return 1
 
     # Sort by entity and count rows per entity
@@ -945,8 +1016,10 @@ def _write_safe_split_dataframe(
             # Flush the current sheet before starting this entity's block
             end_row = start_row + current_chunk_rows
             sheet_name = f"{sheet_base_name[:24]} Part {part_num}"
+            if logger is not None:
+                logger.info("  Writing sheet '%s' (rows %d–%d)…", sheet_name[:31], start_row, end_row)
             ws = workbook.add_worksheet(sheet_name[:31])
-            _write_sheet_batch(ws, df_sorted[start_row:end_row])
+            _write_sheet_batch(ws, df_sorted[start_row:end_row], logger=logger, sheet_label=sheet_name[:31])
             sheets_created += 1
             start_row = end_row
             current_chunk_rows = 0
@@ -955,7 +1028,7 @@ def _write_safe_split_dataframe(
         if count > max_rows:
             # One entity exceeds the Excel row limit — split its block rather
             # than lose rows.
-            logging.getLogger(__name__).warning(
+            (logger or logging.getLogger(__name__)).warning(
                 "Sheet '%s': a single %s block has %d rows (> %d) and must span multiple sheets.",
                 sheet_base_name, entity_col, count, max_rows,
             )
@@ -964,8 +1037,10 @@ def _write_safe_split_dataframe(
                 take = min(remaining, max_rows)
                 end_row = start_row + take
                 sheet_name = f"{sheet_base_name[:24]} Part {part_num}"
+                if logger is not None:
+                    logger.info("  Writing sheet '%s' (rows %d–%d)…", sheet_name[:31], start_row, end_row)
                 ws = workbook.add_worksheet(sheet_name[:31])
-                _write_sheet_batch(ws, df_sorted[start_row:end_row])
+                _write_sheet_batch(ws, df_sorted[start_row:end_row], logger=logger, sheet_label=sheet_name[:31])
                 sheets_created += 1
                 start_row = end_row
                 remaining -= take
@@ -977,8 +1052,10 @@ def _write_safe_split_dataframe(
     if current_chunk_rows > 0:
         end_row = start_row + current_chunk_rows
         sheet_name = f"{sheet_base_name[:24]} Part {part_num}" if part_num > 1 else sheet_base_name
+        if logger is not None:
+            logger.info("  Writing sheet '%s' (rows %d–%d)…", sheet_name[:31], start_row, end_row)
         ws = workbook.add_worksheet(sheet_name[:31])
-        _write_sheet_batch(ws, df_sorted[start_row:end_row])
+        _write_sheet_batch(ws, df_sorted[start_row:end_row], logger=logger, sheet_label=sheet_name[:31])
         sheets_created += 1
 
     return sheets_created
@@ -993,15 +1070,17 @@ def export_results(
     sa_controls_df: pl.DataFrame,
     analysis_type: str,
     logger: Any = None,
-    sod_group_mapping: pl.DataFrame | None = None,
-    sa_group_mapping: pl.DataFrame | None = None,
+    group_mapping: pl.DataFrame | None = None,
     role_hierarchy_df: pl.DataFrame | None = None,
+    fp_enabled: bool = False,
+    step_callback: Callable[[int, str], None] | None = None,
 ) -> EngineResult:
     """Write SOD & SA results to an in-memory Excel workbook.
 
     Sheet order: SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA.
     Uses entity-aware splitting to keep complete user/role blocks together.
     Returns EngineResult with .data = io.BytesIO positioned at offset 0.
+    When fp_enabled=True the SUMMARY sheet counts only True Conflict rows.
     """
     _log = logger or logging.getLogger(__name__)
 
@@ -1011,6 +1090,7 @@ def export_results(
             role_sod_violations, role_sa_violations,
             user_sod_violations, user_sa_violations,
             analysis_type,
+            fp_enabled=fp_enabled,
         )
 
         output_buffer = io.BytesIO()
@@ -1022,34 +1102,37 @@ def export_results(
         )
 
         total_sheets = 0
+        export_start = time.perf_counter()
+        _log.info(
+            "Building workbook — ROLE_SOD: %d rows, ROLE_SA: %d rows, USER_SOD: %d rows, USER_SA: %d rows",
+            role_sod_violations.height, role_sa_violations.height,
+            user_sod_violations.height, user_sa_violations.height,
+        )
+
+        def _scb(n: int, msg: str) -> None:
+            if step_callback:
+                step_callback(n, msg)
 
         # Write summary
         if not summary_df.is_empty():
+            _scb(15, "Writing summary sheet…")
             ws = workbook.add_worksheet("SUMMARY")
             _write_sheet_batch(ws, summary_df)
             total_sheets += 1
             _log.info("Created sheet: SUMMARY")
 
-        # Write group mappings (if provided)
-        if sod_group_mapping is not None and not sod_group_mapping.is_empty():
+        # Write single user group mapping (if provided)
+        if group_mapping is not None and not group_mapping.is_empty():
+            _scb(16, "Writing user group mapping sheet…")
             sheets_created = _write_safe_split_dataframe(
                 workbook,
-                "Group to Role Map - User SoD",
-                sod_group_mapping.sort("GROUP_NAME"),
+                "User Group Mapping",
+                group_mapping.sort("GROUP_NAME"),
                 "GROUP_NAME",
+                logger=_log,
             )
             total_sheets += sheets_created
-            _log.info("Created %d sheet(s) for SoD group mapping", sheets_created)
-
-        if sa_group_mapping is not None and not sa_group_mapping.is_empty():
-            sheets_created = _write_safe_split_dataframe(
-                workbook,
-                "Group to Role Map - User SA",
-                sa_group_mapping.sort("GROUP_NAME"),
-                "GROUP_NAME",
-            )
-            total_sheets += sheets_created
-            _log.info("Created %d sheet(s) for SA group mapping", sheets_created)
+            _log.info("Created %d sheet(s) for user group mapping", sheets_created)
 
         # Write violation sheets
         _role_sort_cols = ["CONTROL_NAME", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME"]
@@ -1062,6 +1145,14 @@ def export_results(
             ("USER_SA", "USER_NAME", user_sa_violations, _user_sort_cols, USER_OUTPUT_COLUMNS),
         ]
 
+        _sheet_steps = {"ROLE_SOD": 17, "ROLE_SA": 18, "USER_SOD": 19, "USER_SA": 20}
+        _sheet_labels = {
+            "ROLE_SOD": "Writing role SOD sheet…",
+            "ROLE_SA":  "Writing role SA sheet…",
+            "USER_SOD": "Writing user SOD sheet…",
+            "USER_SA":  "Writing user SA sheet…",
+        }
+
         for sheet_name, entity_col, df, sort_cols, output_schema in sheet_order:
             # "ROLE_SOD" → "role", "USER_SA" → "user" (split on underscore — a
             # whitespace split here previously skipped every sheet for
@@ -1070,6 +1161,7 @@ def export_results(
                 continue
             if df.is_empty():
                 continue
+            _scb(_sheet_steps[sheet_name], _sheet_labels[sheet_name])
 
             # Sort with available columns
             available_sort = [c for c in sort_cols if c in df.columns]
@@ -1079,18 +1171,28 @@ def export_results(
             # Project to the exact output schema (Step 6) after sorting
             df = reorder_to_output_schema(df, output_schema)
 
+            sheet_start = time.perf_counter()
+            _log.info("Writing %s (%d rows)…", sheet_name, df.height)
             sheets_created = _write_safe_split_dataframe(
                 workbook,
                 sheet_name,
                 df,
                 entity_col,
+                logger=_log,
             )
             total_sheets += sheets_created
-            _log.info("Created %d sheet(s) for %s (%d rows)", sheets_created, sheet_name, df.height)
+            _log.info(
+                "Created %d sheet(s) for %s (%d rows) in %.1fs",
+                sheets_created, sheet_name, df.height, time.perf_counter() - sheet_start,
+            )
 
+        _log.info("All sheets written; finalising workbook (this can take a while for large files)…")
         workbook.close()
         file_size_mb = len(output_buffer.getvalue()) / (1024 * 1024)
-        _log.info("Export complete: %.1f MB, %d sheets (ROLE DETAILS removed per spec)", file_size_mb, total_sheets)
+        _log.info(
+            "Export complete: %.1f MB, %d sheets in %.1fs",
+            file_size_mb, total_sheets, time.perf_counter() - export_start,
+        )
 
         output_buffer.seek(0)
         return EngineResult(success=True, data=output_buffer)

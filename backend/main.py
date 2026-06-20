@@ -28,6 +28,27 @@ from exceptions import GovernanceError
 
 logger = logging.getLogger("governance_platform")
 
+
+# ── Access-log noise filter ───────────────────────────────────────────────────
+# The frontend polls GET /api/{tool}/status/{job_id} every 1.5 s, which floods
+# uvicorn's access log with identical "200 OK" lines and buries the useful
+# per-step analysis logs. Drop ONLY those polling lines; every other access log
+# (uploads, runs, downloads, errors) is kept.
+
+class _SuppressStatusPolling(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        args = record.args
+        # uvicorn.access logs with args = (client_addr, method, full_path, http_version, status_code)
+        if isinstance(args, tuple) and len(args) >= 3:
+            method, path = args[1], args[2]
+            if method == "GET" and isinstance(path, str) and "/status/" in path:
+                return False
+        return True
+
+
+logging.getLogger("uvicorn.access").addFilter(_SuppressStatusPolling())
+
+
 # ── Request ID middleware ─────────────────────────────────────────────────────
 
 class RequestIDMiddleware(BaseHTTPMiddleware):

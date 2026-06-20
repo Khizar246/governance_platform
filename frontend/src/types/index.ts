@@ -10,6 +10,7 @@ export interface JobResponse {
   status: JobStatus
   progress: number
   progress_message: string
+  step: number
   created_at: string
   errors: string[]
   warnings: string[]

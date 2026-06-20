@@ -10,7 +10,7 @@ import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
 import DataTable from '../components/common/DataTable'
-import LoadingOverlay from '../components/common/LoadingOverlay'
+import LoadingOverlay, { type ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import {
@@ -38,16 +38,13 @@ const ANALYSIS_OPTIONS: { id: string; group: 'Role-level' | 'User-level'; label:
   { id: 'user_sa',  group: 'User-level', label: 'User · Sensitive Access',      sublabel: 'Sensitive access attributed to named users' },
 ]
 
-type Stage = { label: string; minPercent: number }
-
 const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
 const SHEET_LABELS: Record<string, string> = {
   ROLE_SOD: 'Role SoD',
   ROLE_SA: 'Role SA',
   USER_SOD: 'User SoD',
   USER_SA: 'User SA',
-  GROUP_SOD_MAPPING: 'User Groups (SoD)',
-  GROUP_SA_MAPPING: 'User Groups (SA)',
+  GROUP_MAPPING: 'User Groups',
 }
 
 // ── Column definitions ─────────────────────────────────────────────────────────
@@ -59,15 +56,15 @@ const ROLE_COLUMNS: ColumnDef<SODRow>[] = [
   { id: 'INHERITED_ROLE_DISPLAY_NAME',accessorKey: 'INHERITED_ROLE_DISPLAY_NAME',header: 'Inherited Role' },
   { id: 'PRIVILEGE_DISPLAY_NAME',     accessorKey: 'PRIVILEGE_DISPLAY_NAME',     header: 'Privilege Name' },
   {
-    id: 'FP?',
-    accessorKey: 'FP?',
-    header: 'FP Status',
+    id: 'Potential FP',
+    accessorKey: 'Potential FP',
+    header: 'Potential FP',
     cell: ({ getValue }) => {
       const val = getValue() as string
       const bgColors: Record<string, string> = {
-        'YES': 'bg-green-100 text-green-800',
+        'FP': 'bg-green-100 text-green-800',
         'SL': 'bg-yellow-100 text-yellow-800',
-        'True Conflict': 'bg-red-100 text-red-800',
+        'TC': 'bg-red-100 text-red-800',
         'NOT ANALYSED': 'bg-gray-100 text-gray-800',
       }
       return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
@@ -85,15 +82,15 @@ const USER_COLUMNS: ColumnDef<SODRow>[] = [
   { id: 'GROUP_NAME',                 accessorKey: 'GROUP_NAME',                 header: 'User Group' },
   { id: 'USER_NAME',                  accessorKey: 'USER_NAME',                  header: 'User Name' },
   {
-    id: 'FP?',
-    accessorKey: 'FP?',
-    header: 'FP Status',
+    id: 'Potential FP',
+    accessorKey: 'Potential FP',
+    header: 'Potential FP',
     cell: ({ getValue }) => {
       const val = getValue() as string
       const bgColors: Record<string, string> = {
-        'YES': 'bg-green-100 text-green-800',
+        'FP': 'bg-green-100 text-green-800',
         'SL': 'bg-yellow-100 text-yellow-800',
-        'True Conflict': 'bg-red-100 text-red-800',
+        'TC': 'bg-red-100 text-red-800',
         'NOT ANALYSED': 'bg-gray-100 text-gray-800',
       }
       return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
@@ -114,7 +111,7 @@ const ROLE_DEFAULT_SORT = [
   { id: 'ROLE_DISPLAY_NAME',           desc: false },
   { id: 'INHERITED_ROLE_DISPLAY_NAME', desc: false },
   { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
-  { id: 'FP?',                         desc: false },
+  { id: 'Potential FP',                desc: false },
 ]
 
 const USER_DEFAULT_SORT = [
@@ -125,7 +122,7 @@ const USER_DEFAULT_SORT = [
   { id: 'PRIVILEGE_DISPLAY_NAME',      desc: false },
   { id: 'GROUP_NAME',                  desc: false },
   { id: 'USER_NAME',                   desc: false },
-  { id: 'FP?',                         desc: false },
+  { id: 'Potential FP',                desc: false },
 ]
 
 // ── Insight card ───────────────────────────────────────────────────────────────
@@ -173,6 +170,7 @@ export default function SODSAAnalysis() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
+  const [currentStep, setCurrentStep] = useState(0)
   const [summary, setSummary] = useState<SODSASummary | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
@@ -200,65 +198,48 @@ export default function SODSAAnalysis() {
     return null
   }, [selectedAnalyses])
 
-  const stages = useMemo((): Stage[] => {
-    const withFP = withFp
-    if (analysisType === 'role') {
-      const baseStages: Stage[] = [
-        { label: 'Initialising',                    minPercent: 0  },
-        { label: 'Building Entitlement Mappings',   minPercent: 5  },
-        { label: 'Checking SOD Violations',         minPercent: 30 },
-        { label: 'Checking SA Violations',          minPercent: 65 },
-      ]
-      if (withFP) {
-        baseStages.push(
-          { label: 'Running FP Pipeline',           minPercent: 70 },
-          { label: 'Finalising',                    minPercent: 85 }
-        )
-      } else {
-        baseStages.push({ label: 'Finalising',      minPercent: 95 })
-      }
-      return baseStages
-    }
-    if (analysisType === 'user') {
-      const baseStages: Stage[] = [
-        { label: 'Initialising',                     minPercent: 0  },
-        { label: 'Expanding User-Role Memberships',  minPercent: 5  },
-        { label: 'Building User Entitlements',       minPercent: 10 },
-        { label: 'SOD Violations',                   minPercent: 20 },
-        { label: 'SA Violations',                    minPercent: 58 },
-      ]
-      if (withFP) {
-        baseStages.push(
-          { label: 'Running FP Pipeline',           minPercent: 70 },
-          { label: 'User Grouping',                 minPercent: 80 },
-          { label: 'Finalising',                    minPercent: 85 }
-        )
-      } else {
-        baseStages.push({ label: 'Finalising',      minPercent: 95 })
-      }
-      return baseStages
-    }
-    // 'both'
-    const baseStages: Stage[] = [
-      { label: 'Initialising',                      minPercent: 0  },
-      { label: 'Role — Entitlement Mappings',        minPercent: 2  },
-      { label: 'Role — SOD & SA Checks',             minPercent: 15 },
-      { label: 'User — Expanding Memberships',       minPercent: 52 },
-      { label: 'User — Building Entitlements',       minPercent: 55 },
-      { label: 'User — SOD Violations',              minPercent: 60 },
-      { label: 'User — SA Violations',               minPercent: 79 },
+  const progressSteps = useMemo((): ProgressStep[] => {
+    const hasRole = selectedAnalyses.some(a => a.startsWith('role_'))
+    const hasUser = selectedAnalyses.some(a => a.startsWith('user_')) && analysisType !== 'role'
+    const steps: ProgressStep[] = [
+      { step: 1,  label: 'Importing files',                    phase: 1 },
+      { step: 2,  label: 'Validating sheets and columns',      phase: 1 },
+      { step: 3,  label: 'Initiating SOD SA Analysis',         phase: 2 },
     ]
-    if (withFP) {
-      baseStages.push(
-        { label: 'Running FP Pipeline',             minPercent: 82 },
-        { label: 'User Grouping',                   minPercent: 88 },
-        { label: 'Finalising',                      minPercent: 92 }
-      )
-    } else {
-      baseStages.push({ label: 'Finalising',        minPercent: 95 })
+    if (hasRole) {
+      steps.push({ step: 4, label: 'Performing role SOD analysis', phase: 2 })
+      steps.push({ step: 5, label: 'Performing role SA analysis',  phase: 2 })
     }
-    return baseStages
-  }, [analysisType, withFp])
+    if (hasUser) {
+      steps.push({ step: 6, label: 'Performing user SOD analysis', phase: 2 })
+      steps.push({ step: 7, label: 'Performing user SA analysis',  phase: 2 })
+    }
+    if (withFp) {
+      steps.push({ step: 8,  label: 'Initiating False Positive Analysis', phase: 3 })
+      if (hasRole) {
+        steps.push({ step: 9,  label: 'FP analysis on role SOD', phase: 3 })
+        steps.push({ step: 10, label: 'FP analysis on role SA',  phase: 3 })
+      }
+      if (hasUser) {
+        steps.push({ step: 11, label: 'FP analysis on user SOD', phase: 3 })
+        steps.push({ step: 12, label: 'FP analysis on user SA',  phase: 3 })
+      }
+    }
+    steps.push({ step: 14, label: 'Building Excel report',    phase: 4 })
+    steps.push({ step: 15, label: 'Writing summary sheet',    phase: 4 })
+    if (hasUser) {
+      steps.push({ step: 16, label: 'Writing user group mapping sheet', phase: 4 })
+    }
+    if (hasRole) {
+      steps.push({ step: 17, label: 'Writing role SOD sheet', phase: 4 })
+      steps.push({ step: 18, label: 'Writing role SA sheet',  phase: 4 })
+    }
+    if (hasUser) {
+      steps.push({ step: 19, label: 'Writing user SOD sheet', phase: 4 })
+      steps.push({ step: 20, label: 'Writing user SA sheet',  phase: 4 })
+    }
+    return steps
+  }, [selectedAnalyses, analysisType, withFp])
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -277,6 +258,7 @@ export default function SODSAAnalysis() {
         const status = await getStatus(jobId)
         setProgress(status.progress)
         setProgressMessage(status.progress_message)
+        setCurrentStep(status.step ?? 0)
         if (status.status === 'complete') {
           clearInterval(interval)
           setSummary(status.results as unknown as SODSASummary)
@@ -336,8 +318,7 @@ export default function SODSAAnalysis() {
     if (!sodSaSummaryData) return []
     const violations = ALL_SHEET_IDS.filter(id => sodSaSummaryData.sheet_counts[id])
     const groups: string[] = []
-    if (sodSaSummaryData.sheet_counts['GROUP_SOD_MAPPING']) groups.push('GROUP_SOD_MAPPING')
-    if (sodSaSummaryData.sheet_counts['GROUP_SA_MAPPING']) groups.push('GROUP_SA_MAPPING')
+    if (sodSaSummaryData.sheet_counts['GROUP_MAPPING']) groups.push('GROUP_MAPPING')
     return [...violations, ...groups]
   }, [sodSaSummaryData])
 
@@ -425,6 +406,7 @@ export default function SODSAAnalysis() {
     setJobId(null)
     setProgress(0)
     setProgressMessage('')
+    setCurrentStep(0)
     setSummary(null)
     setErrors([])
     setUploadError('')
@@ -451,23 +433,27 @@ export default function SODSAAnalysis() {
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="Choose your scope. Role Analysis needs 2 files and is faster. User Analysis needs 3 files and attributes violations to individual users. Role + User is the recommended default for client deliverables." />
-          <HelpStep num={2} text="Upload the Role Hierarchy CSV/XLSX — export from Oracle Fusion via Security Console → Roles → Export Hierarchy. Required columns: TOP_ROLE_CODE, TOP_ROLE_NAME, ROLE_TYPE_CODE, ROLE_CODE, ROLE_NAME, PRIVILEGE_CODE, PRIVILEGE_NAME." />
+          <HelpStep num={2} text="Upload the Role Hierarchy CSV/XLSX — export from Oracle Fusion via Security Console → Roles → Export Hierarchy. Required columns: TOP_ROLE_CODE, TOP_ROLE_NAME, ROLE_CODE, ROLE_NAME, PRIVILEGE_CODE, PRIVILEGE_NAME." />
           <HelpStep num={3} text="Upload the SOD SA Ruleset XLSX — the standard EY ruleset file. Must contain three sheets: SoD Ruleset, SA Ruleset, and Entitlement to Privilege." />
-          <HelpStep num={4} text="If running User Analysis, also upload the User Role Membership CSV. Required columns: User Name, Assigned Role Name." />
-          <HelpStep num={5} text="Click Run Analysis. A progress bar shows the processing milestones. Export the output before closing — results are not stored between sessions." />
+          <HelpStep num={4} text="If running User Analysis, also upload the User Role Membership CSV/XLSX. Required columns: User Name, Assigned Role Name." />
+          <HelpStep num={5} text="If False-Positive Detection is enabled, upload the FP Database XLSX. It must contain two sheets: No_action_Privileges (columns: PRIVILEGE_NAME, False Positive Reason) and WorkArea_Privileges (columns: PRIVILEGE_NAME, WORK_AREA_PRIVILEGE_CODE). PRIVILEGE_NAME must match the privilege codes in the role hierarchy." />
+          <HelpStep num={6} text="Click Run Analysis. A progress bar shows the processing milestones. Export the output before closing — results are not stored between sessions." />
         </HelpAccordion>
         <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The engine flattens the role hierarchy and checks every resolved privilege combination against the ruleset:</p>
-          <HelpPill label="Hierarchy flattening" note="Starting from each top-level role, the tool recursively resolves all inherited sub-roles down to leaf privileges, producing a flat privilege set per role." />
-          <HelpPill label="SoD detection" note="Every pair of privileges within a role's flat set is checked against the SoD Ruleset. Matching pairs are recorded as violations with the conflicting function names." />
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The engine joins the pre-flattened role hierarchy with the entitlement mapping, then checks every resolved privilege combination against the ruleset:</p>
+          <HelpPill label="Hierarchy join" note="The role hierarchy export from Oracle Fusion is already flattened — each row maps a top-level role to an inherited sub-role and its leaf privileges. The engine joins this flat structure with the Entitlement-to-Privilege mapping to resolve each role's full entitlement set." />
+          <HelpPill label="SoD detection" note="Each role's entitlement set is checked against the SoD Ruleset. A violation occurs when the role holds privileges that satisfy both the LHS and RHS entitlements of a control. Violations are recorded with the conflicting control and entitlement names." />
           <HelpPill label="SA detection" note="Each individual privilege is checked against the SA Ruleset independently. Sensitive access violations are reported separately from SoD." />
-          <HelpPill label="User expansion" note="When User Analysis is included, each user's assigned roles are resolved through the hierarchy and the same checks applied, attributing violations to named users." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>The progress bar reflects pipeline milestones (mapping, SOD check, SA check, export), not individual row counts.</p>
+          <HelpPill label="User expansion" note="When User Analysis is included, each user's assigned roles are resolved through the hierarchy and the same SoD and SA checks applied, attributing violations to named users." />
+          <HelpPill label="False-positive pipeline" note="When enabled, violations are classified in three levels: Level 1 marks any privilege listed in No_action_Privileges as FP. Level 2 checks if the role or user holds the work-area gatekeeping privilege (WORK_AREA_PRIVILEGE_CODE) required to navigate to the activity — if the privilege is absent, the conflict cannot be exploited and is marked FP. Level 3 classifies remaining violations: one conflicting entitlement → SL (single-leg), two or more → True Conflict." />
+          <HelpPill label="User grouping" note="Users sharing an identical role portfolio are assigned a shared group name, reducing noise in large datasets. The User Groups tabs show each group's member roles and the number of users in the group." />
+          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>The progress bar reflects pipeline milestones (mapping, SOD check, SA check, FP pipeline, export), not individual row counts.</p>
         </HelpAccordion>
         <TemplateDownloads templates={[
           ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
-          ['SOD SA Ruleset Template',         'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
-          ['User Role Membership Template',   'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
+          ['SOD SA Ruleset Template',        'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
+          ['User Role Membership Template',  'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
+          ['FP Database Template',           'XLSX', '/api/templates/sod-sa-analysis/fp_database_template.xlsx'],
         ]} />
       </div>
 
@@ -687,8 +673,9 @@ export default function SODSAAnalysis() {
             <LoadingOverlay
               message={progressMessage || 'Detecting SOD & SA violations…'}
               progress={progress}
-              stages={analysisType ? stages : undefined}
-              progressMessage={progressMessage}
+              currentStep={currentStep}
+              steps={progressSteps}
+              withFp={withFp}
             />
           </div>
         )}
