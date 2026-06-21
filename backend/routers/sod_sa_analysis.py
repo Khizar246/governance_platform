@@ -186,7 +186,6 @@ def _run_thread(
     work_area_df: Optional[pl.DataFrame] = None,
     selected_analyses: Optional[list[str]] = None,
     with_observation: bool = False,
-    project_name: str = "",
     bucket_details_df: Optional[pl.DataFrame] = None,
 ) -> None:
     try:
@@ -409,7 +408,6 @@ def _run_thread(
             role_hierarchy_df=role_hierarchy_df,
             fp_enabled=with_fp,
             step_callback=_export_step,
-            project_name=project_name,
             with_observation=with_observation,
             bucket_details_df=bucket_details_df,
         )
@@ -705,7 +703,6 @@ async def run(job_id: str, config: SODSARunConfig):
             job.files.get("work_area_df") if has_fp_db else None,
             config.selected_analyses,
             config.with_observation,
-            config.project_name,
             job.files.get("bucket_details_df"),
         ),
         daemon=True,

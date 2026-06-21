@@ -6,7 +6,6 @@ export interface SODSARunConfig {
   with_fp?: boolean
   selected_analyses?: string[]
   with_observation?: boolean
-  project_name?: string
 }
 
 export interface SODSASheetCount {

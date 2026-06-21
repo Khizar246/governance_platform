@@ -22,12 +22,12 @@ import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../compone
 import type { SODSASummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 
-type Step = 'project' | 'config' | 'upload' | 'running' | 'results' | 'error'
+type Step = 'config' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'role' | 'user' | 'both'
 type SODRow = Record<string, unknown>
 
-const STEPS = ['Project Details', 'Configure Analysis', 'Upload Files', 'Processing', 'Results']
-const STEP_INDEX: Record<Step, number> = { project: 0, config: 1, upload: 2, running: 3, results: 4, error: 0 }
+const STEPS = ['Configure Analysis', 'Upload Files', 'Processing', 'Results']
+const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, results: 3, error: 0 }
 
 // The four analyses the user can toggle independently. Ticking any User box
 // requires the User Role Membership file; the role/user/both "type" is derived.
@@ -158,8 +158,7 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function SODSAAnalysis() {
-  const [step, setStep] = useState<Step>('project')
-  const [projectName, setProjectName] = useState('')
+  const [step, setStep] = useState<Step>('config')
   const [withFp, setWithFp] = useState(false)
   const [withObservation, setWithObservation] = useState(false)
   const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
@@ -363,7 +362,7 @@ export default function SODSAAnalysis() {
       if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
       const id = resp.job_id
       setJobId(id)
-      await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation, project_name: projectName })
+      await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
       setStep('running')
       setProgress(0)
       setProgressMessage('Starting SOD & SA analysis…')
@@ -379,7 +378,7 @@ export default function SODSAAnalysis() {
   const handleTryAgain = useCallback(async () => {
     if (!jobId || !analysisType) { setStep('upload'); return }
     try {
-      await runAnalysis(jobId, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation, project_name: projectName })
+      await runAnalysis(jobId, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
       setStep('running')
       setProgress(0)
       setProgressMessage('Restarting SOD & SA analysis…')
@@ -394,8 +393,7 @@ export default function SODSAAnalysis() {
 
   const handleReset = useCallback(async () => {
     if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
-    setStep('project')
-    setProjectName('')
+    setStep('config')
     setWithFp(false)
     setWithObservation(false)
     setSelectedAnalyses(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
@@ -462,37 +460,7 @@ export default function SODSAAnalysis() {
 
       <div className="relative">
 
-        {/* ── Step 0: Project Details ───────────────────────────────────── */}
-        {step === 'project' && (
-          <div className="slide-in max-w-xl mx-auto space-y-6">
-            <div>
-              <h3 className="text-[15px] font-semibold text-gray-800">Project Details</h3>
-              <p className="text-[13px] text-gray-500 mt-1">
-                Enter a project name for the cover page of the output report. This field is optional — you can leave it blank.
-              </p>
-            </div>
-            <div>
-              <label className="block text-[12px] font-semibold text-gray-500 uppercase tracking-[0.08em] mb-2">
-                Project Name
-              </label>
-              <input
-                type="text"
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                placeholder="e.g. Acme Corp — Oracle Fusion Access Review Q2 2026"
-                className="w-full px-3.5 py-2.5 text-[13.5px] border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-ey-yellow/60 focus:border-ey-yellow bg-white text-gray-800 placeholder-gray-400"
-                onKeyDown={e => { if (e.key === 'Enter') setStep('config') }}
-              />
-            </div>
-            <div className="flex justify-end pt-1">
-              <button className="btn-gold" onClick={() => setStep('config')}>
-                Continue to Configure →
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Step 1: Configure Analysis ─────────────────────────────────── */}
+        {/* ── Step 0: Configure Analysis ─────────────────────────────────── */}
         {step === 'config' && (
           <div className="slide-in max-w-3xl mx-auto space-y-5">
             <div>
@@ -573,7 +541,6 @@ export default function SODSAAnalysis() {
 
             <div className="flex items-center justify-between pt-1">
               <div className="flex items-center gap-4">
-                <button className="btn-secondary" onClick={() => setStep('project')}>← Back</button>
                 <span className="text-[12px] text-gray-500">
                   Scope: <span className="font-medium text-gray-700">{analysisTypeLabel}</span>
                   {selectedAnalyses.length === 0 && <span className="text-error ml-1">· select at least one</span>}
@@ -658,7 +625,6 @@ export default function SODSAAnalysis() {
                 <span className="font-medium">Scope:</span> {analysisTypeLabel}
                 {withFp && <span className="ml-1 text-blue-600">· FP detection on</span>}
                 {withObservation && <span className="ml-1 text-amber-600">· Observation tab on</span>}
-                {projectName && <span className="ml-1 text-gray-500">· {projectName}</span>}
               </span>
               <button
                 className="ml-auto text-[#3B82F6] hover:underline text-[12px]"

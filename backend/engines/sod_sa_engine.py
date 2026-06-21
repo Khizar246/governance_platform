@@ -16,7 +16,6 @@ import io
 import logging
 import time
 from dataclasses import dataclass, field
-from datetime import date
 from typing import Any, Callable
 
 import pandas as pd
@@ -1128,53 +1127,6 @@ def _write_safe_split_dataframe(
     return sheets_created
 
 
-def _write_cover_page(workbook: xlsxwriter.Workbook, ws: Any, project_name: str) -> None:
-    """Write a professional EY-branded cover page to the given worksheet."""
-    # Formats
-    gold_bg   = workbook.add_format({"bg_color": "#FFD100", "border": 0})
-    navy_bg   = workbook.add_format({"bg_color": "#0F1E3D", "border": 0})
-    title_fmt = workbook.add_format({
-        "bold": True, "font_size": 20, "font_color": "#0F1E3D",
-        "align": "center", "valign": "vcenter", "font_name": "Calibri",
-    })
-    label_fmt = workbook.add_format({
-        "bold": True, "font_size": 12, "font_color": "#0F1E3D",
-        "align": "right", "valign": "vcenter", "font_name": "Calibri",
-    })
-    value_fmt = workbook.add_format({
-        "font_size": 12, "font_color": "#0F1E3D",
-        "align": "left", "valign": "vcenter", "font_name": "Calibri",
-    })
-
-    ws.set_column("A:F", 18)
-    ws.set_row(0, 30)   # gold bar
-    ws.set_row(1, 10)   # spacer
-    ws.set_row(2, 50)   # title
-    ws.set_row(3, 10)   # spacer
-    ws.set_row(4, 25)   # project name
-    ws.set_row(5, 25)   # date
-    ws.set_row(6, 25)   # version
-    ws.set_row(7, 10)   # spacer
-    ws.set_row(8, 30)   # navy bar
-
-    # Gold bar (row 0)
-    ws.merge_range("A1:F1", "", gold_bg)
-
-    # Title (row 2)
-    ws.merge_range("A3:F3", "SOD & SA Access Governance Analysis", title_fmt)
-
-    # Metadata rows (rows 4-6): label in col C, value in col D
-    ws.write("C5", "Project Name:", label_fmt)
-    ws.write("D5", project_name, value_fmt)
-    ws.write("C6", "Date:", label_fmt)
-    ws.write("D6", date.today().strftime("%d %B %Y"), value_fmt)
-    ws.write("C7", "Version:", label_fmt)
-    ws.write("D7", "1", value_fmt)
-
-    # Navy bar (row 8)
-    ws.merge_range("A9:F9", "", navy_bg)
-
-
 def _write_observation_tab(
     workbook: xlsxwriter.Workbook,
     role_sod_violations: pl.DataFrame,
@@ -1244,8 +1196,28 @@ def _write_observation_tab(
             ordered_buckets.append(b)
 
     current_row = 0
-    obs_index = 1
 
+    # Header row (written once)
+    ws.set_row(current_row, 22)
+    ws.merge_range(current_row, 0, current_row, 3, "Observations & Recommendations", header_fmt)
+    current_row += 1
+
+    # Sub-header row (written once)
+    ws.set_row(current_row, 18)
+    ws.merge_range(
+        current_row, 0, current_row, 3,
+        "Below listed are Oracle Security SOD/SA Analysis Observations related to the Project",
+        subheader_fmt,
+    )
+    current_row += 1
+
+    # Column headers (written once)
+    ws.set_row(current_row, 18)
+    for ci, label in enumerate(["#", "Observations", "Risk", "EY Recommendations"]):
+        ws.write(current_row, ci, label, col_hdr_fmt)
+    current_row += 1
+
+    obs_index = 1
     for bucket in ordered_buckets:
         role_count = bucket_role_counts.get(bucket, 0)
         details = bucket_details.get(bucket, {})
@@ -1253,27 +1225,6 @@ def _write_observation_tab(
         rec_text = details.get("EY_RECOMMENDATIONS", "")
         bucket_display = bucket.title() if bucket == "UNCATEGORIZED" else bucket
 
-        # Header row
-        ws.set_row(current_row, 22)
-        ws.merge_range(current_row, 0, current_row, 3, "Observations & Recommendations", header_fmt)
-        current_row += 1
-
-        # Sub-header row
-        ws.set_row(current_row, 18)
-        ws.merge_range(
-            current_row, 0, current_row, 3,
-            "Below listed are Oracle Security SOD/SA Analysis Observations related to the Project",
-            subheader_fmt,
-        )
-        current_row += 1
-
-        # Column headers
-        ws.set_row(current_row, 18)
-        for ci, label in enumerate(["#", "Observations", "Risk", "EY Recommendations"]):
-            ws.write(current_row, ci, label, col_hdr_fmt)
-        current_row += 1
-
-        # Data row
         obs_text = (
             f"There are {role_count} roles identified with inherent SOD violations "
             f"with access to both {bucket_display} controls."
@@ -1284,9 +1235,6 @@ def _write_observation_tab(
         ws.write(current_row, 1, obs_text, text_fmt)
         ws.write(current_row, 2, risk_text, text_fmt)
         ws.write(current_row, 3, rec_text, text_fmt)
-        current_row += 1
-
-        # Blank separator
         current_row += 1
         obs_index += 1
 
@@ -1304,13 +1252,12 @@ def export_results(
     role_hierarchy_df: pl.DataFrame | None = None,
     fp_enabled: bool = False,
     step_callback: Callable[[int, str], None] | None = None,
-    project_name: str = "",
     with_observation: bool = False,
     bucket_details_df: pl.DataFrame | None = None,
 ) -> EngineResult:
     """Write SOD & SA results to an in-memory Excel workbook.
 
-    Sheet order: Cover Page, SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA,
+    Sheet order: SUMMARY, group mappings (if any), ROLE_SOD / ROLE_SA / USER_SOD / USER_SA,
     and optionally an Observation tab (when with_observation=True and role data is present).
     Uses entity-aware splitting to keep complete user/role blocks together.
     Returns EngineResult with .data = io.BytesIO positioned at offset 0.
@@ -1346,13 +1293,6 @@ def export_results(
         def _scb(n: int, msg: str) -> None:
             if step_callback:
                 step_callback(n, msg)
-
-        # Cover Page (always first)
-        _scb(14, "Writing cover page…")
-        cover_ws = workbook.add_worksheet("Cover Page")
-        _write_cover_page(workbook, cover_ws, project_name)
-        total_sheets += 1
-        _log.info("Created sheet: Cover Page")
 
         # Write summary
         if not summary_df.is_empty():
