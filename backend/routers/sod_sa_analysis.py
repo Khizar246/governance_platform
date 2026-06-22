@@ -416,7 +416,7 @@ def _run_thread(
             job_manager.fail_job(job_id, export_result.errors)
             return
 
-        _step(21, 98, "Finalising workbook…")
+        _step(22, 98, "Finalising workbook…")
         output_file = output_filename("SOD_SA_Analysis", analysis_type.capitalize())
         logger.info(f"[{job_id}] SOD & SA analysis complete. Output file: {output_file}")
         job_manager.complete_job(job_id, summary, export_result.data, output_file)

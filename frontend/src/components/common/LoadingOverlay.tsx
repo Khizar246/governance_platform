@@ -67,7 +67,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
             <div className="min-w-0">
               <h3 className="font-serif text-[15px] font-semibold leading-tight text-navy truncate">{message}</h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                {currentStep > 0 ? `Step ${currentStep} of ${steps[steps.length - 1]?.step ?? '—'}` : 'Starting…'}
+                {currentStep > 0 ? `Step ${currentStep} of ${steps.length}` : 'Starting…'}
               </p>
             </div>
             <span className="font-serif text-3xl font-semibold text-navy tabular-nums leading-none shrink-0">
