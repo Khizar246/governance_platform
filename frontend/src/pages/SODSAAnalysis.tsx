@@ -225,6 +225,7 @@ export default function SODSAAnalysis() {
         steps.push({ step: 12, label: 'FP analysis on user SA',  phase: 3 })
       }
     }
+    steps.push({ step: 13, label: 'Preparing Excel export',   phase: 4 })
     steps.push({ step: 14, label: 'Building Excel report',    phase: 4 })
     steps.push({ step: 15, label: 'Writing summary sheet',    phase: 4 })
     if (hasUser) {
@@ -238,8 +239,12 @@ export default function SODSAAnalysis() {
       steps.push({ step: 19, label: 'Writing user SOD sheet', phase: 4 })
       steps.push({ step: 20, label: 'Writing user SA sheet',  phase: 4 })
     }
+    if (withObservation && hasRole) {
+      steps.push({ step: 21, label: 'Writing observation tab', phase: 4 })
+    }
+    steps.push({ step: 22, label: 'Finalising workbook',       phase: 4 })
     return steps
-  }, [selectedAnalyses, analysisType, withFp])
+  }, [selectedAnalyses, analysisType, withFp, withObservation])
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
