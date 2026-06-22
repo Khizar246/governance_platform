@@ -173,6 +173,87 @@ def _load_file(file_bytes: bytes, filename: str) -> pl.DataFrame:
     return load_excel_to_polars(file_bytes, filename, None, None, logger)
 
 
+def _check_missing_entitlement_mappings(
+    sod_df: pl.DataFrame,
+    sa_df: pl.DataFrame,
+    mapping_df: pl.DataFrame,
+) -> list[dict]:
+    """Check for entitlements in controls that have no mapping.
+
+    Returns list of dicts: [{"entitlement": str, "controls": [str, ...]}, ...]
+    sorted by entitlement name.
+    """
+    EMPTY_PLACEHOLDER = "---"
+
+    # Collect all unique entitlement names from both SOD and SA controls
+    sod_lhs = sod_df["LHS_ENTITLEMENT"].to_list() if "LHS_ENTITLEMENT" in sod_df.columns else []
+    sod_rhs = sod_df["RHS_ENTITLEMENT"].to_list() if "RHS_ENTITLEMENT" in sod_df.columns else []
+    sa_ents = sa_df["ENTITLEMENT"].to_list() if "ENTITLEMENT" in sa_df.columns else []
+
+    # Union all entitlements, filter out nulls and empty placeholders, deduplicate
+    all_entitlements_in_controls = set()
+    for ent in sod_lhs + sod_rhs + sa_ents:
+        if ent is not None and ent != EMPTY_PLACEHOLDER and str(ent).strip():
+            all_entitlements_in_controls.add(str(ent).strip().upper())
+
+    # Get mapped entitlements
+    mapped_entitlements = set()
+    if "ENTITLEMENT_NAME" in mapping_df.columns:
+        mapped_list = mapping_df["ENTITLEMENT_NAME"].to_list()
+        for ent in mapped_list:
+            if ent is not None and ent != EMPTY_PLACEHOLDER and str(ent).strip():
+                mapped_entitlements.add(str(ent).strip().upper())
+
+    # Find missing entitlements
+    missing_entitlements = all_entitlements_in_controls - mapped_entitlements
+
+    if not missing_entitlements:
+        return []
+
+    # For each missing entitlement, find which controls reference it
+    warnings: list[dict] = []
+
+    for missing_ent in sorted(missing_entitlements):
+        affected_controls = set()
+
+        # Check SOD controls
+        if "LHS_ENTITLEMENT" in sod_df.columns:
+            sod_lhs_matches = sod_df.filter(
+                pl.col("LHS_ENTITLEMENT").is_not_null() &
+                (pl.col("LHS_ENTITLEMENT").cast(pl.Utf8).str.to_uppercase() == missing_ent)
+            )
+            for control_name in sod_lhs_matches["CONTROL_NAME"].to_list():
+                if control_name is not None:
+                    affected_controls.add(str(control_name).strip())
+
+        if "RHS_ENTITLEMENT" in sod_df.columns:
+            sod_rhs_matches = sod_df.filter(
+                pl.col("RHS_ENTITLEMENT").is_not_null() &
+                (pl.col("RHS_ENTITLEMENT").cast(pl.Utf8).str.to_uppercase() == missing_ent)
+            )
+            for control_name in sod_rhs_matches["CONTROL_NAME"].to_list():
+                if control_name is not None:
+                    affected_controls.add(str(control_name).strip())
+
+        # Check SA controls
+        if "ENTITLEMENT" in sa_df.columns:
+            sa_matches = sa_df.filter(
+                pl.col("ENTITLEMENT").is_not_null() &
+                (pl.col("ENTITLEMENT").cast(pl.Utf8).str.to_uppercase() == missing_ent)
+            )
+            for control_name in sa_matches["CONTROL_NAME"].to_list():
+                if control_name is not None:
+                    affected_controls.add(str(control_name).strip())
+
+        if affected_controls:
+            warnings.append({
+                "entitlement": missing_ent,
+                "controls": sorted(affected_controls),
+            })
+
+    return warnings
+
+
 def _run_thread(
     job_id: str,
     role_hierarchy_df: pl.DataFrame,
@@ -609,11 +690,15 @@ async def upload(
     if ur_df is None:
         warnings.append("No user-role file provided. User-level analysis will not be available.")
 
+    # Check for missing entitlement mappings
+    entitlement_warnings = _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df)
+
     return UploadResponse(
         job_id=job.id,
         files=preview_files,
         status=JobStatus.VALIDATING,
         warnings=warnings,
+        entitlement_warnings=entitlement_warnings,
     )
 
 

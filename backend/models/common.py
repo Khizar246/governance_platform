@@ -46,6 +46,7 @@ class UploadResponse(BaseModel):
     status: JobStatus = JobStatus.VALIDATING
     errors: list[str] = []
     warnings: list[str] = []
+    entitlement_warnings: list[dict] = []
 
 
 class AnalysisResponse(BaseModel):

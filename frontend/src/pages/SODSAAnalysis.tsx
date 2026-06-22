@@ -175,6 +175,7 @@ export default function SODSAAnalysis() {
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
   const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
+  const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Results step state
@@ -360,11 +361,13 @@ export default function SODSAAnalysis() {
     setIsUploading(true)
     setUploadError('')
     setUploadErrorDetails([])
+    setEntitlementWarnings([])
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile)
       if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
+      setEntitlementWarnings(resp.entitlement_warnings ?? [])
       const id = resp.job_id
       setJobId(id)
       await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
@@ -415,6 +418,7 @@ export default function SODSAAnalysis() {
     setErrors([])
     setUploadError('')
     setUploadErrorDetails([])
+    setEntitlementWarnings([])
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
@@ -655,6 +659,37 @@ export default function SODSAAnalysis() {
                 <button
                   onClick={() => { setUploadError(''); setUploadErrorDetails([]) }}
                   className="text-error/60 hover:text-error shrink-0"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+
+            {entitlementWarnings.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-amber-50 rounded border border-amber-300/50 text-sm text-amber-900">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                <div className="flex-1 space-y-2">
+                  <div className="font-medium">Missing Entitlement Mappings</div>
+                  <div className="text-xs text-amber-800/80 mb-2">
+                    The following entitlements are referenced in your controls but have no mapping in the 'Entitlement to Privilege' tab. Controls using these entitlements will not appear in your analysis results.
+                  </div>
+                  <div className="space-y-1.5 text-xs">
+                    {entitlementWarnings.map((warn, i) => (
+                      <div key={i} className="grid grid-cols-[1fr_1.5fr] gap-3 p-2 bg-white rounded border border-amber-200/40">
+                        <div className="font-medium text-amber-900">{warn.entitlement}</div>
+                        <div className="text-amber-800/70 truncate" title={warn.controls.join(', ')}>
+                          {warn.controls.join(', ')}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="text-xs text-amber-700 mt-2 pt-1 border-t border-amber-200/40">
+                    You can update the mapping tab and re-upload, or continue with the analysis — these controls will be excluded.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setEntitlementWarnings([])}
+                  className="text-amber-600/60 hover:text-amber-700 shrink-0"
                 >
                   <X size={14} />
                 </button>
