@@ -11,6 +11,7 @@ import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
 import DataTable from '../components/common/DataTable'
 import LoadingOverlay from '../components/common/LoadingOverlay'
+import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Badge from '../components/common/Badge'
@@ -26,12 +27,13 @@ type OracleRow = Record<string, unknown>
 const STEPS = ['Analysis Type', 'Upload Files', 'Results']
 const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 1, results: 2, error: 0 }
 
-const STAGES = [
-  { label: 'Initialising',          minPercent: 0  },
-  { label: 'Loading Files',         minPercent: 3  },
-  { label: 'Comparing Duty Roles',  minPercent: 10 },
-  { label: 'Comparing Privileges',  minPercent: 43 },
-  { label: 'Finalising',            minPercent: 95 },
+const PROGRESS_STEPS: ProgressStep[] = [
+  { step: 1, label: 'Loading environment files',      phase: 1 },
+  { step: 2, label: 'Validating schema',              phase: 1 },
+  { step: 3, label: 'Comparing duty roles',           phase: 2 },
+  { step: 4, label: 'Comparing privileges',           phase: 2 },
+  { step: 5, label: 'Building comparison summary',    phase: 3 },
+  { step: 6, label: 'Writing Excel report',           phase: 4 },
 ]
 
 const COMP_TYPE_LABELS: Record<string, string> = {
@@ -118,6 +120,7 @@ export default function OracleComparator() {
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
+  const [currentStep, setCurrentStep] = useState(0)
   const [summary, setSummary] = useState<OracleComparatorSummary | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
@@ -152,6 +155,7 @@ export default function OracleComparator() {
         const s = await getStatus(jobId)
         setProgress(s.progress)
         setProgressMessage(s.progress_message)
+        setCurrentStep(s.step ?? 0)
         if (s.status === 'complete') {
           clearInterval(interval)
           const result = s.results as unknown as OracleComparatorSummary
@@ -270,6 +274,7 @@ export default function OracleComparator() {
     setJobId(null)
     setProgress(0)
     setProgressMessage('')
+    setCurrentStep(0)
     setSummary(null)
     setErrors([])
     setUploadError('')
@@ -510,8 +515,9 @@ export default function OracleComparator() {
             <LoadingOverlay
               message={progressMessage || 'Comparing environments…'}
               progress={progress}
-              stages={STAGES}
-              progressMessage={progressMessage}
+              currentStep={currentStep}
+              steps={PROGRESS_STEPS}
+              withFp={false}
             />
           </div>
         )}

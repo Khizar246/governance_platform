@@ -8,6 +8,7 @@ import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
 import StatCard from '../components/common/StatCard'
 import LoadingOverlay from '../components/common/LoadingOverlay'
+import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
 import ConfirmDialog from '../components/common/ConfirmDialog'
@@ -118,13 +119,13 @@ type Step = 'upload' | 'preview' | 'running' | 'results' | 'error'
 const STEPS = ['Upload', 'Preview', 'Analysis', 'Results']
 const STEP_INDEX: Record<Step, number> = { upload: 0, preview: 1, running: 2, results: 3, error: 0 }
 
-const STAGES = [
-  { label: 'Initialising',                   minPercent: 0  },
-  { label: 'Step 1 — Entitlement Mapping',   minPercent: 1  },
-  { label: 'Step 2 — SoD Control Matching',  minPercent: 30 },
-  { label: 'Step 3 — SA Control Matching',   minPercent: 65 },
-  { label: 'Building Summary',               minPercent: 90 },
-  { label: 'Finalising',                     minPercent: 95 },
+const PROGRESS_STEPS: ProgressStep[] = [
+  { step: 1, label: 'Loading rulesets',                phase: 1 },
+  { step: 2, label: 'Mapping entitlements',            phase: 2 },
+  { step: 3, label: 'Matching SoD controls',           phase: 2 },
+  { step: 4, label: 'Matching SA controls',            phase: 2 },
+  { step: 5, label: 'Building summary',                phase: 3 },
+  { step: 6, label: 'Writing Excel report',            phase: 4 },
 ]
 
 const TABS: { id: ResultTab; label: string }[] = [
@@ -156,6 +157,7 @@ export default function RulesetMapping() {
   const [jobId, setJobId]                 = useState<string | null>(null)
   const [progress, setProgress]           = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
+  const [currentStep, setCurrentStep]     = useState(0)
   const [summary, setSummary]             = useState<RulesetMappingSummary | null>(null)
   const [errors, setErrors]               = useState<string[]>([])
   const [uploadError, setUploadError]     = useState('')
@@ -178,6 +180,7 @@ export default function RulesetMapping() {
         const s = await getStatus(jobId)
         setProgress(s.progress)
         setProgressMessage(s.progress_message)
+        setCurrentStep(s.step ?? 0)
         if (s.status === 'complete') {
           clearInterval(interval)
           setSummary(s.results as unknown as RulesetMappingSummary)
@@ -266,6 +269,7 @@ export default function RulesetMapping() {
     setJobId(null)
     setProgress(0)
     setProgressMessage('')
+    setCurrentStep(0)
     setSummary(null)
     setErrors([])
     setUploadError('')
@@ -437,8 +441,9 @@ export default function RulesetMapping() {
             <LoadingOverlay
               message={progressMessage || 'Running ruleset mapping pipeline…'}
               progress={progress}
-              stages={STAGES}
-              progressMessage={progressMessage}
+              currentStep={currentStep}
+              steps={PROGRESS_STEPS}
+              withFp={false}
             />
           </div>
         )}
