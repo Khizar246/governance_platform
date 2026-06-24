@@ -140,36 +140,6 @@ def load_excel_to_polars(
     return _normalise_polars(df)
 
 
-def load_csv_to_pandas(
-    file_bytes: bytes,
-    filename: str,
-    logger: Logger,
-) -> pd.DataFrame:
-    """Same as load_csv_to_polars but returns a Pandas DataFrame. Used by Tool 1."""
-    last_err: Exception | None = None
-    for encoding in _CSV_ENCODINGS:
-        try:
-            text = file_bytes.decode(encoding)
-            df = pd.read_csv(
-                io.StringIO(text),
-                dtype=str,
-                keep_default_na=False,
-                na_values=["", "N/A", "n/a", "NA"],
-            )
-            logger.debug("Loaded '%s' as CSV/Pandas with encoding=%s, shape=%s", filename, encoding, df.shape)
-            return _normalise_pandas(df)
-        except Exception as exc:
-            last_err = exc
-            logger.debug("CSV/Pandas encoding '%s' failed for '%s': %s", encoding, filename, exc)
-            continue
-
-    raise FileFormatError(
-        f"Could not read '{filename}' as a CSV file. "
-        f"Tried encodings: {', '.join(_CSV_ENCODINGS)}. "
-        f"Last error: {last_err}"
-    )
-
-
 def load_excel_to_pandas(
     file_bytes: bytes,
     filename: str,

@@ -16,25 +16,11 @@ class GovernanceError(Exception):
         super().__init__(message)
 
 
-class ValidationError(GovernanceError):
-    """Raised for invalid input: missing columns, bad file format, schema mismatch."""
-
-    def __init__(self, message: str, details: list[str] | None = None):
-        super().__init__(message, "VALIDATION_ERROR", details)
-
-
 class FileFormatError(GovernanceError):
     """Raised when a file cannot be parsed or has unexpected structure."""
 
     def __init__(self, message: str, details: list[str] | None = None):
         super().__init__(message, "FILE_FORMAT_ERROR", details)
-
-
-class ProcessingError(GovernanceError):
-    """Raised when engine computation fails."""
-
-    def __init__(self, message: str, details: list[str] | None = None):
-        super().__init__(message, "PROCESSING_ERROR", details)
 
 
 class JobNotFoundError(GovernanceError):
