@@ -166,6 +166,8 @@ export default function SODSAAnalysis() {
   const [rulesetFile, setRulesetFile] = useState<File | null>(null)
   const [userRoleFile, setUserRoleFile] = useState<File | null>(null)
   const [fpDbFile, setFpDbFile] = useState<File | null>(null)
+  const [rulesetSeeded, setRulesetSeeded] = useState(false)
+  const [fpDbSeeded, setFpDbSeeded] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [jobId, setJobId] = useState<string | null>(null)
   const [progress, setProgress] = useState(0)
@@ -176,6 +178,8 @@ export default function SODSAAnalysis() {
   const [uploadError, setUploadError] = useState('')
   const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
   const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
+  const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
+  const [stagedJobId, setStagedJobId] = useState<string | null>(null)
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Results step state
@@ -251,9 +255,9 @@ export default function SODSAAnalysis() {
 
   const canRun =
     roleHierarchyFile !== null &&
-    rulesetFile !== null &&
+    (rulesetFile !== null || rulesetSeeded) &&
     (!needsUserRole || userRoleFile !== null) &&
-    (!withFp || fpDbFile !== null) &&
+    (!withFp || fpDbFile !== null || fpDbSeeded) &&
     !isUploading
 
   // ── Poll for job completion ──────────────────────────────────────────────────
@@ -346,7 +350,7 @@ export default function SODSAAnalysis() {
     }
     // Drop the user-role file if no user-level analysis is selected
     if (!selectedAnalyses.some(a => a.startsWith('user_'))) setUserRoleFile(null)
-    if (!withFp) setFpDbFile(null)
+    if (!withFp) { setFpDbFile(null); setFpDbSeeded(false) }
     setStep('upload')
   }, [selectedAnalyses, withFp])
 
@@ -356,24 +360,39 @@ export default function SODSAAnalysis() {
     setActiveFilters({})
   }, [])
 
+  const startRun = useCallback(async (id: string) => {
+    setJobId(id)
+    await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
+    setStep('running')
+    setProgress(0)
+    setProgressMessage('Starting SOD & SA analysis…')
+  }, [analysisType, withFp, selectedAnalyses, withObservation])
+
   const handleRunAnalysis = useCallback(async () => {
-    if (!roleHierarchyFile || !rulesetFile || !analysisType) return
+    if (!roleHierarchyFile || !(rulesetFile || rulesetSeeded) || !analysisType) return
     setIsUploading(true)
     setUploadError('')
     setUploadErrorDetails([])
     setEntitlementWarnings([])
+    setRecommendedWarnings([])
+    setStagedJobId(null)
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
-      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile)
+      const seedFp = withFp && fpDbSeeded
+      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp)
       if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
       setEntitlementWarnings(resp.entitlement_warnings ?? [])
+      const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
       const id = resp.job_id
-      setJobId(id)
-      await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
-      setStep('running')
-      setProgress(0)
-      setProgressMessage('Starting SOD & SA analysis…')
+      // If recommended ruleset columns are missing, pause on the upload step and
+      // let the user review the warning before proceeding (export won't be client-ready).
+      if (recommended.length > 0) {
+        setRecommendedWarnings(recommended)
+        setStagedJobId(id)
+        return
+      }
+      await startRun(id)
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
@@ -381,7 +400,22 @@ export default function SODSAAnalysis() {
     } finally {
       setIsUploading(false)
     }
-  }, [roleHierarchyFile, rulesetFile, userRoleFile, fpDbFile, analysisType, needsUserRole, withFp, selectedAnalyses])
+  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, selectedAnalyses, startRun])
+
+  const handleProceedAnyway = useCallback(async () => {
+    if (!stagedJobId) return
+    setIsUploading(true)
+    setUploadError('')
+    try {
+      await startRun(stagedJobId)
+    } catch (err: unknown) {
+      const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
+      setUploadError(data?.message || 'Run failed. Please try again.')
+      setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
+    } finally {
+      setIsUploading(false)
+    }
+  }, [stagedJobId, startRun])
 
   const handleTryAgain = useCallback(async () => {
     if (!jobId || !analysisType) { setStep('upload'); return }
@@ -409,6 +443,8 @@ export default function SODSAAnalysis() {
     setRulesetFile(null)
     setUserRoleFile(null)
     setFpDbFile(null)
+    setRulesetSeeded(false)
+    setFpDbSeeded(false)
     setIsUploading(false)
     setJobId(null)
     setProgress(0)
@@ -587,11 +623,24 @@ export default function SODSAAnalysis() {
                   label="Ruleset XLSX"
                   accept=".xlsx,.xls"
                   hint="Must contain SoD Ruleset, SA Ruleset, Entitlement to Privilege sheets"
-                  status={rulesetFile ? 'success' : 'idle'}
-                  fileInfo={rulesetFile ? { name: rulesetFile.name, size: rulesetFile.size } : null}
-                  onUpload={setRulesetFile}
-                  onRemove={() => setRulesetFile(null)}
+                  status={rulesetFile || rulesetSeeded ? 'success' : 'idle'}
+                  fileInfo={
+                    rulesetFile ? { name: rulesetFile.name, size: rulesetFile.size }
+                    : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: 0 }
+                    : null
+                  }
+                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false) }}
+                  onRemove={() => { setRulesetFile(null); setRulesetSeeded(false) }}
                 />
+                {!rulesetFile && (
+                  <button
+                    type="button"
+                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null) }}
+                    className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
+                  >
+                    {rulesetSeeded ? 'Use my own file instead' : 'Use seeded ruleset →'}
+                  </button>
+                )}
               </div>
               {withFp && (
                 <div>
@@ -600,11 +649,24 @@ export default function SODSAAnalysis() {
                     label="FP Database XLSX"
                     accept=".xlsx,.xls"
                     hint="Must contain No_action_Privileges and WorkArea_Privileges sheets"
-                    status={fpDbFile ? 'success' : 'idle'}
-                    fileInfo={fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size } : null}
-                    onUpload={setFpDbFile}
-                    onRemove={() => setFpDbFile(null)}
+                    status={fpDbFile || fpDbSeeded ? 'success' : 'idle'}
+                    fileInfo={
+                      fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size }
+                      : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: 0 }
+                      : null
+                    }
+                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false) }}
+                    onRemove={() => { setFpDbFile(null); setFpDbSeeded(false) }}
                   />
+                  {!fpDbFile && (
+                    <button
+                      type="button"
+                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null) }}
+                      className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
+                    >
+                      {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -696,15 +758,41 @@ export default function SODSAAnalysis() {
               </div>
             )}
 
+            {recommendedWarnings.length > 0 && (
+              <div className="flex items-start gap-2 p-3 bg-amber-50 rounded border border-amber-300/50 text-sm text-amber-900">
+                <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-600" />
+                <div className="flex-1 space-y-2">
+                  <div className="font-medium">Recommended columns missing from your ruleset</div>
+                  <div className="text-xs text-amber-800/80 mb-2">
+                    Your files passed validation, and the analysis is ready to run. However, the columns listed
+                    below are missing and will be populated with placeholder values in the export. You may proceed
+                    with the analysis, but for a client-ready export, we recommend adding these columns to your
+                    ruleset and re-uploading the files.
+                  </div>
+                  <ul className="list-disc pl-5 space-y-0.5 text-xs">
+                    {recommendedWarnings.map((w, i) => (
+                      <li key={i} className="break-words">{w.replace(/^Ruleset -> /, '')}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-between pt-2">
               <button className="btn-secondary" onClick={() => setStep('config')}>← Back to Analysis Config</button>
-              <button
-                className="btn-gold"
-                disabled={!canRun || isUploading}
-                onClick={handleRunAnalysis}
-              >
-                {isUploading ? 'Uploading…' : 'Run Analysis →'}
-              </button>
+              {stagedJobId ? (
+                <button className="btn-gold" disabled={isUploading} onClick={handleProceedAnyway}>
+                  {isUploading ? 'Starting…' : 'Proceed with Analysis →'}
+                </button>
+              ) : (
+                <button
+                  className="btn-gold"
+                  disabled={!canRun || isUploading}
+                  onClick={handleRunAnalysis}
+                >
+                  {isUploading ? 'Uploading…' : 'Run Analysis →'}
+                </button>
+              )}
             </div>
           </div>
         )}

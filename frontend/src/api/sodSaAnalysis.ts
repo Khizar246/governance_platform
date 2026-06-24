@@ -37,16 +37,21 @@ export interface SODSASheetPage {
 
 export async function uploadFiles(
   roleHierarchy: File,
-  ruleset: File,
+  ruleset: File | null,
   userRole: File | null,
   fpDb: File | null,
+  useSeededRuleset: boolean,
+  useSeededFpDb: boolean,
   onProgress?: (p: number) => void,
 ): Promise<UploadResponse> {
   const formData = new FormData()
   formData.append('role_hierarchy', roleHierarchy)
-  formData.append('ruleset', ruleset)
+  // An uploaded file wins over the seed flag; only send one per slot.
+  if (ruleset) formData.append('ruleset', ruleset)
+  else if (useSeededRuleset) formData.append('use_seeded_ruleset', 'true')
   if (userRole) formData.append('user_role', userRole)
   if (fpDb) formData.append('fp_db', fpDb)
+  else if (useSeededFpDb) formData.append('use_seeded_fp_db', 'true')
   const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress ?? (() => {}))
   return response.data
 }

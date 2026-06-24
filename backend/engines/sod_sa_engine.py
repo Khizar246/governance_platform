@@ -84,11 +84,9 @@ REQUIRED_COLUMNS = {
     "user": {"USER_NAME", "ROLE_NAME"},
     "sod":  {
         "CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT",
-        "RISK_RANKING", "MODULES", "RISK_DESCRIPTION",
     },
     "sa":   {
-        "CONTROL_NAME", "ENTITLEMENT", "RISK_RANKING",
-        "MODULES", "RISK_DESCRIPTION", "SIDE",
+        "CONTROL_NAME", "ENTITLEMENT",
     },
     "mapping": {"PRIVILEGE_NAME", "ENTITLEMENT_NAME"},
 }
@@ -101,7 +99,7 @@ CRITICAL_COLUMNS = {
 
 SUPPLEMENTARY_COLUMNS = {
     "sod":     {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION"},
-    "sa":      {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION", "SIDE"},
+    "sa":      {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION"},
     "mapping": set(),
 }
 
@@ -357,9 +355,14 @@ def validate_critical_columns(
 
 
 def _fill_supplementary(df: pl.DataFrame, sheet_type: str) -> pl.DataFrame:
-    """Fill empty/null supplementary column cells with EMPTY_PLACEHOLDER."""
+    """Fill empty/null supplementary column cells with EMPTY_PLACEHOLDER.
+
+    Supplementary columns are optional in the uploaded ruleset; when absent they
+    are added with EMPTY_PLACEHOLDER so the rest of the pipeline can rely on them.
+    """
     for col in SUPPLEMENTARY_COLUMNS.get(sheet_type, set()):
         if col not in df.columns:
+            df = df.with_columns(pl.lit(EMPTY_PLACEHOLDER).alias(col))
             continue
         # Cast to String first to handle Null-typed columns (all-null columns)
         df = df.with_columns(pl.col(col).cast(pl.Utf8).alias(col))
@@ -633,13 +636,15 @@ def _fp_level2(
         join_keys = ["ROLE_NAME", "WORK_AREA_PRIVILEGE_CODE"]
         right_keys = ["ROLE_NAME", "PRIVILEGE_NAME"]
 
-    # Find rows where WA privilege IS satisfied (inner join succeeds)
-    satisfied = wa_merged.join(
+    # Find rows where WA privilege IS satisfied (inner join succeeds).
+    # Keep WORK_AREA_PRIVILEGE_CODE so the TC reason names codes the entity ACTUALLY holds.
+    satisfied_codes = wa_merged.join(
         access_master,
         left_on=join_keys,
         right_on=right_keys,
         how="inner",
-    ).select("_row_nr").unique()
+    ).select(["_row_nr", "WORK_AREA_PRIVILEGE_CODE"]).unique()
+    satisfied = satisfied_codes.select("_row_nr").unique()
 
     # FP candidates: rows in wa_merged but NOT in satisfied
     fp_ids = wa_merged.select("_row_nr").unique().join(
@@ -648,11 +653,11 @@ def _fp_level2(
         how="anti",
     )
 
-    # Annotate rows that satisfy the WA check with their privilege code for TC reason in level 3
-    if not satisfied.is_empty():
-        satisfied_wa = wa_merged.join(satisfied, on="_row_nr", how="semi")
-        wa_code_map = satisfied_wa.group_by("_row_nr").agg(
-            pl.col("WORK_AREA_PRIVILEGE_CODE").sort().first().alias("_wa_code")
+    # Annotate satisfied rows with the held WA code(s) for the TC reason in level 3.
+    # Aggregate over the held codes only (not the full FP-DB mapping) and list them all.
+    if not satisfied_codes.is_empty():
+        wa_code_map = satisfied_codes.group_by("_row_nr").agg(
+            pl.col("WORK_AREA_PRIVILEGE_CODE").unique().sort().str.join(", ").alias("_wa_code")
         )
         df = df.join(wa_code_map, on="_row_nr", how="left")
 
@@ -685,6 +690,8 @@ def _fp_level3(
     if pending.is_empty():
         return df
 
+    noun = "user" if entity_col == "USER_NAME" else "role"
+
     if is_sod:
         # Count entitlements per control & entity
         pending_counted = pending.with_columns(
@@ -704,7 +711,7 @@ def _fp_level3(
             tc_reasons = tc_rows.select([
                 "_row_nr",
                 pl.when(pl.col("_wa_code").is_not_null())
-                  .then(pl.lit("True Conflict - The role has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
+                  .then(pl.lit(f"True Conflict - The {noun} has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
                   .otherwise(pl.lit("True Conflict — Both entitlements required by the control are present."))
                   .alias("_reason"),
             ])
@@ -722,7 +729,7 @@ def _fp_level3(
         if "_wa_code" in pending.columns:
             tc_reasons = pending.select(["_row_nr", "_wa_code"]).with_columns(
                 pl.when(pl.col("_wa_code").is_not_null())
-                  .then(pl.lit("True Conflict - The role has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
+                  .then(pl.lit(f"True Conflict - The {noun} has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
                   .otherwise(pl.lit("True Conflict — Both entitlements required by the control are present."))
                   .alias("_reason")
             ).drop("_wa_code")

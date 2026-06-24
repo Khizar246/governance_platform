@@ -11,12 +11,13 @@ Endpoints:
 """
 
 import io
+import pathlib
 import threading
 from typing import Optional
 
 import pandas as pd
 import polars as pl
-from fastapi import APIRouter, Request, UploadFile, File
+from fastapi import APIRouter, Request, UploadFile, File, Form
 from fastapi.responses import JSONResponse, StreamingResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
@@ -35,6 +36,12 @@ from engines.sod_sa_engine import (
 
 router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])
 logger = get_logger("sod_sa_analysis")
+
+# Bundled "seeded" files the user can load instead of uploading. Resolved relative
+# to this package so it works regardless of the process working directory.
+_SEEDED_DIR = pathlib.Path(__file__).resolve().parent.parent / "seeded" / "sod-sa"
+_SEEDED_RULESET = _SEEDED_DIR / "ruleset.xlsx"
+_SEEDED_FP_DB = _SEEDED_DIR / "fp_database.xlsx"
 
 # Columns exposed per sheet through the paginated results endpoint
 _ROLE_COLS = ["CONTROL_NAME", "CONTROL_BUCKET", "ENTITLEMENT", "ROLE_DISPLAY_NAME", "INHERITED_ROLE_DISPLAY_NAME", "PRIVILEGE_DISPLAY_NAME", "Potential FP", "Reason"]
@@ -65,9 +72,18 @@ _RH_REQUIRED_COLS = [
 ]
 _UR_REQUIRED_COLS = ["User Name", "Assigned Role Name"]
 _RULESET_SHEET_SCHEMA = {
-    "SoD Ruleset": ["Control Name", "Risk Ranking", "LHS Entitlement", "RHS Entitlement", "Module(s)", "Risk Description"],
-    "SA Ruleset":  ["Control Name", "Risk Ranking", "Entitlement", "Side", "Module(s)", "Risk Description"],
+    "SoD Ruleset": ["Control Name", "LHS Entitlement", "RHS Entitlement"],
+    "SA Ruleset":  ["Control Name", "Entitlement"],
     "Entitlement to Privilege": ["Entitlement Name", "Privilege Code"],
+}
+
+# Recommended-but-optional columns. Their absence does NOT block analysis; it
+# raises a non-blocking warning advising the user to add them for a client-ready
+# export. Bucket Details columns are only checked when that sheet is present.
+_RULESET_RECOMMENDED_COLS = {
+    "SoD Ruleset":   ["Risk Ranking", "Module(s)", "Risk Description"],
+    "SA Ruleset":    ["Risk Ranking", "Module(s)", "Risk Description"],
+    "Bucket Details": ["Bucket Name", "Risk", "EY Recommendations"],
 }
 _FP_SHEET_SCHEMA = {
     "No_action_Privileges": ["PRIVILEGE_NAME", "False Positive Reason"],
@@ -154,6 +170,62 @@ def _validate_all_schemas(
     if fp_bytes is not None and fp_name is not None:
         errors += _validate_multisheet_file(fp_bytes, fp_name, "FP Database", _FP_SHEET_SCHEMA)
     return errors
+
+
+def _inspect_observation_inputs(ruleset_bytes: bytes, ruleset_name: str) -> tuple[bool, bool]:
+    """Inspect the raw ruleset for the inputs the Observation tab requires.
+
+    Returns (has_control_bucket_col, has_bucket_details_sheet). Used at /run time
+    to block observation runs whose ruleset lacks the Control Bucket column or the
+    Bucket Details sheet (the engine silently fills an absent Control Bucket with
+    UNCATEGORIZED, so this must be read from the original headers).
+    """
+    try:
+        sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
+    except Exception:
+        return False, False
+    norm_to_actual = {_norm(s): s for s in sheet_names}
+    has_bucket_details = _norm("Bucket Details") in norm_to_actual
+
+    has_control_bucket = False
+    sod_actual = norm_to_actual.get(_norm("SoD Ruleset"))
+    if sod_actual is not None:
+        try:
+            cols = _read_header_columns(ruleset_bytes, ruleset_name, sod_actual)
+            has_control_bucket = _norm("Control Bucket") in {_norm(c) for c in cols}
+        except Exception:
+            pass
+    return has_control_bucket, has_bucket_details
+
+
+def _scan_recommended_columns(ruleset_bytes: bytes, ruleset_name: str) -> list[str]:
+    """Non-blocking scan: report recommended columns missing from the ruleset.
+
+    Analysis can still run without these, but the export is not "client ready"
+    until they are added. Bucket Details columns are only flagged when that
+    optional sheet is present.
+    """
+    try:
+        sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
+    except Exception:
+        return []  # hard validation already reported the unreadable file
+
+    norm_to_actual = {_norm(s): s for s in sheet_names}
+    warnings: list[str] = []
+    for sheet, recommended_cols in _RULESET_RECOMMENDED_COLS.items():
+        actual = norm_to_actual.get(_norm(sheet))
+        if actual is None:
+            # Bucket Details is optional; absence of the whole sheet is not warned here.
+            continue
+        try:
+            cols = _read_header_columns(ruleset_bytes, ruleset_name, actual)
+        except Exception:
+            continue
+        present = {_norm(c) for c in cols}
+        missing = [c for c in recommended_cols if _norm(c) not in present]
+        for col in missing:
+            warnings.append(f"Ruleset -> {sheet} -> Missing recommended column: {col}")
+    return warnings
 
 
 def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
@@ -252,6 +324,75 @@ def _check_missing_entitlement_mappings(
             })
 
     return warnings
+
+
+def _check_shared_privileges_in_controls(
+    sod_df: pl.DataFrame,
+    mapping_df: pl.DataFrame,
+) -> list[str]:
+    """Detect privileges mapped to BOTH entitlements of the same SoD control.
+
+    WHY THIS GUARD EXISTS
+    ---------------------
+    A SoD control is defined by two entitlements (LHS and RHS). The conflict
+    engine flags a violation only when an entity holds privileges from BOTH
+    entitlements at once — that simultaneous-both-sides condition is what makes
+    a real Segregation-of-Duties conflict.
+
+    If a single privilege is mapped to BOTH the LHS and RHS entitlements of the
+    SAME control, that logic breaks down: an entity holding only that one
+    privilege would match both legs and be reported as a violation — not because
+    it truly has conflicting access, but because the underlying mapping data is
+    wrong. That produces false positives and makes the control unreliable.
+
+    This check runs PER CONTROL on purpose. A privilege can legitimately appear
+    in entitlements that belong to DIFFERENT controls; the problem is only an
+    overlap WITHIN a single control's two entitlements.
+
+    Returns one human-readable error line per offending control. Empty list when
+    the mapping is clean. Callers treat a non-empty result as a hard upload
+    rejection — analysis must not run on a control whose mapping is invalid.
+
+    Values in both DataFrames are already uppercased/stripped by
+    load_ruleset_sheets, so comparisons are exact-match.
+    """
+    # Need the control legs and the entitlement→privilege mapping to do anything.
+    needed_sod = {"CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"}
+    if not needed_sod.issubset(set(sod_df.columns)):
+        return []
+    if not {"ENTITLEMENT_NAME", "PRIVILEGE_NAME"}.issubset(set(mapping_df.columns)):
+        return []
+
+    # Build lookup: entitlement name → set of its mapped privilege codes.
+    ent_to_privs: dict[str, set[str]] = {}
+    for row in mapping_df.select(["ENTITLEMENT_NAME", "PRIVILEGE_NAME"]).iter_rows():
+        ent, priv = row
+        if ent is None or priv is None:
+            continue
+        ent_s, priv_s = str(ent).strip(), str(priv).strip()
+        if ent_s and priv_s:
+            ent_to_privs.setdefault(ent_s, set()).add(priv_s)
+
+    errors: list[str] = []
+    # One iteration per control row. Each row carries its own LHS/RHS entitlements,
+    # so the overlap test is naturally scoped to a single control.
+    for row in sod_df.select(["CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"]).iter_rows():
+        control_name, lhs_ent, rhs_ent = row
+        if lhs_ent is None or rhs_ent is None:
+            continue
+        lhs_s, rhs_s = str(lhs_ent).strip(), str(rhs_ent).strip()
+        # Privileges shared between the two sides of THIS control.
+        shared = ent_to_privs.get(lhs_s, set()) & ent_to_privs.get(rhs_s, set())
+        if shared:
+            shared_list = ", ".join(f'"{p}"' for p in sorted(shared))
+            errors.append(
+                f'Control "{control_name}": privilege(s) {shared_list} mapped to both '
+                f'entitlements ({lhs_s}, {rhs_s}). An entity holding only such a privilege '
+                f'would falsely violate this control. Fix the Entitlement-to-Privilege '
+                f'mapping and re-upload.'
+            )
+
+    return errors
 
 
 def _run_thread(
@@ -510,20 +651,31 @@ def _run_thread(
 @router.post("/upload", response_model=UploadResponse)
 async def upload(
     role_hierarchy: UploadFile = File(..., description="Role Hierarchy Report XLSX/CSV"),
-    ruleset: UploadFile = File(..., description="SOD SA Ruleset XLSX (3 sheets)"),
+    ruleset: Optional[UploadFile] = File(None, description="SOD SA Ruleset XLSX (3 sheets)"),
     user_role: Optional[UploadFile] = File(None, description="User Role Membership XLSX/CSV"),
     fp_db: Optional[UploadFile] = File(None, description="FP Database XLSX"),
+    use_seeded_ruleset: bool = Form(False, description="Load the bundled seeded Ruleset instead of an upload"),
+    use_seeded_fp_db: bool = Form(False, description="Load the bundled seeded FP Database instead of an upload"),
 ):
-    logger.info(f"SOD & SA upload initiated. Files: {role_hierarchy.filename}, {ruleset.filename}")
+    logger.info(f"SOD & SA upload initiated. Files: {role_hierarchy.filename}, ruleset={ruleset.filename if ruleset else None}, use_seeded_ruleset={use_seeded_ruleset}, use_seeded_fp_db={use_seeded_fp_db}")
     errors: list[str] = []
 
     ok, msg = await validate_upload(role_hierarchy, MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS)
     if not ok:
         errors.append(f"Role Hierarchy: {msg}")
 
-    ok, msg = await validate_upload(ruleset, MAX_UPLOAD_SIZE_BYTES, {".xlsx", ".xls"})
-    if not ok:
-        errors.append(f"Ruleset: {msg}")
+    # An uploaded ruleset always wins over the seed flag. Require one of the two.
+    if ruleset is not None:
+        ok, msg = await validate_upload(ruleset, MAX_UPLOAD_SIZE_BYTES, {".xlsx", ".xls"})
+        if not ok:
+            errors.append(f"Ruleset: {msg}")
+    elif not use_seeded_ruleset:
+        errors.append("Ruleset: no file uploaded and the seeded ruleset was not requested.")
+    elif not _SEEDED_RULESET.exists():
+        errors.append(f"Ruleset: seeded file not found on server ({_SEEDED_RULESET.name}).")
+
+    if fp_db is None and use_seeded_fp_db and not _SEEDED_FP_DB.exists():
+        errors.append(f"FP Database: seeded file not found on server ({_SEEDED_FP_DB.name}).")
 
     if user_role is not None:
         ok, msg = await validate_upload(user_role, MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS)
@@ -543,14 +695,30 @@ async def upload(
         )
 
     rh_bytes = await role_hierarchy.read()
-    ruleset_bytes = await ruleset.read()
     ur_bytes = (await user_role.read()) if user_role is not None else None
-    fp_bytes = (await fp_db.read()) if fp_db is not None else None
+
+    # Ruleset / FP Database: an uploaded file wins; otherwise read the seeded file
+    # from disk when its flag is set. These bytes flow through the identical
+    # validation/load path as an upload from here on.
+    if ruleset is not None:
+        ruleset_bytes = await ruleset.read()
+        ruleset_name = ruleset.filename or "ruleset.xlsx"
+    else:
+        ruleset_bytes = _SEEDED_RULESET.read_bytes()
+        ruleset_name = "ruleset.xlsx"
+
+    if fp_db is not None:
+        fp_bytes = await fp_db.read()
+        fp_name = fp_db.filename or "fp_db.xlsx"
+    elif use_seeded_fp_db:
+        fp_bytes = _SEEDED_FP_DB.read_bytes()
+        fp_name = "fp_database.xlsx"
+    else:
+        fp_bytes = None
+        fp_name = None
 
     rh_name = role_hierarchy.filename or "role_hierarchy.xlsx"
-    ruleset_name = ruleset.filename or "ruleset.xlsx"
     ur_name = (user_role.filename or "user_role.xlsx") if user_role is not None else None
-    fp_name = (fp_db.filename or "fp_db.xlsx") if fp_db is not None else None
 
     # ── Step 1: comprehensive upfront schema scan ───────────────────────────────
     # Reports EVERY missing sheet and column across ALL files at once, so the user
@@ -594,11 +762,11 @@ async def upload(
     # Load ruleset — engine-level validation aggregates sheet/column errors
     bucket_details_df: Optional[pl.DataFrame] = None
     sod_df, sa_df, mapping_df, bucket_details_df_loaded, ruleset_errors = load_ruleset_sheets(
-        ruleset_bytes, ruleset.filename or "ruleset.xlsx", logger
+        ruleset_bytes, ruleset_name, logger
     )
     bucket_details_df = bucket_details_df_loaded
     if ruleset_errors:
-        all_errors.extend([f"Ruleset ({ruleset.filename or 'ruleset.xlsx'}): {err}" for err in ruleset_errors])
+        all_errors.extend([f"Ruleset ({ruleset_name}): {err}" for err in ruleset_errors])
 
     # Load user-role file if provided
     if ur_bytes is not None:
@@ -613,8 +781,8 @@ async def upload(
     # Load FP database sheets if provided
     if fp_bytes is not None:
         try:
-            no_action_df = load_excel_to_polars(fp_bytes, fp_db.filename or "fp_db.xlsx", "No_action_Privileges", {}, logger)
-            work_area_df = load_excel_to_polars(fp_bytes, fp_db.filename or "fp_db.xlsx", "WorkArea_Privileges", {}, logger)
+            no_action_df = load_excel_to_polars(fp_bytes, fp_name or "fp_db.xlsx", "No_action_Privileges", {}, logger)
+            work_area_df = load_excel_to_polars(fp_bytes, fp_name or "fp_db.xlsx", "WorkArea_Privileges", {}, logger)
             # Schema validation is case-insensitive but the FP engine joins on the
             # exact upper-case names — normalise headers so e.g. "Work_Area_Privilege"
             # cannot pass validation and then crash mid-run.
@@ -623,7 +791,7 @@ async def upload(
             logger.info(f"Loaded FP Database: No_action_Privileges {no_action_df.height} rows, WorkArea_Privileges {work_area_df.height} rows")
         except Exception as exc:
             logger.error(f"Failed to load FP Database: {exc}", exc_info=True)
-            all_errors.append(f"FP Database ({fp_db.filename or 'fp_db.xlsx'}): {exc}")
+            all_errors.append(f"FP Database ({fp_name or 'fp_db.xlsx'}): {exc}")
 
     # Reject files that validated but contain zero data rows — otherwise the run
     # "succeeds" with silently empty results.
@@ -659,6 +827,29 @@ async def upload(
             content={"error": True, "message": error_msg, "code": "FILE_FORMAT_ERROR", "details": []},
         )
 
+    # Data-integrity hard gate: a privilege mapped to BOTH entitlements of the same
+    # SoD control makes that control unanalysable (an entity holding only that one
+    # privilege would falsely satisfy both legs). Reject the whole upload so the user
+    # fixes the mapping before they can reach the Run step. See
+    # _check_shared_privileges_in_controls for the full rationale.
+    integrity_errors = _check_shared_privileges_in_controls(sod_df, mapping_df)
+    if integrity_errors:
+        logger.error(f"SOD & SA upload rejected — {len(integrity_errors)} shared-privilege issue(s):")
+        for _e in integrity_errors:
+            logger.error(f"  • {_e}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": True,
+                "message": (
+                    f"Data integrity issue: {len(integrity_errors)} SoD control(s) have a "
+                    f"privilege mapped to both entitlements. Fix every item listed below, then re-upload."
+                ),
+                "code": "DATA_INTEGRITY_ERROR",
+                "details": integrity_errors,
+            },
+        )
+
     job = job_manager.create_job("sod_sa_analysis")
     logger.info(f"[{job.id}] Created job for SOD & SA analysis")
     job_manager.store_files(job.id, {
@@ -671,9 +862,14 @@ async def upload(
         "work_area_df": work_area_df,
         "bucket_details_df": bucket_details_df,
     })
+    has_control_bucket_col, has_bucket_details_sheet = _inspect_observation_inputs(
+        ruleset_bytes, ruleset_name
+    )
     job_manager.set_config(job.id, {
         "has_user_role": ur_df is not None,
         "has_fp_db": fp_bytes is not None,
+        "has_control_bucket_col": has_control_bucket_col,
+        "has_bucket_details_sheet": has_bucket_details_sheet,
     })
     job_manager.set_status(job.id, JobStatus.VALIDATING, "Files validated.")
     logger.info(f"[{job.id}] Files stored and validated. Ready for analysis.")
@@ -689,6 +885,10 @@ async def upload(
     warnings: list[str] = []
     if ur_df is None:
         warnings.append("No user-role file provided. User-level analysis will not be available.")
+
+    # Non-blocking: recommended ruleset columns missing → advise the user to add
+    # them for a client-ready export (analysis still proceeds).
+    warnings.extend(_scan_recommended_columns(ruleset_bytes, ruleset_name))
 
     # Check for missing entitlement mappings
     entitlement_warnings = _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df)
@@ -733,6 +933,30 @@ async def run(job_id: str, config: SODSARunConfig):
         )
 
     has_fp_db = job.config.get("has_fp_db", False) and config.with_fp
+
+    # Observation requires both the Control Bucket column (in SoD Ruleset) and the
+    # Bucket Details sheet. The engine fills an absent Control Bucket with
+    # UNCATEGORIZED, so check the original-upload flags recorded at upload time.
+    if config.with_observation:
+        _obs_missing: list[str] = []
+        if not job.config.get("has_control_bucket_col", False):
+            _obs_missing.append("SoD Ruleset -> Missing Column: Control Bucket")
+        if not job.config.get("has_bucket_details_sheet", False):
+            _obs_missing.append("Ruleset -> Missing Sheet: Bucket Details")
+        if _obs_missing:
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "error": True,
+                    "message": (
+                        "Observation level analysis requires the 'Control Bucket' column in the SoD Ruleset "
+                        "and a 'Bucket Details' sheet. Add the missing item(s) mentioned below and re-upload, "
+                        "or turn off the Observation option."
+                    ),
+                    "code": "SCHEMA_VALIDATION_ERROR",
+                    "details": _obs_missing,
+                },
+            )
 
     # Bucket cross-reference validation: every Control Bucket value (except UNCATEGORIZED)
     # must have a matching row in Bucket Details.
