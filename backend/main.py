@@ -185,15 +185,20 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-from routers import oracle_comparator, sod_sa_analysis, ruleset_mapping  # noqa: E402
+from routers import oracle_comparator, sod_sa_analysis, ruleset_mapping, admin  # noqa: E402
 
 app.include_router(oracle_comparator.router)
 app.include_router(sod_sa_analysis.router)
 app.include_router(ruleset_mapping.router)
+app.include_router(admin.router)
 
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 _TEMPLATES_DIR.mkdir(exist_ok=True)
 app.mount("/api/templates", StaticFiles(directory=str(_TEMPLATES_DIR)), name="templates")
+
+_SEEDED_DIR = pathlib.Path(__file__).parent / "seeded" / "sod-sa"
+_SEEDED_DIR.mkdir(parents=True, exist_ok=True)
+app.mount("/api/seeded", StaticFiles(directory=str(_SEEDED_DIR)), name="seeded")
 
 
 # ── Health check ──────────────────────────────────────────────────────────────

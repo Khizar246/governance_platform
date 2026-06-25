@@ -9,6 +9,11 @@ const NAV_ITEMS = [
   { to: ROUTES.SOD_SA,              icon: IconSod,     label: 'SOD & SA Analysis',    accent: '#D97706' },
 ]
 
+const RESOURCE_ITEMS = [
+  { to: ROUTES.DOWNLOADS, icon: IconDownload, label: 'Downloads',   accent: '#0EA5E9' },
+  { to: ROUTES.ADMIN,     icon: IconAdmin,    label: 'Admin Panel', accent: '#64748B' },
+]
+
 // ── SVG Icons ────────────────────────────────────────────────────────────────
 function IconHome({ c, s }: { c: string; s: number }) {
   return (
@@ -52,12 +57,107 @@ function IconChevron({ collapsed, c }: { collapsed: boolean; c: string }) {
     </svg>
   )
 }
+function IconDownload({ c, s }: { c: string; s: number }) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function IconAdmin({ c, s }: { c: string; s: number }) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <path d="M4 6h16M4 12h16M4 18h16" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+      <circle cx="9" cy="6" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
+      <circle cx="15" cy="12" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
+      <circle cx="8" cy="18" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
+    </svg>
+  )
+}
 function IconLock({ c, s }: { c: string; s: number }) {
   return (
     <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
       <rect x="3" y="11" width="18" height="11" rx="2" stroke={c} strokeWidth="1.5"/>
       <path d="M7 11V7a5 5 0 0110 0v4" stroke={c} strokeWidth="1.5"/>
     </svg>
+  )
+}
+
+type NavItem = { to: string; icon: (p: { c: string; s: number }) => JSX.Element; label: string; accent: string }
+
+function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]; collapsed: boolean }) {
+  return (
+    <div style={{ marginBottom: 6 }}>
+      {!collapsed && (
+        <div
+          style={{
+            fontSize: 9.5, fontWeight: 600, color: '#94A3B8',
+            textTransform: 'uppercase', letterSpacing: '0.12em',
+            padding: '6px 8px 6px', marginBottom: 2,
+          }}
+        >
+          {title}
+        </div>
+      )}
+      {items.map((item) => {
+        const IconComp = item.icon
+        return (
+          <NavLink
+            key={item.to}
+            to={item.to}
+            end={item.to === ROUTES.HOME}
+            title={collapsed ? item.label : undefined}
+            style={({ isActive }) => ({
+              display: 'flex',
+              alignItems: 'center',
+              gap: 9,
+              padding: collapsed ? '7px 0' : '7px 8px',
+              justifyContent: collapsed ? 'center' : 'flex-start',
+              borderRadius: 7,
+              border: isActive ? '1px solid #E8C84D' : '1px solid transparent',
+              width: '100%',
+              cursor: 'pointer',
+              textDecoration: 'none',
+              background: isActive ? '#FFF3CC' : 'transparent',
+              transition: 'all 0.13s',
+              marginBottom: 2,
+            })}
+          >
+            {({ isActive }) => (
+              <>
+                <div
+                  style={{
+                    width: 28, height: 28,
+                    borderRadius: 6,
+                    background: isActive ? '#E8A900' : '#F0EFE9',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    transition: 'background 0.13s',
+                  }}
+                >
+                  <IconComp s={14} c={isActive ? '#FFFFFF' : '#64748B'} />
+                </div>
+                {!collapsed && (
+                  <span
+                    style={{
+                      fontSize: 13,
+                      fontWeight: isActive ? 600 : 400,
+                      color: isActive ? '#0F1E3D' : '#334155',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {item.label}
+                  </span>
+                )}
+              </>
+            )}
+          </NavLink>
+        )
+      })}
+    </div>
   )
 }
 
@@ -130,76 +230,8 @@ export default function Sidebar() {
           gap: 0,
         }}
       >
-        <div style={{ marginBottom: 6 }}>
-          {!collapsed && (
-            <div
-              style={{
-                fontSize: 9.5, fontWeight: 600, color: '#94A3B8',
-                textTransform: 'uppercase', letterSpacing: '0.12em',
-                padding: '6px 8px 6px', marginBottom: 2,
-              }}
-            >
-              Governance
-            </div>
-          )}
-          {NAV_ITEMS.map((item) => {
-            const IconComp = item.icon
-            return (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.to === ROUTES.HOME}
-                title={collapsed ? item.label : undefined}
-                style={({ isActive }) => ({
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 9,
-                  padding: collapsed ? '7px 0' : '7px 8px',
-                  justifyContent: collapsed ? 'center' : 'flex-start',
-                  borderRadius: 7,
-                  border: isActive ? '1px solid #E8C84D' : '1px solid transparent',
-                  width: '100%',
-                  cursor: 'pointer',
-                  textDecoration: 'none',
-                  background: isActive ? '#FFF3CC' : 'transparent',
-                  transition: 'all 0.13s',
-                  marginBottom: 2,
-                })}
-              >
-                {({ isActive }) => (
-                  <>
-                    <div
-                      style={{
-                        width: 28, height: 28,
-                        borderRadius: 6,
-                        background: isActive ? '#E8A900' : '#F0EFE9',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        flexShrink: 0,
-                        transition: 'background 0.13s',
-                      }}
-                    >
-                      <IconComp s={14} c={isActive ? '#FFFFFF' : '#64748B'} />
-                    </div>
-                    {!collapsed && (
-                      <span
-                        style={{
-                          fontSize: 13,
-                          fontWeight: isActive ? 600 : 400,
-                          color: isActive ? '#0F1E3D' : '#334155',
-                          whiteSpace: 'nowrap',
-                        }}
-                      >
-                        {item.label}
-                      </span>
-                    )}
-                  </>
-                )}
-              </NavLink>
-            )
-          })}
-        </div>
+        <NavGroup title="Governance" items={NAV_ITEMS} collapsed={collapsed} />
+        <NavGroup title="Resources" items={RESOURCE_ITEMS} collapsed={collapsed} />
       </nav>
 
       {/* ── Footer ── */}

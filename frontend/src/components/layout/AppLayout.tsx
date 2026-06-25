@@ -7,6 +7,8 @@ const ROUTE_META: Record<string, string> = {
   [ROUTES.RULESET_MAPPING]:   'Ruleset Mapping',
   [ROUTES.ORACLE_COMPARATOR]: 'Oracle Comparator',
   [ROUTES.SOD_SA]:            'SOD & SA Analysis',
+  [ROUTES.DOWNLOADS]:         'Downloads',
+  [ROUTES.ADMIN]:             'Admin Panel',
 }
 
 function Topbar({ pathname }: { pathname: string }) {
