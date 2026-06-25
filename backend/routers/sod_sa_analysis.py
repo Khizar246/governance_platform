@@ -1116,7 +1116,7 @@ async def filter_options(request: Request, job_id: str, column: str, sheet: str)
         if _col not in _reserved and _col != column and _col in df.columns and _val:
             _vals = [v.strip() for v in _val.split(",") if v.strip()]
             if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+                df = df.filter(pl.col(_col).cast(pl.Utf8).is_in(_vals))
     if column not in df.columns:
         return {"values": []}
     return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
@@ -1153,7 +1153,7 @@ async def results_page(
         if _col not in _reserved and _col in df.columns and _val:
             _vals = [v.strip() for v in _val.split(",") if v.strip()]
             if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+                df = df.filter(pl.col(_col).cast(pl.Utf8).is_in(_vals))
 
     if search:
         q = search.lower()
