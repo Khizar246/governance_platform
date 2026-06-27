@@ -612,12 +612,18 @@ def _fp_level2(
     if pending.is_empty():
         return df
 
-    # Merge pending rows with work area rules
-    wa_merged = pending.join(
-        wa_valid.select(["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
-        on="PRIVILEGE_NAME",
-        how="inner",
+    # Match pending rows to work-area rules by either privilege or inherited role.
+    wa_hits = (
+        pending.select(["_row_nr", "_fp_keys"])
+               .explode("_fp_keys")
+               .join(
+                   wa_valid.select(["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+                   left_on="_fp_keys", right_on="PRIVILEGE_NAME", how="inner",
+               )
+               .select(["_row_nr", "WORK_AREA_PRIVILEGE_CODE"])
+               .unique()
     )
+    wa_merged = pending.join(wa_hits, on="_row_nr", how="inner")
 
     if wa_merged.is_empty():
         return df
