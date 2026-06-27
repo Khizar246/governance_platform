@@ -141,3 +141,60 @@ def test_level2_wa_code_held_via_inherited_role_is_not_fp():
     # Not flagged FP by Level 2; SA falls to Level 3 True Conflict.
     assert out["Potential FP"][0] == "TC"
     assert "WA9" in out["Reason"][0]
+
+
+def test_user_level_wa_held_via_inherited_role_is_not_fp():
+    """USER-LEVEL gatekeeper: user holds the WA code only through an inherited role.
+
+    Setup:
+      - User U1 has assigned role ROLE_A.
+      - ROLE_A has an inherited role IR_WA which carries privilege WA9.
+      - WA rule: privilege PG requires gatekeeper WA9.
+      - Violation row: U1, PG (direct privilege on ROLE_A).
+
+    Because WA9 is held via IR_WA (an inherited role of ROLE_A), the user-level
+    path must find WA9 in the expanded role_hierarchy and NOT mark the violation FP.
+    The result should be TC (True Conflict), not FP.
+    """
+    # Violation frame with USER_NAME as entity column
+    base = {
+        "CONTROL_NAME": "C",
+        "ENTITLEMENT": "E",
+        "USER_NAME": "U1",
+        "ROLE_NAME": "ROLE_A",
+        "INHERITED_ROLE_NAME": "",
+        "PRIVILEGE_NAME": "PG",
+    }
+    df = pl.DataFrame([base])
+
+    # Role hierarchy: ROLE_A holds PG directly, and holds WA9 via inherited role IR_WA
+    hier = pl.DataFrame(
+        [
+            ("ROLE_A", "PG", ""),       # direct privilege
+            ("ROLE_A", "WA9", "IR_WA"), # WA9 via inherited role IR_WA
+        ],
+        schema=["ROLE_NAME", "PRIVILEGE_NAME", "INHERITED_ROLE_NAME"],
+        orient="row",
+    )
+
+    # user_role_df: U1 is assigned ROLE_A
+    user_role = pl.DataFrame(
+        [("U1", "ROLE_A")],
+        schema=["USER_NAME", "ROLE_NAME"],
+        orient="row",
+    )
+
+    out = _run(
+        df,
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "FALSE POSITIVE REASON"]),
+        _workarea([("PG", "WA9")]),  # PG requires WA9
+        hier,
+        entity_col="USER_NAME",
+        is_sod=False,
+        user_role_df=user_role,
+    )
+    # U1 holds WA9 via IR_WA -> NOT a false positive -> TC (True Conflict)
+    assert out["Potential FP"][0] == "TC", (
+        f"Expected TC (user holds WA9 via inherited role), got {out['Potential FP'][0]!r}"
+    )
+    assert "WA9" in out["Reason"][0]
