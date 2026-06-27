@@ -38,7 +38,8 @@ export interface ResultsPage {
   page_size: number
 }
 
-export type ResultTab = 'sod' | 'sa' | 'ent'
+export type ResultTab = 'sod' | 'sa' | 'ent' | 'missing_ctrl' | 'missing_priv'
+export type Direction = 'c2e' | 'e2c'
 
 export async function getResults(
   jobId: string,
@@ -46,6 +47,7 @@ export async function getResults(
     page: number
     pageSize: number
     tab: ResultTab
+    direction: Direction
     filters?: Record<string, string[]>
   },
 ): Promise<ResultsPage> {
@@ -53,6 +55,7 @@ export async function getResults(
     page: params.page,
     page_size: params.pageSize,
     tab: params.tab,
+    direction: params.direction,
   }
   for (const [col, vals] of Object.entries(params.filters ?? {})) {
     if (vals.length > 0) queryParams[col] = vals.join(',')
@@ -64,10 +67,11 @@ export async function getResults(
 export async function getFilterOptions(
   jobId: string,
   tab: ResultTab,
+  direction: Direction,
   column: string,
   otherFilters: Record<string, string[]>,
 ): Promise<string[]> {
-  const params: Record<string, string> = { column, tab }
+  const params: Record<string, string> = { column, tab, direction }
   for (const [col, vals] of Object.entries(otherFilters)) {
     if (vals.length > 0) params[col] = vals.join(',')
   }

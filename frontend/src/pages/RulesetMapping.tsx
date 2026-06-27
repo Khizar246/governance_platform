@@ -17,35 +17,44 @@ import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
   getResults, getFilterOptions,
 } from '../api/rulesetMapping'
-import type { ResultTab } from '../api/rulesetMapping'
+import type { ResultTab, Direction } from '../api/rulesetMapping'
 import type { UploadResponse, RulesetMappingSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 // ── Column definitions ────────────────────────────────────────────────────────
 
-const MATCH_TYPE_DESCRIPTIONS: Record<string, string> = {
-  'Client Control Name': 'The control name as defined in the client SoD/SA ruleset.',
-  'EY Control Name': 'The best-matching EY control. "Direct" = found in EY ruleset. "Derived" = constructed from the EY Entitlement-to-Privilege sheet. "—" = no match.',
-  'Confidence Score': 'Jaccard similarity between the client and EY privilege sets: |C ∩ E| / |C ∪ E| × 100%. 100% = perfect bilateral match.',
-  'Match Type': '"Direct" if matched to an existing EY control. "Derived" if the EY control was constructed from the E2P sheet. "Unmatched" if no mapping was possible.',
+// Column header descriptions. Control-name headers are direction-dependent, so we
+// match on a token suffix ("Control Name" / "Entitlement") rather than exact names.
+const COLUMN_DESCRIPTIONS: Record<string, string> = {
+  'Control Name': 'A SoD/SA control name. The source column is the ruleset being mapped FROM; the matched column is the best target match.',
+  'Confidence Score': 'Per-leg Jaccard similarity of privilege sets × 100%. For SoD it is the weaker of the two legs (both must clear 60%). 100% = identical privilege sets.',
+  'Match Type': '"Direct" = matched an existing target control (both SoD legs ≥ 60%). "Derived Control" = an inferred SoD pair (both entitlements map but no control pairs them; SoD only). "Unmatched" = no valid mapping.',
+  'Missing Privileges': 'Privileges present in the matched target entitlement but absent from the source entitlement — the privileges to add, grouped by entitlement.',
+  'Entitlement': 'An entitlement name from the source ruleset, or its best target match.',
+  'Privilege Match Count': 'Number of source privileges found in the matched target entitlement (matched/total).',
+  'Jaccard Similarity (%)': 'Overlap ÷ union of the two privilege sets.',
+  'Match Confidence': 'Tier based on source privilege coverage: High ≥ 75%, Medium 40–74%, Low < 40%, None = no shared privileges.',
+  'Runner-Up EY Entitlements': 'The 2nd and 3rd best target candidates with their match counts and Jaccard scores.',
+  'Control Type': 'Whether the missing control is a SoD or SA control.',
+  'Source Control': 'The control in the source ruleset that was matched.',
+  'Matched Control': 'The best-matching control in the target ruleset.',
 }
 
-const ENT_DESCRIPTIONS: Record<string, string> = {
-  'Client Entitlement': 'The entitlement name as defined in the client\'s access control system.',
-  'EY Entitlement Match': 'The best-matching EY standard entitlement. \'—\' means no EY entitlement shares any privilege with this client entitlement.',
-  'Privilege Match Count': 'Number of client privileges found in the matched EY entitlement, expressed as matched/total.',
-  'Jaccard Similarity (%)': 'Overlap ÷ union of the two privilege sets.',
-  'Match Confidence': 'Tier based on client privilege coverage: High ≥ 75%, Medium 40–74%, Low < 40%, None = no shared privileges.',
-  'Runner-Up EY Entitlements': 'The 2nd and 3rd best EY candidates with their match counts and Jaccard scores.',
+function describeColumn(key: string): string {
+  if (COLUMN_DESCRIPTIONS[key]) return COLUMN_DESCRIPTIONS[key]
+  for (const token of ['Control Name', 'Entitlement Match', 'Entitlement']) {
+    if (key.includes(token)) return COLUMN_DESCRIPTIONS[token === 'Entitlement Match' ? 'Entitlement' : token]
+  }
+  return key
 }
 
 function matchTypeCell(info: { getValue: () => unknown }) {
   const val = String(info.getValue() ?? '')
   const cls =
-    val === 'Direct'    ? 'bg-green-100 text-green-700 border border-green-200' :
-    val === 'Derived'   ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
-    val === 'Unmatched' ? 'bg-red-100 text-red-600 border border-red-200' :
+    val === 'Direct'          ? 'bg-green-100 text-green-700 border border-green-200' :
+    val === 'Derived Control' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
+    val === 'Unmatched'       ? 'bg-red-100 text-red-600 border border-red-200' :
     'bg-gray-100 text-gray-600'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${cls}`}>
@@ -54,8 +63,12 @@ function matchTypeCell(info: { getValue: () => unknown }) {
   )
 }
 
-function makeControlColumns(descriptions: Record<string, string>): ColumnDef<Record<string, unknown>>[] {
-  return ['Client Control Name', 'EY Control Name', 'Confidence Score', 'Match Type'].map(key => ({
+// Build TanStack columns from the actual row keys returned by the API. Headers are
+// direction-aware (the source/target labels change), so columns are derived at
+// render time from the data rather than hardcoded.
+function buildColumns(rows: Record<string, unknown>[]): ColumnDef<Record<string, unknown>>[] {
+  const keys = rows.length > 0 ? Object.keys(rows[0]) : []
+  return keys.map(key => ({
     accessorKey: key,
     header: () => (
       <Tooltip>
@@ -65,9 +78,7 @@ function makeControlColumns(descriptions: Record<string, string>): ColumnDef<Rec
             <Info size={10} className="text-gray-400 shrink-0" />
           </span>
         </TooltipTrigger>
-        <TooltipContent side="bottom" className="max-w-xs text-xs">
-          {descriptions[key]}
-        </TooltipContent>
+        <TooltipContent side="bottom" className="max-w-xs text-xs">{describeColumn(key)}</TooltipContent>
       </Tooltip>
     ),
     cell: key === 'Match Type' ? matchTypeCell : (info: { getValue: () => unknown }) => {
@@ -75,41 +86,6 @@ function makeControlColumns(descriptions: Record<string, string>): ColumnDef<Rec
       return val === null || val === undefined ? '' : String(val)
     },
   }))
-}
-
-const SOD_COLUMNS = makeControlColumns(MATCH_TYPE_DESCRIPTIONS)
-const SA_COLUMNS  = makeControlColumns(MATCH_TYPE_DESCRIPTIONS)
-
-const ENT_COLUMNS: ColumnDef<Record<string, unknown>>[] = [
-  'Client Entitlement',
-  'EY Entitlement Match',
-  'Privilege Match Count',
-  'Jaccard Similarity (%)',
-  'Match Confidence',
-  'Runner-Up EY Entitlements',
-].map(key => ({
-  accessorKey: key,
-  header: () => (
-    <Tooltip>
-      <TooltipTrigger asChild>
-        <span className="flex items-center gap-1 cursor-help">
-          {key}
-          <Info size={10} className="text-gray-400 shrink-0" />
-        </span>
-      </TooltipTrigger>
-      <TooltipContent side="bottom" className="max-w-xs text-xs">{ENT_DESCRIPTIONS[key]}</TooltipContent>
-    </Tooltip>
-  ),
-  cell: (info: { getValue: () => unknown }) => {
-    const val = info.getValue()
-    return val === null || val === undefined ? '' : String(val)
-  },
-}))
-
-const TAB_COLUMNS: Record<ResultTab, ColumnDef<Record<string, unknown>>[]> = {
-  sod: SOD_COLUMNS,
-  sa:  SA_COLUMNS,
-  ent: ENT_COLUMNS,
 }
 
 // ── Step / tab types ──────────────────────────────────────────────────────────
@@ -129,9 +105,16 @@ const PROGRESS_STEPS: ProgressStep[] = [
 ]
 
 const TABS: { id: ResultTab; label: string }[] = [
-  { id: 'sod', label: 'SoD Mapping' },
-  { id: 'sa',  label: 'SA Mapping' },
-  { id: 'ent', label: 'Entitlement Mapping' },
+  { id: 'sod',          label: 'SoD Mapping' },
+  { id: 'sa',           label: 'SA Mapping' },
+  { id: 'ent',          label: 'Entitlement Mapping' },
+  { id: 'missing_ctrl', label: 'Missing Controls' },
+  { id: 'missing_priv', label: 'Missing Privileges' },
+]
+
+const DIRECTIONS: { id: Direction; label: string }[] = [
+  { id: 'c2e', label: 'Client → EY' },
+  { id: 'e2c', label: 'EY → Client' },
 ]
 
 // ── Preview cards config ──────────────────────────────────────────────────────
@@ -162,6 +145,7 @@ export default function RulesetMapping() {
   const [errors, setErrors]               = useState<string[]>([])
   const [uploadError, setUploadError]     = useState('')
   const [activeTab, setActiveTab]         = useState<ResultTab>('sod')
+  const [direction, setDirection]         = useState<Direction>('c2e')
   const [confirmReset, setConfirmReset]   = useState(false)
   const [tableRows, setTableRows]         = useState<Record<string, unknown>[]>([])
   const [page, setPage]                   = useState(1)
@@ -171,6 +155,7 @@ export default function RulesetMapping() {
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
 
   const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
+  const columns = useMemo(() => buildColumns(tableRows), [tableRows])
 
   // Polling
   useEffect(() => {
@@ -204,7 +189,7 @@ export default function RulesetMapping() {
     if (step !== 'results' || !jobId) return
     let cancelled = false
     setIsLoadingResults(true)
-    getResults(jobId, { page, pageSize, tab: activeTab, filters: activeFilters })
+    getResults(jobId, { page, pageSize, tab: activeTab, direction, filters: activeFilters })
       .then(res => {
         if (!cancelled) {
           setTableRows(res.data)
@@ -219,7 +204,7 @@ export default function RulesetMapping() {
         }
       })
     return () => { cancelled = true }
-  }, [step, jobId, activeTab, page, pageSize, activeFilters])
+  }, [step, jobId, activeTab, direction, page, pageSize, activeFilters])
 
   const handleUpload = useCallback(async () => {
     if (!clientFile || !eyFile) return
@@ -274,6 +259,7 @@ export default function RulesetMapping() {
     setErrors([])
     setUploadError('')
     setActiveTab('sod')
+    setDirection('c2e')
     setConfirmReset(false)
     setTableRows([])
     setPage(1)
@@ -284,13 +270,18 @@ export default function RulesetMapping() {
   }, [jobId])
 
   const tabCounts = useMemo<Record<ResultTab, number>>(() => {
-    if (!summary) return { sod: 0, sa: 0, ent: 0 }
+    const empty = { sod: 0, sa: 0, ent: 0, missing_ctrl: 0, missing_priv: 0 }
+    if (!summary) return empty
+    // Prefer the per-direction block; fall back to the flat (Client→EY) keys.
+    const c = (direction === 'c2e' ? summary.c2e : summary.e2c) ?? summary
     return {
-      sod: summary.sod_total,
-      sa:  summary.sa_total,
-      ent: summary.ent_total,
+      sod:          c.sod_total ?? 0,
+      sa:           c.sa_total ?? 0,
+      ent:          c.ent_total ?? 0,
+      missing_ctrl: c.missing_ctrl_total ?? 0,
+      missing_priv: c.missing_priv_total ?? 0,
     }
-  }, [summary])
+  }, [summary, direction])
 
   return (
     <div>
@@ -305,14 +296,15 @@ export default function RulesetMapping() {
           <HelpStep num={1} text="Download the templates below and populate them with your client and EY ruleset data. Each file must contain exactly three sheets: 'SoD Ruleset', 'SA Ruleset', and 'Entitlement to Privilege'." />
           <HelpStep num={2} text="SoD Ruleset columns: Control Name, Risk Ranking, LHS Entitlement, RHS Entitlement, Module(s). SA Ruleset columns: Control Name, Risk Ranking, Entitlement, Side, Module(s). Entitlement to Privilege columns: Entitlement Name, Privilege Name, Privilege Code." />
           <HelpStep num={3} text="Upload both the Client Ruleset and EY Ruleset .xlsx files. The tool validates all required sheets and columns are present before allowing you to proceed." />
-          <HelpStep num={4} text="Click Run Mapping. Progress is tracked across three pipeline steps. Once complete, review results across the SoD Mapping, SA Mapping, and Entitlement Mapping tabs, then download the 3-tab Excel report." />
+          <HelpStep num={4} text="Click Run Mapping. The tool maps in BOTH directions (Client → EY and EY → Client). Once complete, use the direction toggle and the tabs — SoD Mapping, SA Mapping, Entitlement Mapping, Missing Controls, Missing Privileges — to review results, then download the single multi-sheet Excel report." />
         </HelpAccordion>
         <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The mapping pipeline runs three steps. Privilege codes from the Entitlement to Privilege sheet are the source of truth for all matching.</p>
-          <HelpPill label="Step 1 — Entitlement Mapping (0–30%)" note="Each client entitlement is matched to the best-fitting EY entitlement by comparing their Privilege Code sets. Jaccard similarity (|intersection| ÷ |union|) determines the score. This lookup table is used by Steps 2 and 3." />
-          <HelpPill label="Step 2 — SoD Control Matching (30–65%)" note="For each client SoD control, privileges for both LHS and RHS entitlements are combined into set C. Every EY SoD control is scored by Jaccard(C, E). Best non-zero score → Direct match. Zero → fall back to Step 1 mapping to construct a Derived EY control name ([EY_LHS] AND [EY_RHS]). If neither entitlement maps → Unmatched." />
-          <HelpPill label="Step 3 — SA Control Matching (65–90%)" note="Each client SA entitlement is looked up via the Step 1 mapping to find the corresponding EY entitlement. If that EY entitlement appears in the EY SA Ruleset → Direct match. If it exists only in EY E2P → Derived. If no mapping was found → Unmatched." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Confidence Score = Jaccard similarity × 100%, rounded to the nearest integer. 100% = every client privilege is present in the matched EY set and vice versa. "—" and Unmatched rows always show 0%.</p>
+          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The pipeline runs in BOTH directions (Client → EY and EY → Client) so that "missing controls" and "missing privileges" are recomputed relative to whichever ruleset is the source. Privilege codes from the Entitlement to Privilege sheet are the source of truth for all matching.</p>
+          <HelpPill label="Step 1 — Entitlement Mapping" note="Each source entitlement is matched to the best-fitting target entitlement by comparing their Privilege Code sets via Jaccard similarity (|intersection| ÷ |union|). This lookup feeds Steps 2 and 3." />
+          <HelpPill label="Step 2 — SoD Control Matching (two-leg)" note="A SoD control has two legs (LHS and RHS). Each leg is scored INDEPENDENTLY against a candidate target control's legs by per-entitlement Jaccard. A control is a Direct match only if BOTH legs clear 60% — a strong match on one leg can never carry an unrelated second leg. If no target control qualifies but both legs map to target entitlements, an inferred pair [T_LHS] AND [T_RHS] is created and labelled Derived Control." />
+          <HelpPill label="Step 3 — SA Control Matching" note="Each source SA entitlement is looked up via Step 1. It is a Direct match only when the mapped target entitlement is itself a target SA control AND the per-entitlement similarity clears 60%; otherwise Unmatched. SA controls are NEVER labelled Derived." />
+          <HelpPill label="Missing Controls & Missing Privileges" note="Missing Controls lists every source control (SoD or SA) with no valid match in the target ruleset. Missing Privileges recommends, for each matched control, the target-side privileges absent from the source entitlement — i.e. which privileges to add and to which entitlement." />
+          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Confidence Score = Jaccard similarity × 100%. For SoD it is the weaker of the two legs (both must clear 60%). "—" and Unmatched rows always show 0%.</p>
         </HelpAccordion>
         <TemplateDownloads templates={[
           ['Client Ruleset Template', 'XLSX', '/api/templates/ruleset-mapping/client_ruleset_template.xlsx'],
@@ -451,29 +443,45 @@ export default function RulesetMapping() {
         {/* ── Results ────────────────────────────────────────────────────── */}
         {step === 'results' && summary && (
           <div className="slide-in space-y-5">
-            {/* Summary StatCards */}
-            <div className="grid grid-cols-4 gap-3">
-              <StatCard
-                value={summary.sod_direct}
-                label="SoD Direct"
-                badge={{ text: 'Direct', variant: 'success' }}
-              />
-              <StatCard
-                value={summary.sod_derived}
-                label="SoD Derived"
-                badge={{ text: 'Derived', variant: 'warning' }}
-              />
-              <StatCard
-                value={summary.sa_direct}
-                label="SA Direct"
-                badge={{ text: 'Direct', variant: 'success' }}
-              />
-              <StatCard
-                value={summary.sa_derived}
-                label="SA Derived"
-                badge={{ text: 'Derived', variant: 'warning' }}
-              />
+            {/* Direction toggle — recomputes every report relative to the source ruleset */}
+            <div className="flex items-center gap-3">
+              <span className="label-uppercase">Mapping Direction</span>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                {DIRECTIONS.map(({ id, label }) => (
+                  <button
+                    key={id}
+                    onClick={() => {
+                      if (id === direction) return
+                      setDirection(id)
+                      setActiveTab('sod')
+                      setPage(1)
+                      setActiveFilters({})
+                    }}
+                    className={clsx(
+                      'px-3.5 py-1.5 text-[13px] font-medium rounded-md transition-colors duration-150',
+                      direction === id
+                        ? 'bg-white text-gray-800 shadow-sm border border-gray-200'
+                        : 'text-gray-500 hover:text-gray-700',
+                    )}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {/* Summary StatCards (active direction) */}
+            {(() => {
+              const c = (direction === 'c2e' ? summary.c2e : summary.e2c) ?? summary
+              return (
+                <div className="grid grid-cols-4 gap-3">
+                  <StatCard value={c.sod_direct ?? 0} label="SoD Direct" badge={{ text: 'Direct', variant: 'success' }} />
+                  <StatCard value={c.sod_derived ?? 0} label="SoD Derived" badge={{ text: 'Derived', variant: 'warning' }} />
+                  <StatCard value={c.missing_ctrl_total ?? 0} label="Missing Controls" badge={{ text: 'Gap', variant: 'error' }} />
+                  <StatCard value={c.missing_priv_total ?? 0} label="Privilege Gaps" badge={{ text: 'Recommend', variant: 'warning' }} />
+                </div>
+              )
+            })()}
 
             {/* Tab bar + Clear All Filters */}
             <div className="flex items-center border-b border-gray-200">
@@ -512,7 +520,7 @@ export default function RulesetMapping() {
 
             <DataTable
               data={tableRows}
-              columns={TAB_COLUMNS[activeTab]}
+              columns={columns}
               maxHeight="400px"
               emptyMessage="No results in this category"
               isLoading={isLoadingResults}
@@ -533,7 +541,7 @@ export default function RulesetMapping() {
                   const others = Object.fromEntries(
                     Object.entries(activeFilters).filter(([k]) => k !== colId),
                   )
-                  return getFilterOptions(jobId!, activeTab, colId, others)
+                  return getFilterOptions(jobId!, activeTab, direction, colId, others)
                 },
               }}
             />
