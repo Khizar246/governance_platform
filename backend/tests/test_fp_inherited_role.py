@@ -37,7 +37,7 @@ def _role_hier(rows: list[tuple[str, str, str]]) -> pl.DataFrame:
     )
 
 
-def test_fp_keys_column_present_during_pipeline_and_dropped_after():
+def test_fp_keys_dropped_from_pipeline_output():
     df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
                  "PRIVILEGE_NAME": "PX", "INHERITED_ROLE_NAME": "IR"}])
     out = run_fp_pipeline(
@@ -50,3 +50,61 @@ def test_fp_keys_column_present_during_pipeline_and_dropped_after():
     )
     assert "_fp_keys" not in out.columns
     assert "Potential FP" in out.columns and "Reason" in out.columns
+
+
+def _run(df, no_action, work_area, role_hier, entity_col="ROLE_NAME", is_sod=False,
+         user_role_df=None):
+    return run_fp_pipeline(df, no_action, work_area, role_hier, entity_col, is_sod,
+                           user_role_df=user_role_df)
+
+
+def test_level1_matches_inherited_role_only_violation():
+    # Violation came via inherited-role path: PRIVILEGE_NAME empty, inherited set.
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "", "INHERITED_ROLE_NAME": "IR_SAFE"}])
+    out = _run(
+        df,
+        _noaction([("IR_SAFE", "Inherited role grants directly")]),
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+        _role_hier([("R1", "", "IR_SAFE")]),
+    )
+    assert out["Potential FP"][0] == "FP"
+    assert "Inherited role grants directly" in out["Reason"][0]
+
+
+def test_level1_matches_when_only_inherited_in_db_but_row_has_both():
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "PX", "INHERITED_ROLE_NAME": "IR_SAFE"}])
+    out = _run(
+        df,
+        _noaction([("IR_SAFE", "via inherited")]),
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+        _role_hier([("R1", "PX", "IR_SAFE")]),
+    )
+    assert out["Potential FP"][0] == "FP"
+
+
+def test_level1_no_row_duplication_when_both_keys_in_db():
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "PX", "INHERITED_ROLE_NAME": "IR_SAFE"}])
+    out = _run(
+        df,
+        _noaction([("PX", "via priv"), ("IR_SAFE", "via inherited")]),
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+        _role_hier([("R1", "PX", "IR_SAFE")]),
+    )
+    assert out.height == 1
+    assert out["Potential FP"][0] == "FP"
+
+
+def test_level1_privilege_only_unchanged():
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "PX", "INHERITED_ROLE_NAME": ""}])
+    out = _run(
+        df,
+        _noaction([("PX", "known safe")]),
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+        _role_hier([("R1", "PX", "")]),
+    )
+    assert out["Potential FP"][0] == "FP"
+    assert "known safe" in out["Reason"][0]

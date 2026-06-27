@@ -566,16 +566,21 @@ def _fp_level1(
     if no_action_df.is_empty():
         return df
 
-    joined = df.join(
-        no_action_df.select([
-            "PRIVILEGE_NAME",
-            pl.col("FALSE POSITIVE REASON").alias("_reason"),
-        ]).unique(subset=["PRIVILEGE_NAME"], keep="first"),
-        on="PRIVILEGE_NAME",
-        how="left",
+    na = no_action_df.select([
+        "PRIVILEGE_NAME",
+        pl.col("FALSE POSITIVE REASON").alias("_reason"),
+    ]).unique(subset=["PRIVILEGE_NAME"], keep="first")
+
+    # Explode candidate keys, match against the FP DB, collapse one reason per row.
+    matched = (
+        df.select(["_row_nr", "_fp_keys"])
+          .explode("_fp_keys")
+          .join(na, left_on="_fp_keys", right_on="PRIVILEGE_NAME", how="inner")
+          .group_by("_row_nr")
+          .agg(pl.col("_reason").first())
     )
 
-    return _set_fp_where_pending(joined, "FP")
+    return _set_fp_where_pending(df.join(matched, on="_row_nr", how="left"), "FP")
 
 
 def _fp_level2(
