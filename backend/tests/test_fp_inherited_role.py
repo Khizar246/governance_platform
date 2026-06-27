@@ -123,3 +123,21 @@ def test_level2_inherited_role_subject_to_wa_rule_and_not_held_is_fp():
     )
     assert out["Potential FP"][0] == "FP"
     assert "work-area" in out["Reason"][0]
+
+
+def test_level2_wa_code_held_via_inherited_role_is_not_fp():
+    # WA rule on privilege PG requires code WA9. Entity R1 holds WA9 as an INHERITED
+    # role (not a direct privilege). Gatekeeper must treat WA9 as held -> NOT FP at L2.
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "PG", "INHERITED_ROLE_NAME": ""}])
+    out = _run(
+        df,
+        pl.DataFrame(schema=["PRIVILEGE_NAME", "FALSE POSITIVE REASON"]),
+        _workarea([("PG", "WA9")]),
+        # R1 holds PG (direct) and WA9 (as inherited role) -> WA9 is satisfied.
+        _role_hier([("R1", "PG", "WA9")]),
+        is_sod=False,
+    )
+    # Not flagged FP by Level 2; SA falls to Level 3 True Conflict.
+    assert out["Potential FP"][0] == "TC"
+    assert "WA9" in out["Reason"][0]

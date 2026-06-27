@@ -628,8 +628,19 @@ def _fp_level2(
     if wa_merged.is_empty():
         return df
 
-    # Build access lookup: role → privilege code
-    role_gk = role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_NAME"]).unique()
+    # Build access lookup: role → held identifier (direct privilege OR inherited role).
+    # A WA gatekeeper code is "held" if it appears on the role either way.
+    role_gk = pl.concat([
+        role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_NAME"]),
+        role_hierarchy_df.select([
+            "ROLE_NAME",
+            pl.col("INHERITED_ROLE_NAME").alias("PRIVILEGE_NAME"),
+        ]),
+    ]).filter(
+        pl.col("PRIVILEGE_NAME").is_not_null()
+        & (pl.col("PRIVILEGE_NAME").str.strip_chars() != "")
+        & (pl.col("PRIVILEGE_NAME") != EMPTY_PLACEHOLDER)
+    ).unique()
 
     # Determine how to check for WA privilege satisfaction
     if entity_col == "USER_NAME" and user_role_df is not None:
