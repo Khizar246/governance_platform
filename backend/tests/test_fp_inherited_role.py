@@ -198,3 +198,23 @@ def test_user_level_wa_held_via_inherited_role_is_not_fp():
         f"Expected TC (user holds WA9 via inherited role), got {out['Potential FP'][0]!r}"
     )
     assert "WA9" in out["Reason"][0]
+
+
+def test_empty_fp_keys_row_falls_through_to_level3():
+    """A violation with both PRIVILEGE_NAME and INHERITED_ROLE_NAME empty produces
+    _fp_keys=[] — it is unmatchable by Level 1/2 (explode on empty list drops the row
+    from the matched sub-frame) but the left-join re-attach must preserve it so Level 3
+    classifies it. For SA (is_sod=False) all pending rows become TC."""
+    df = _viol([{"CONTROL_NAME": "C", "ENTITLEMENT": "E", "ROLE_NAME": "R1",
+                 "PRIVILEGE_NAME": "", "INHERITED_ROLE_NAME": ""}])
+    out = _run(
+        df,
+        _noaction([]),   # empty No_action DB — Level 1 cannot match
+        _workarea([]),   # empty WorkArea DB — Level 2 cannot match
+        _role_hier([]),  # empty hierarchy — Level 1/2 have nothing to join
+        is_sod=False,
+    )
+    assert out.height == 1, f"Row was dropped; height={out.height}"
+    assert out["Potential FP"][0] == "TC", (
+        f"Expected TC (fell through to Level 3), got {out['Potential FP'][0]!r}"
+    )
