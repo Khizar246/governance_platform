@@ -758,10 +758,23 @@ def run_fp_pipeline(
         pl.lit("").alias("Potential FP"),
         pl.lit("").alias("Reason"),
     ])
+    # Candidate FP-DB match keys per row: privilege and/or inherited role,
+    # dropping empties and the empty-cell placeholder. A row may have one or both.
+    df = df.with_columns(
+        pl.concat_list(["PRIVILEGE_NAME", "INHERITED_ROLE_NAME"])
+          .list.eval(
+              pl.element().filter(
+                  pl.element().is_not_null()
+                  & (pl.element().str.strip_chars() != "")
+                  & (pl.element() != EMPTY_PLACEHOLDER)
+              )
+          )
+          .alias("_fp_keys")
+    )
     df = _fp_level1(df, no_action_df)
     df = _fp_level2(df, work_area_df, role_hierarchy_df, entity_col, user_role_df)
     df = _fp_level3(df, entity_col, is_sod)
-    cols_to_drop = [c for c in ["_row_nr", "_wa_code"] if c in df.columns]
+    cols_to_drop = [c for c in ["_row_nr", "_wa_code", "_fp_keys"] if c in df.columns]
     return df.drop(cols_to_drop)
 
 
