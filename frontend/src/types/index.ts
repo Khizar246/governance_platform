@@ -92,3 +92,18 @@ export interface RulesetMappingSummary {
   sa_unmatched: number
   ent_total: number
 }
+
+export interface CapturedScreenshot {
+  index: number
+  title: string
+  filename: string | null
+  status: string  // captured | captured_no_task | skipped | error
+}
+
+export interface RoleTestingSummary {
+  total: number
+  captured: number
+  failed: number
+  skipped: number
+  screenshots: CapturedScreenshot[]
+}

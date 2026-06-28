@@ -110,6 +110,13 @@ async def lifespan(app: FastAPI):
     LOG_DIR.mkdir(exist_ok=True)
     logger.info("EY Access Governance Platform started — temp/ and logs/ ready")
 
+    # Reap any Role Testing screenshot folders left behind by a previous process.
+    from routers.role_testing import _SHOTS_ROOT, sweep_orphan_dirs
+    _SHOTS_ROOT.mkdir(parents=True, exist_ok=True)
+    orphans = sweep_orphan_dirs()
+    if orphans:
+        logger.info(f"Startup sweep: removed {orphans} orphan screenshot folder(s)")
+
     cleanup_task = asyncio.create_task(_cleanup_loop())
     try:
         yield
@@ -185,12 +192,13 @@ async def generic_error_handler(request: Request, exc: Exception) -> JSONRespons
 
 # ── Routers ───────────────────────────────────────────────────────────────────
 
-from routers import oracle_comparator, sod_sa_analysis, ruleset_mapping, admin  # noqa: E402
+from routers import oracle_comparator, sod_sa_analysis, ruleset_mapping, admin, role_testing  # noqa: E402
 
 app.include_router(oracle_comparator.router)
 app.include_router(sod_sa_analysis.router)
 app.include_router(ruleset_mapping.router)
 app.include_router(admin.router)
+app.include_router(role_testing.router)
 
 _TEMPLATES_DIR = pathlib.Path(__file__).parent / "templates"
 _TEMPLATES_DIR.mkdir(exist_ok=True)

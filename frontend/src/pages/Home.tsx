@@ -36,6 +36,18 @@ const TOOLS = [
     runtime: '45 sec',
     files: '2–3 files',
   },
+  {
+    route: ROUTES.ROLE_TESTING,
+    icon: IconBot,
+    name: 'Role Testing Bot',
+    desc: 'Drives Oracle Fusion Cloud and captures a screenshot of every Navigator work area. Proof of concept — best for spot-testing 1–2 roles, not full coverage.',
+    accent: '#0EA5E9',
+    tag: 'In Progress',
+    tagStyle: { background: '#E0F2FE', color: '#0369A1' },
+    runtime: 'several min',
+    files: 'credentials',
+    inProgress: true,
+  },
 ]
 
 const KPIS = [
@@ -54,6 +66,9 @@ function IconOracle({ c, s }: { c: string; s: number }) {
 }
 function IconSod({ c, s }: { c: string; s: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><path d="M12 3l9 4.5v5c0 5-3.6 9.7-9 11-5.4-1.3-9-6-9-11V7.5L12 3z" stroke={c} strokeWidth="1.6"/><path d="M9 12l2 2 4-4" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+}
+function IconBot({ c, s }: { c: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="4" y="8" width="16" height="11" rx="2.5" stroke={c} strokeWidth="1.6"/><path d="M12 4v4" stroke={c} strokeWidth="1.6" strokeLinecap="round"/><circle cx="12" cy="3.5" r="1.3" stroke={c} strokeWidth="1.6"/><circle cx="9" cy="13" r="1.2" fill={c}/><circle cx="15" cy="13" r="1.2" fill={c}/></svg>
 }
 function IconArrow({ c, s }: { c: string; s: number }) {
   return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><line x1="5" y1="12" x2="19" y2="12" stroke={c} strokeWidth="1.6" strokeLinecap="round"/><polyline points="12,5 19,12 12,19" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -176,7 +191,11 @@ export default function Home() {
                       </span>
                     </div>
                     <p style={{ fontSize: 12.5, color: '#64748B', lineHeight: 1.5, marginBottom: 5 }}>{tool.desc}</p>
-                    <p style={{ fontSize: 11, color: '#94A3B8' }}>Avg {tool.runtime} · {tool.files}</p>
+                    <p style={{ fontSize: 11, color: '#94A3B8' }}>
+                      {'inProgress' in tool && tool.inProgress
+                        ? <>Runtime {tool.runtime} · {tool.files} · <span style={{ color: '#0369A1', fontWeight: 600 }}>Beta — limited coverage</span></>
+                        : <>Avg {tool.runtime} · {tool.files}</>}
+                    </p>
                   </div>
 
                   <button

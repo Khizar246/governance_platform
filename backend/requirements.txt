@@ -9,3 +9,4 @@ xlsxwriter
 openpyxl
 python-dateutil
 pyarrow
+selenium>=4.15.0

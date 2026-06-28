@@ -7,6 +7,7 @@ import Home from './pages/Home'
 import OracleComparator from './pages/OracleComparator'
 import SODSAAnalysis from './pages/SODSAAnalysis'
 import RulesetMapping from './pages/RulesetMapping'
+import RoleTestingBot from './pages/RoleTestingBot'
 import Downloads from './pages/Downloads'
 import AdminPanel from './pages/AdminPanel'
 import { ROUTES } from './utils/constants'
@@ -22,6 +23,7 @@ export default function App() {
             <Route path={ROUTES.ORACLE_COMPARATOR} element={<ErrorBoundary><OracleComparator /></ErrorBoundary>} />
             <Route path={ROUTES.SOD_SA} element={<ErrorBoundary><SODSAAnalysis /></ErrorBoundary>} />
             <Route path={ROUTES.RULESET_MAPPING} element={<ErrorBoundary><RulesetMapping /></ErrorBoundary>} />
+            <Route path={ROUTES.ROLE_TESTING} element={<ErrorBoundary><RoleTestingBot /></ErrorBoundary>} />
             <Route path={ROUTES.DOWNLOADS} element={<ErrorBoundary><Downloads /></ErrorBoundary>} />
             <Route path={ROUTES.ADMIN} element={<ErrorBoundary><AdminPanel /></ErrorBoundary>} />
             <Route path="*" element={<Navigate to={ROUTES.HOME} replace />} />

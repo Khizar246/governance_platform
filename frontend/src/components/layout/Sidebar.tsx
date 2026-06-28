@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { to: ROUTES.RULESET_MAPPING,     icon: IconRuleset, label: 'Ruleset Mapping',      accent: '#7C3AED' },
   { to: ROUTES.ORACLE_COMPARATOR,   icon: IconOracle,  label: 'Oracle Role Comparison', accent: '#16A34A' },
   { to: ROUTES.SOD_SA,              icon: IconSod,     label: 'SOD & SA Analysis',    accent: '#D97706' },
+  { to: ROUTES.ROLE_TESTING,        icon: IconBot,     label: 'Role Testing Bot',     accent: '#0EA5E9' },
 ]
 
 const RESOURCE_ITEMS = [
@@ -46,6 +47,17 @@ function IconRuleset({ c, s }: { c: string; s: number }) {
       <rect x="14" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/>
       <rect x="3" y="14" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/>
       <path d="M17.5 14v7M14 17.5h7" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+    </svg>
+  )
+}
+function IconBot({ c, s }: { c: string; s: number }) {
+  return (
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
+      <rect x="4" y="8" width="16" height="11" rx="2.5" stroke={c} strokeWidth="1.6"/>
+      <path d="M12 4v4" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+      <circle cx="12" cy="3.5" r="1.3" stroke={c} strokeWidth="1.6"/>
+      <circle cx="9" cy="13" r="1.2" fill={c}/>
+      <circle cx="15" cy="13" r="1.2" fill={c}/>
     </svg>
   )
 }

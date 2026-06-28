@@ -24,6 +24,14 @@ MAX_CONCURRENT_JOBS = 5
 JOB_TTL_SECONDS = 3600        # 1 hour
 CLEANUP_INTERVAL_SECONDS = 300  # 5 minutes
 
+# ── Role Testing Bot (Tool 4) ─────────────────────────────────────────────────
+# Per-job screenshot folders live under TEMP_DIR/role-testing/{job_id}.
+ROLE_TESTING_SHOTS_DIR = TEMP_DIR / "role-testing"
+# Safety knobs for the Oracle screenshot walk (a full run can hit 100+ areas).
+# None = no cap; these are defaults the frontend can override per run.
+MAX_NAV_ELEMENTS_DEFAULT = None
+RUN_TIMEOUT_SECONDS_DEFAULT = None
+
 
 def output_filename(tool_name: str, context: str = "") -> str:
     """Return a timestamped output filename: {ToolName}_{Context}_{YYYYMMDD_HHMMSS}.xlsx"""
