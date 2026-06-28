@@ -7,6 +7,7 @@ const ROUTE_META: Record<string, string> = {
   [ROUTES.RULESET_MAPPING]:   'Ruleset Mapping',
   [ROUTES.ORACLE_COMPARATOR]: 'Oracle Comparator',
   [ROUTES.SOD_SA]:            'SOD & SA Analysis',
+  [ROUTES.ROLE_TESTING]:      'Role Testing Bot',
   [ROUTES.DOWNLOADS]:         'Downloads',
   [ROUTES.ADMIN]:             'Admin Panel',
 }

@@ -566,16 +566,21 @@ def _fp_level1(
     if no_action_df.is_empty():
         return df
 
-    joined = df.join(
-        no_action_df.select([
-            "PRIVILEGE_NAME",
-            pl.col("FALSE POSITIVE REASON").alias("_reason"),
-        ]).unique(subset=["PRIVILEGE_NAME"], keep="first"),
-        on="PRIVILEGE_NAME",
-        how="left",
+    na = no_action_df.select([
+        "PRIVILEGE_NAME",
+        pl.col("FALSE POSITIVE REASON").alias("_reason"),
+    ]).unique(subset=["PRIVILEGE_NAME"], keep="first")
+
+    # Explode candidate keys, match against the FP DB, collapse one reason per row.
+    matched = (
+        df.select(["_row_nr", "_fp_keys"])
+          .explode("_fp_keys")
+          .join(na, left_on="_fp_keys", right_on="PRIVILEGE_NAME", how="inner")
+          .group_by("_row_nr")
+          .agg(pl.col("_reason").first())
     )
 
-    return _set_fp_where_pending(joined, "FP")
+    return _set_fp_where_pending(df.join(matched, on="_row_nr", how="left"), "FP")
 
 
 def _fp_level2(
@@ -607,18 +612,35 @@ def _fp_level2(
     if pending.is_empty():
         return df
 
-    # Merge pending rows with work area rules
-    wa_merged = pending.join(
-        wa_valid.select(["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
-        on="PRIVILEGE_NAME",
-        how="inner",
+    # Match pending rows to work-area rules by either privilege or inherited role.
+    wa_hits = (
+        pending.select(["_row_nr", "_fp_keys"])
+               .explode("_fp_keys")
+               .join(
+                   wa_valid.select(["PRIVILEGE_NAME", "WORK_AREA_PRIVILEGE_CODE"]),
+                   left_on="_fp_keys", right_on="PRIVILEGE_NAME", how="inner",
+               )
+               .select(["_row_nr", "WORK_AREA_PRIVILEGE_CODE"])
+               .unique()
     )
+    wa_merged = pending.join(wa_hits, on="_row_nr", how="inner")
 
     if wa_merged.is_empty():
         return df
 
-    # Build access lookup: role → privilege code
-    role_gk = role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_NAME"]).unique()
+    # Build access lookup: role → held identifier (direct privilege OR inherited role).
+    # A WA gatekeeper code is "held" if it appears on the role either way.
+    role_gk = pl.concat([
+        role_hierarchy_df.select(["ROLE_NAME", "PRIVILEGE_NAME"]),
+        role_hierarchy_df.select([
+            "ROLE_NAME",
+            pl.col("INHERITED_ROLE_NAME").alias("PRIVILEGE_NAME"),
+        ]),
+    ]).filter(
+        pl.col("PRIVILEGE_NAME").is_not_null()
+        & (pl.col("PRIVILEGE_NAME").str.strip_chars() != "")
+        & (pl.col("PRIVILEGE_NAME") != EMPTY_PLACEHOLDER)
+    ).unique()
 
     # Determine how to check for WA privilege satisfaction
     if entity_col == "USER_NAME" and user_role_df is not None:
@@ -758,10 +780,23 @@ def run_fp_pipeline(
         pl.lit("").alias("Potential FP"),
         pl.lit("").alias("Reason"),
     ])
+    # Candidate FP-DB match keys per row: privilege and/or inherited role,
+    # dropping empties and the empty-cell placeholder. A row may have one or both.
+    df = df.with_columns(
+        pl.concat_list(["PRIVILEGE_NAME", "INHERITED_ROLE_NAME"])
+          .list.eval(
+              pl.element().filter(
+                  pl.element().is_not_null()
+                  & (pl.element().str.strip_chars() != "")
+                  & (pl.element() != EMPTY_PLACEHOLDER)
+              )
+          )
+          .alias("_fp_keys")
+    )
     df = _fp_level1(df, no_action_df)
     df = _fp_level2(df, work_area_df, role_hierarchy_df, entity_col, user_role_df)
     df = _fp_level3(df, entity_col, is_sod)
-    cols_to_drop = [c for c in ["_row_nr", "_wa_code"] if c in df.columns]
+    cols_to_drop = [c for c in ["_row_nr", "_wa_code", "_fp_keys"] if c in df.columns]
     return df.drop(cols_to_drop)
 
 

@@ -32,6 +32,8 @@ const RUNS: RunRecord[] = [
   { id: 'r-1006', analyst: 'Anu Ansar',     tool: 'Oracle Comparator',           project: 'Project Meridian — DEWA',                   date: '2026-04-15', approvedBy: 'Rashika Angrula', revenue: 0,    status: 'Non-billable', files: 2, durationMin: 3.3 },
   { id: 'r-1007', analyst: 'Lakshay Yadav', tool: 'SOD & SA Analysis',           project: 'Project Atlas — Emirates NBD',              date: '2026-04-11', approvedBy: 'Nitika',         revenue: 2700, status: 'Billed',       files: 3, durationMin: 6.7 },
   { id: 'r-1008', analyst: 'Shambhavi',     tool: 'Ruleset Mapping',             project: 'Project Atlas — Emirates NBD',              date: '2026-04-08', approvedBy: 'Kishlaya Kumar',  revenue: 0,    status: 'Non-billable', files: 2, durationMin: 4.0 },
+  { id: 'r-1009', analyst: 'Mohd Khizar',   tool: 'Role Testing Bot (Beta)',     project: 'Project Falcon — Abu Dhabi National Energy', date: '2026-06-27', approvedBy: 'Kishlaya Kumar',  revenue: 0,    status: 'Non-billable', files: 12, durationMin: 8.5 },
+  { id: 'r-1010', analyst: 'Anu Ansar',     tool: 'Role Testing Bot (Beta)',     project: 'Project Orion — Al Rajhi Banking',          date: '2026-06-25', approvedBy: 'Nitika',         revenue: 0,    status: 'Non-billable', files: 7,  durationMin: 5.1 },
 ]
 
 // ── Helpers ──────────────────────────────────────────────────────────────────

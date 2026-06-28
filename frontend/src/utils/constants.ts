@@ -4,6 +4,7 @@ export const ROUTES = {
   ORACLE_COMPARATOR: '/oracle-comparator',
   SOD_SA: '/sod-sa',
   RULESET_MAPPING: '/ruleset-mapping',
+  ROLE_TESTING: '/role-testing',
   DOWNLOADS: '/downloads',
   ADMIN: '/admin',
 } as const
