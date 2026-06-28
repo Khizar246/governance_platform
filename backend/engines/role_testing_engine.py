@@ -363,9 +363,20 @@ def run(
                         "then try again."],
             )
 
+        # Capture the landing/home page that appears right after login.
+        home_shot = _capture_screenshot(driver, screenshot_dir, "Home", 0)
+        elements.append(ElementResult(index=0, title="Home Page",
+                                      screenshot=home_shot, status="captured"))
+
         _emit(8, "Opening Navigator…")
         interactor = _Interactor(driver, selectors, logger)
         popup = _open_navigator_popup(driver, interactor, selectors, logger)
+
+        # Capture the open Navigator popup (Show More) listing every work area.
+        nav_shot = _capture_screenshot(driver, screenshot_dir, "Navigator", 1)
+        elements.append(ElementResult(index=1, title="Navigator — All Work Areas",
+                                      screenshot=nav_shot, status="captured"))
+
         raw = _extract_elements(driver, popup, logger)
 
         if len(raw) <= 1:
@@ -385,7 +396,9 @@ def run(
             titles = titles[:max_elements]
 
         total = len(prepared_ids)
-        captured = failed = skipped = 0
+        # Home + Navigator popup were already captured above.
+        captured = 2
+        failed = skipped = 0
 
         for i, (el_id, title) in enumerate(zip(prepared_ids, titles)):
             index = i + 2  # original numbering starts work areas at 2

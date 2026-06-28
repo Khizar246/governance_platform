@@ -301,6 +301,16 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
     { label: 'Skipped', value: summary.skipped, color: '#475569' },
   ]), [summary])
 
+  // Gallery shows only real screenshots — skipped/errored items have no image.
+  const shots = useMemo(
+    () => summary.screenshots.filter(
+      s => s.filename && (s.status === 'captured' || s.status === 'captured_no_task'),
+    ),
+    [summary],
+  )
+
+  const [lightbox, setLightbox] = useState<CapturedScreenshot | null>(null)
+
   return (
     <div>
       {/* Stat strip + actions */}
@@ -322,35 +332,37 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
         </div>
       </div>
 
-      {summary.screenshots.length === 0 ? (
+      {shots.length === 0 ? (
         <EmptyGallery onReset={onReset} />
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
-          {summary.screenshots.map(shot => (
-            <ShotCard key={shot.index} shot={shot} jobId={jobId} />
+          {shots.map(shot => (
+            <ShotCard key={shot.index} shot={shot} jobId={jobId} onOpen={() => setLightbox(shot)} />
           ))}
         </div>
+      )}
+
+      {lightbox && (
+        <Lightbox shot={lightbox} jobId={jobId} onClose={() => setLightbox(null)} />
       )}
     </div>
   )
 }
 
-function ShotCard({ shot, jobId }: { shot: CapturedScreenshot; jobId: string }) {
+function ShotCard({ shot, jobId, onOpen }: { shot: CapturedScreenshot; jobId: string; onOpen: () => void }) {
   const st = STATUS_STYLE[shot.status] ?? STATUS_STYLE.error
-  const hasImage = !!shot.filename
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+    <div
+      onClick={onOpen}
+      style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'zoom-in' }}
+    >
       <div style={{ aspectRatio: '16 / 10', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-        {hasImage ? (
-          <img
-            src={imageUrl(jobId, shot.filename!)}
-            alt={shot.title}
-            loading="lazy"
-            style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
-          />
-        ) : (
-          <ImageOff size={28} color="#94A3B8" />
-        )}
+        <img
+          src={imageUrl(jobId, shot.filename!)}
+          alt={shot.title}
+          loading="lazy"
+          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
+        />
       </div>
       <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0F1E3D', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={shot.title}>
@@ -360,6 +372,38 @@ function ShotCard({ shot, jobId }: { shot: CapturedScreenshot; jobId: string }) 
           {st.label}
         </span>
       </div>
+    </div>
+  )
+}
+
+function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: string; onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  return (
+    <div
+      onClick={onClose}
+      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,30,61,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}
+    >
+      <button
+        onClick={onClose}
+        style={{ position: 'absolute', top: 18, right: 22, width: 36, height: 36, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.14)', color: '#FFFFFF', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}
+        aria-label="Close"
+      >
+        ×
+      </button>
+      <img
+        src={imageUrl(jobId, shot.filename!)}
+        alt={shot.title}
+        onClick={e => e.stopPropagation()}
+        style={{ maxWidth: '100%', maxHeight: 'calc(100% - 48px)', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.45)' }}
+      />
+      <span style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: '#FFFFFF' }}>
+        {shot.index}. {shot.title}
+      </span>
     </div>
   )
 }
