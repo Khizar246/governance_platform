@@ -55,6 +55,21 @@ class OracleSelectors:
         "]"
     )
 
+    # Individual task links inside an open Tasks/Actions panel.
+    # PLACEHOLDER — verify against the real Oracle DOM. This guess targets
+    # anchor/link nodes carrying a @title inside the task panel region; the
+    # exact id/class pattern must be confirmed on a live instance. When the
+    # capture-tasks toggle is on and this matches nothing, the run logs a
+    # warning, keeps the panel screenshot, and moves on (never breaks).
+    task_item_xpath: str = (
+        "//*["
+        "(starts-with(@id, '_FOpt1:_FOr1:0:_FONSr2:0:_FOTsr') or "
+        "contains(@id, ':_FOTsr')) and "
+        "@title and "
+        "(self::a or @role='link' or @role='menuitem')"
+        "]"
+    )
+
     # Navigator items to skip (Oracle areas that hang/redirect the bot)
     skip_ids: frozenset = frozenset({
         "_FOpt1:_UISnvr:0:nv_itemNode_manufacturing_work_definition",
@@ -98,14 +113,18 @@ class EngineResult:
 
 # ── WebDriver factory (the only place real Selenium is constructed) ────────────
 
-def _default_chrome_driver():
-    """Build a headless Chrome WebDriver. Imported lazily so this module — and
-    `import main` — load fine on hosts without Chrome/Selenium installed."""
+def _default_chrome_driver(headless: bool = True):
+    """Build a Chrome WebDriver. Imported lazily so this module — and
+    `import main` — load fine on hosts without Chrome/Selenium installed.
+
+    headless=False opens a visible browser window (local review only); the
+    deployed host always runs headless."""
     from selenium import webdriver
     from selenium.webdriver.chrome.options import Options
 
     options = Options()
-    options.add_argument("--headless=new")
+    if headless:
+        options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-gpu")
     options.add_argument("--disable-dev-shm-usage")
@@ -269,44 +288,157 @@ def _capture_screenshot(driver, screenshot_dir: str, title: str, index: int) -> 
     return filename
 
 
-def _process_element(driver, interactor: _Interactor, sel: OracleSelectors,
-                     screenshot_dir: str, el_id: str, title: str, index: int,
-                     logger) -> ElementResult:
-    """Click one work-area item, open its Tasks panel if present, screenshot it.
+def _id_candidates(el_id: str) -> list[str]:
+    """The two ID forms an Oracle node alternates between across navigations:
+    the raw id and its ``_FO``-prefixed form. Oracle re-renders ids on drill-in,
+    but always to one of these two — so to re-find a node, try both."""
+    if el_id.startswith("_FO"):
+        return [el_id, el_id[3:]]
+    return [el_id, f"_FO{el_id}"]
 
-    Returns an ElementResult; raises only on a hard click failure (caller treats
-    that as status='error' and continues to the next item)."""
+
+def _click_trying_both(interactor: _Interactor, el_id: str) -> bool:
+    """Click a node by id, trying both id forms (raw and ``_FO``-prefixed)."""
+    for candidate in _id_candidates(el_id):
+        if interactor.click(candidate):
+            return True
+    return False
+
+
+def _open_task_panel(driver, sel: OracleSelectors) -> bool:
+    """Click the Tasks/Actions panel button if present. Returns True if opened."""
     from selenium.webdriver.common.by import By
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
     from selenium.common.exceptions import TimeoutException
 
-    if not interactor.click(el_id, back_on_fail=True):
-        return ElementResult(index=index, title=title, status="error",
-                             message="Work-area item was not clickable.")
-
-    time.sleep(sel.page_load_delay)
-
-    # Wait for the loading overlay to clear, then try the Tasks/Actions button.
-    status = "captured"
     try:
         WebDriverWait(driver, sel.login_wait).until(
             EC.invisibility_of_element_located((By.ID, sel.nav_mask_id))
         )
     except TimeoutException:
-        pass  # overlay never appeared / already gone
-
+        pass
     try:
-        task_btn = WebDriverWait(driver, sel.element_wait).until(
+        btn = WebDriverWait(driver, sel.element_wait).until(
             EC.element_to_be_clickable((By.XPATH, sel.task_button_xpath))
         )
-        task_btn.click()
+        btn.click()
         time.sleep(sel.page_load_delay)
+        return True
     except TimeoutException:
-        status = "captured_no_task"  # no Tasks panel on this page — still capture
+        return False
+
+
+def _scrape_tasks(driver, sel: OracleSelectors, logger) -> list[tuple[str, str]]:
+    """Return [(id, title)] for individual task items in the open Tasks panel."""
+    from selenium.webdriver.common.by import By
+
+    found: list[tuple[str, str]] = []
+    for el in driver.find_elements(By.XPATH, sel.task_item_xpath):
+        try:
+            el_id = el.get_attribute("id")
+            el_title = el.get_attribute("title")
+            if el_id and el_title and el.is_displayed():
+                found.append((el_id, el_title))
+        except Exception:  # noqa: BLE001 — skip stale/odd nodes
+            continue
+    logger.info(f"Scraped {len(found)} task items from the panel")
+    return found
+
+
+def _capture_tasks(driver, interactor: _Interactor, sel: OracleSelectors,
+                   screenshot_dir: str, work_area_id: str, work_area_index: int,
+                   start_index: int, logger) -> tuple[list[ElementResult], int]:
+    """Drill into each task of the open Tasks panel and screenshot it.
+
+    For every task: click it (trying both id forms) → screenshot → return to the
+    work area via Navigator (trying both work-area id forms) → reopen the Tasks
+    panel → continue with the next task (re-found by its title on the fresh panel,
+    again trying both id forms). Returns (task_results, next_free_index).
+
+    Never raises: a task that can't be opened becomes an 'error' ElementResult and
+    the loop continues. Title is used to re-find a task because ids churn.
+    """
+    tasks = _scrape_tasks(driver, sel, logger)
+    if not tasks:
+        return [], start_index
+
+    titles = [t for _, t in tasks]
+    results: list[ElementResult] = []
+    idx = start_index
+
+    for pos, (task_id, title) in enumerate(tasks):
+        if not _click_trying_both(interactor, task_id):
+            results.append(ElementResult(index=idx, title=title, status="error",
+                                         message="Task item was not clickable."))
+            idx += 1
+            continue
+
+        time.sleep(sel.page_load_delay)
+        shot = _capture_screenshot(driver, screenshot_dir, f"task {title}", idx)
+        results.append(ElementResult(index=idx, title=f"Task — {title}",
+                                     screenshot=shot, status="captured"))
+        idx += 1
+
+        # Return to the work area for the next task (skip after the last one).
+        if pos == len(tasks) - 1:
+            break
+        if not interactor.click(sel.navigator_icon_xpath, "xpath", back_on_fail=True) \
+                or not _click_trying_both(interactor, work_area_id):
+            logger.warning(f"Could not return to work area {work_area_index} "
+                           f"after task '{title}'; stopping task capture here.")
+            break
+        time.sleep(sel.page_load_delay)
+        if not _open_task_panel(driver, sel):
+            logger.warning(f"Tasks panel did not reopen for work area "
+                           f"{work_area_index}; stopping task capture here.")
+            break
+        # Re-find the next task by title on the freshly rendered panel.
+        fresh = _scrape_tasks(driver, sel, logger)
+        by_title = {t: i for i, t in fresh}
+        next_title = titles[pos + 1]
+        if next_title in by_title:
+            tasks[pos + 1] = (by_title[next_title], next_title)
+
+    return results, idx
+
+
+def _process_element(driver, interactor: _Interactor, sel: OracleSelectors,
+                     screenshot_dir: str, el_id: str, title: str, index: int,
+                     logger, *, capture_tasks: bool = False,
+                     task_start_index: int = 0
+                     ) -> tuple[ElementResult, list[ElementResult]]:
+    """Click one work-area item, open its Tasks panel if present, screenshot it.
+
+    When ``capture_tasks`` is True, also drill into each individual task in the
+    panel (see ``_capture_tasks``). Returns ``(work_area_result, task_results)``;
+    ``task_results`` is empty unless ``capture_tasks`` is on and tasks were found.
+    Raises only on a hard click failure (caller treats that as status='error')."""
+    if not interactor.click(el_id, back_on_fail=True):
+        return (ElementResult(index=index, title=title, status="error",
+                              message="Work-area item was not clickable."), [])
+
+    time.sleep(sel.page_load_delay)
+
+    # Open the Tasks/Actions panel (clears the loading overlay first).
+    opened = _open_task_panel(driver, sel)
+    status = "captured" if opened else "captured_no_task"
 
     shot = _capture_screenshot(driver, screenshot_dir, title, index)
-    return ElementResult(index=index, title=title, screenshot=shot, status=status)
+    wa_result = ElementResult(index=index, title=title, screenshot=shot, status=status)
+
+    task_results: list[ElementResult] = []
+    if capture_tasks and opened:
+        task_results, _ = _capture_tasks(
+            driver, interactor, sel, screenshot_dir,
+            el_id, index, task_start_index, logger,
+        )
+        if not task_results:
+            logger.warning(f"Capture-tasks on, but no task items found for "
+                           f"work area {index} ('{title}'). Selector may need "
+                           f"updating for the live Oracle DOM.")
+
+    return wa_result, task_results
 
 
 # ── Public entry point ─────────────────────────────────────────────────────────
@@ -321,6 +453,8 @@ def run(
     selectors: OracleSelectors = DEFAULT_SELECTORS,
     max_elements: Optional[int] = None,
     overall_timeout: Optional[int] = None,
+    headless: bool = True,
+    capture_tasks: bool = False,
     progress_callback: Optional[Callable[[int, str], None]] = None,
     driver_factory: Optional[Callable[[], Any]] = None,
 ) -> EngineResult:
@@ -342,15 +476,17 @@ def run(
 
     # Resolve the factory at call-time (not def-time) so tests/callers can swap
     # _default_chrome_driver via monkeypatch without re-binding a default arg.
+    # The default factory takes `headless`; injected (test) factories take none.
     if driver_factory is None:
-        driver_factory = _default_chrome_driver
+        driver = _default_chrome_driver(headless=headless)
+    else:
+        driver = driver_factory()
 
     os.makedirs(screenshot_dir, exist_ok=True)
     elements: list[ElementResult] = []
     warnings: list[str] = []
     started = time.monotonic()
 
-    driver = driver_factory()
     try:
         _emit(2, "Launching browser…")
         try:
@@ -399,6 +535,8 @@ def run(
         # Home + Navigator popup were already captured above.
         captured = 2
         failed = skipped = 0
+        # Task screenshots get indices after the work-area block (2..total+1).
+        task_index = total + 2
 
         for i, (el_id, title) in enumerate(zip(prepared_ids, titles)):
             index = i + 2  # original numbering starts work areas at 2
@@ -417,9 +555,13 @@ def run(
                                               message="On the skip list."))
                 skipped += 1
             else:
+                task_res: list[ElementResult] = []
                 try:
-                    res = _process_element(driver, interactor, selectors,
-                                           screenshot_dir, el_id, title, index, logger)
+                    res, task_res = _process_element(
+                        driver, interactor, selectors, screenshot_dir,
+                        el_id, title, index, logger,
+                        capture_tasks=capture_tasks, task_start_index=task_index,
+                    )
                 except Exception as exc:  # noqa: BLE001 — never abort the whole run
                     logger.error(f"Element {index} ('{title}') failed: {exc}")
                     res = ElementResult(index=index, title=title, status="error",
@@ -429,6 +571,13 @@ def run(
                     captured += 1
                 else:
                     failed += 1
+                for tr in task_res:
+                    elements.append(tr)
+                    task_index += 1
+                    if tr.status == "captured":
+                        captured += 1
+                    else:
+                        failed += 1
 
             _emit(10 + int(85 * (i + 1) / total),
                   f"Captured {captured} of {total} work areas…")

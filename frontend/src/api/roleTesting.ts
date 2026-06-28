@@ -7,6 +7,8 @@ export interface RoleTestingRunConfig {
   password: string
   max_elements?: number | null
   overall_timeout_seconds?: number | null
+  headless?: boolean
+  capture_tasks?: boolean
 }
 
 /** Start the bot. Credentials are sent once and never stored by the platform. */

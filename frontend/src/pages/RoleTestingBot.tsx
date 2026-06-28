@@ -32,6 +32,8 @@ export default function RoleTestingBot() {
   const [password, setPassword] = useState('')
   const [maxElements, setMaxElements] = useState('')
   const [timeoutMin, setTimeoutMin] = useState('')
+  const [headless, setHeadless] = useState(true)
+  const [captureTasks, setCaptureTasks] = useState(false)
   const [showAdvanced, setShowAdvanced] = useState(false)
 
   // Job
@@ -88,6 +90,8 @@ export default function RoleTestingBot() {
         password,
         max_elements: Number.isFinite(maxEl as number) ? maxEl : null,
         overall_timeout_seconds: Number.isFinite(timeoutSec as number) ? timeoutSec : null,
+        headless,
+        capture_tasks: captureTasks,
       })
       setJobId(res.job_id)
       setPassword('')  // drop the password from memory once it's been submitted
@@ -98,7 +102,7 @@ export default function RoleTestingBot() {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(msg || 'Could not start the bot.')
     }
-  }, [canStart, url, username, password, maxElements, timeoutMin])
+  }, [canStart, url, username, password, maxElements, timeoutMin, headless, captureTasks])
 
   const handleReset = useCallback(async () => {
     if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
@@ -145,6 +149,8 @@ export default function RoleTestingBot() {
           password={password} setPassword={setPassword}
           maxElements={maxElements} setMaxElements={setMaxElements}
           timeoutMin={timeoutMin} setTimeoutMin={setTimeoutMin}
+          headless={headless} setHeadless={setHeadless}
+          captureTasks={captureTasks} setCaptureTasks={setCaptureTasks}
           showAdvanced={showAdvanced} setShowAdvanced={setShowAdvanced}
           canStart={canStart}
           onStart={handleStart}
@@ -179,6 +185,8 @@ interface ConfigProps {
   password: string; setPassword: (v: string) => void
   maxElements: string; setMaxElements: (v: string) => void
   timeoutMin: string; setTimeoutMin: (v: string) => void
+  headless: boolean; setHeadless: (v: boolean) => void
+  captureTasks: boolean; setCaptureTasks: (v: boolean) => void
   showAdvanced: boolean; setShowAdvanced: (v: boolean) => void
   canStart: boolean
   onStart: () => void
@@ -222,17 +230,39 @@ function ConfigCard(p: ConfigProps) {
         </button>
 
         {p.showAdvanced && (
-          <div style={{ display: 'flex', gap: 14 }}>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Max work areas</label>
-              <input style={field} type="number" min={1} placeholder="all" value={p.maxElements}
-                onChange={e => p.setMaxElements(e.target.value)} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div style={{ display: 'flex', gap: 14 }}>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Max work areas</label>
+                <input style={field} type="number" min={1} placeholder="all" value={p.maxElements}
+                  onChange={e => p.setMaxElements(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <label style={labelStyle}>Timeout (minutes)</label>
+                <input style={field} type="number" min={1} placeholder="none" value={p.timeoutMin}
+                  onChange={e => p.setTimeoutMin(e.target.value)} />
+              </div>
             </div>
-            <div style={{ flex: 1 }}>
-              <label style={labelStyle}>Timeout (minutes)</label>
-              <input style={field} type="number" min={1} placeholder="none" value={p.timeoutMin}
-                onChange={e => p.setTimeoutMin(e.target.value)} />
-            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+              <input type="checkbox" checked={!p.headless}
+                onChange={e => p.setHeadless(!e.target.checked)} style={{ marginTop: 2 }} />
+              <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.45 }}>
+                Show the browser window (run non-headless)
+                <span style={{ display: 'block', fontSize: 11, color: '#94A3B8' }}>
+                  For local review only. Leave off for normal/deployed runs.
+                </span>
+              </span>
+            </label>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+              <input type="checkbox" checked={p.captureTasks}
+                onChange={e => p.setCaptureTasks(e.target.checked)} style={{ marginTop: 2 }} />
+              <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.45 }}>
+                Capture inside each task
+                <span style={{ display: 'block', fontSize: 11, color: '#94A3B8' }}>
+                  Drills into every task of every work area. Much slower.
+                </span>
+              </span>
+            </label>
           </div>
         )}
 

@@ -89,16 +89,21 @@ def _run_thread(
     password: str,
     max_elements,
     overall_timeout,
+    headless: bool,
+    capture_tasks: bool,
     shot_dir: str,
 ) -> None:
     try:
         logger.info(f"[{job_id}] Starting Role Testing Bot (max_elements={max_elements}, "
-                    f"timeout={overall_timeout})")
+                    f"timeout={overall_timeout}, headless={headless}, "
+                    f"capture_tasks={capture_tasks})")
         callback = job_manager.make_progress_callback(job_id)
         result = run_bot(
             url, username, password, shot_dir, logger,
             max_elements=max_elements,
             overall_timeout=overall_timeout,
+            headless=headless,
+            capture_tasks=capture_tasks,
             progress_callback=callback,
         )
 
@@ -158,6 +163,8 @@ async def run(config: RoleTestingRunConfig):
         "username": config.username,
         "max_elements": config.max_elements,
         "overall_timeout_seconds": config.overall_timeout_seconds,
+        "headless": config.headless,
+        "capture_tasks": config.capture_tasks,
     })
     job_manager.set_status(job.id, JobStatus.RUNNING, "Starting Role Testing Bot…")
 
@@ -169,7 +176,7 @@ async def run(config: RoleTestingRunConfig):
     threading.Thread(
         target=_run_thread,
         args=(job.id, config.url, config.username, config.password,
-              max_el, timeout, str(shot_dir)),
+              max_el, timeout, config.headless, config.capture_tasks, str(shot_dir)),
         daemon=True,
     ).start()
 

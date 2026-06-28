@@ -16,6 +16,8 @@ class RoleTestingRunConfig(BaseModel):
     password: str
     max_elements: Optional[int] = None
     overall_timeout_seconds: Optional[int] = None
+    headless: bool = True           # run Chrome headless (off for local review)
+    capture_tasks: bool = False     # drill into each task inside a work area
 
 
 class CapturedScreenshot(BaseModel):
