@@ -81,7 +81,7 @@ export interface SODSASummary {
   total_users_analyzed: number
 }
 
-export interface RulesetMappingSummary {
+export interface DirectionCounts {
   sod_total: number
   sod_direct: number
   sod_derived: number
@@ -91,6 +91,26 @@ export interface RulesetMappingSummary {
   sa_derived: number
   sa_unmatched: number
   ent_total: number
+  missing_ctrl_total: number
+  missing_priv_total: number
+}
+
+export interface RulesetMappingSummary {
+  // Flat keys mirror the Client→EY direction (legacy StatCards).
+  sod_total: number
+  sod_direct: number
+  sod_derived: number
+  sod_unmatched: number
+  sa_total: number
+  sa_direct: number
+  sa_derived: number
+  sa_unmatched: number
+  ent_total: number
+  missing_ctrl_total?: number
+  missing_priv_total?: number
+  // Per-direction blocks (bidirectional mapping).
+  c2e?: DirectionCounts
+  e2c?: DirectionCounts
 }
 
 export interface CapturedScreenshot {

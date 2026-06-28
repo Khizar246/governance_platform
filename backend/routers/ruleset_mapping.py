@@ -44,15 +44,29 @@ SHEET_REQUIRED_COLS: dict[str, set[str]] = {
     },
 }
 
-# Stores 3-tab result DataFrames per job_id; purged on DELETE and on TTL expiry.
-_result_dfs: dict[str, dict[str, pl.DataFrame]] = {}
+# Stores per-direction result DataFrames per job_id; purged on DELETE and on TTL
+# expiry. Shape: {job_id: {"c2e": {tab: pl.DataFrame}, "e2c": {tab: pl.DataFrame}}}.
+_result_dfs: dict[str, dict[str, dict[str, pl.DataFrame]]] = {}
 job_manager.register_result_cache(_result_dfs)
 
-_SORT_COLS = {
-    "sod": "Client Control Name",
-    "sa":  "Client Control Name",
-    "ent": "Client Entitlement",
+# Sort column per tab is direction-aware (the source control/entitlement column
+# carries the active source label). Resolved at query time from the actual columns.
+_SORT_TAB_FALLBACK = {
+    "sod":          ["Control Name"],
+    "sa":           ["Control Name"],
+    "ent":          ["Entitlement"],
+    "missing_ctrl": ["Control Name"],
+    "missing_priv": ["Source Control"],
 }
+
+
+def _resolve_sort_col(df: pl.DataFrame, tab: str) -> str | None:
+    """Pick the first column whose name contains the tab's fallback token."""
+    for token in _SORT_TAB_FALLBACK.get(tab, []):
+        for col in df.columns:
+            if token in col:
+                return col
+    return None
 
 
 def _find_sheet(sheet_names: list[str], target: str) -> str | None:
@@ -99,18 +113,28 @@ def _run_thread(
             return
 
         data      = result.data
-        sod_df    = data["sod_df"]
-        sa_df     = data["sa_df"]
-        ent_df    = data["ent_df"]
+        c2e       = data["c2e"]
+        e2c       = data["e2c"]
         excel_buf = data["excel_buffer"]
         summary   = data["summary"]
 
-        logger.info(f"[{job_id}] Mapping complete - SoD results: {sod_df.shape[0]} rows, SA results: {sa_df.shape[0]} rows, Entitlement results: {ent_df.shape[0]} rows")
+        logger.info(
+            f"[{job_id}] Mapping complete - C→EY SoD: {c2e['sod_df'].shape[0]}, SA: {c2e['sa_df'].shape[0]}; "
+            f"EY→C SoD: {e2c['sod_df'].shape[0]}, SA: {e2c['sa_df'].shape[0]}"
+        )
+
+        def _dir_cache(d: dict) -> dict[str, pl.DataFrame]:
+            return {
+                "sod":          pl.from_pandas(d["sod_df"].fillna("")),
+                "sa":           pl.from_pandas(d["sa_df"].fillna("")),
+                "ent":          pl.from_pandas(d["ent_df"].fillna("")),
+                "missing_ctrl": pl.from_pandas(d["missing_ctrl_df"].fillna("")),
+                "missing_priv": pl.from_pandas(d["missing_priv_df"].fillna("")),
+            }
 
         _result_dfs[job_id] = {
-            "sod": pl.from_pandas(sod_df.fillna("")),
-            "sa":  pl.from_pandas(sa_df.fillna("")),
-            "ent": pl.from_pandas(ent_df.fillna("")),
+            "c2e": _dir_cache(c2e),
+            "e2c": _dir_cache(e2c),
         }
 
         output_file = output_filename("Ruleset_Mapping")
@@ -309,17 +333,22 @@ async def download(job_id: str):
 
 
 @router.get("/filter-options/{job_id}")
-async def filter_options(request: Request, job_id: str, column: str, tab: str = "sod"):
+async def filter_options(request: Request, job_id: str, column: str, tab: str = "sod", direction: str = "c2e"):
     """Distinct values for one column after applying all other active column filters."""
-    if job_id not in _result_dfs or tab not in _result_dfs[job_id]:
+    direction = direction if direction in ("c2e", "e2c") else "c2e"
+    if (
+        job_id not in _result_dfs
+        or direction not in _result_dfs[job_id]
+        or tab not in _result_dfs[job_id][direction]
+    ):
         job_manager.get_job(job_id)
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
         )
 
-    df: pl.DataFrame = _result_dfs[job_id][tab]
-    _reserved = {"column", "tab"}
+    df: pl.DataFrame = _result_dfs[job_id][direction][tab]
+    _reserved = {"column", "tab", "direction"}
     for _col, _val in dict(request.query_params).items():
         if _col not in _reserved and _col != column and _col in df.columns and _val:
             _vals = [v.strip() for v in _val.split(",") if v.strip()]
@@ -341,27 +370,33 @@ async def results_page(
     request: Request,
     job_id: str,
     tab: str = "sod",
+    direction: str = "c2e",
     page: int = 1,
     page_size: int = 50,
 ):
-    if job_id not in _result_dfs or tab not in _result_dfs.get(job_id, {}):
+    direction = direction if direction in ("c2e", "e2c") else "c2e"
+    if (
+        job_id not in _result_dfs
+        or direction not in _result_dfs.get(job_id, {})
+        or tab not in _result_dfs.get(job_id, {}).get(direction, {})
+    ):
         job_manager.get_job(job_id)
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
         )
 
-    df: pl.DataFrame = _result_dfs[job_id][tab]
+    df: pl.DataFrame = _result_dfs[job_id][direction][tab]
 
-    _reserved = {"page", "page_size", "tab"}
+    _reserved = {"page", "page_size", "tab", "direction"}
     for _col, _val in dict(request.query_params).items():
         if _col not in _reserved and _col in df.columns and _val:
             _vals = [v.strip() for v in _val.split(",") if v.strip()]
             if _vals:
                 df = df.filter(pl.col(_col).is_in(_vals))
 
-    sort_col = _SORT_COLS.get(tab)
-    if sort_col and sort_col in df.columns:
+    sort_col = _resolve_sort_col(df, tab)
+    if sort_col:
         df = df.sort(sort_col)
 
     total     = df.height
