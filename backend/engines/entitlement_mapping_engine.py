@@ -2,10 +2,13 @@
 
 Algorithm: map each client entitlement to the best-matching EY entitlement by a
 blended confidence score:
-  score = 0.60 · Jaccard + 0.40 · coverage   (coverage = matched / client_total)
-Selection sorts by this blended score (overlap count breaks ties). When the best
-score is below MATCH_THRESHOLD the entitlement is reported as "Not Mapped"; this is
-the single source of truth that downstream control/SA mapping keys off.
+  score = 0.60 · Jaccard + 0.30 · coverage + 0.10 · name_sim
+  (coverage = matched / client_total; name_sim = abbreviation-aware name match)
+Selection sorts by this blended score (overlap count breaks ties). A name-priority
+override prefers a near-exact name match (name_sim ≥ 0.90) over higher-scoring
+differently-named candidates, provided the name-matched candidate clears MATCH_THRESHOLD.
+When the best score is below MATCH_THRESHOLD the entitlement is reported as "Not Mapped";
+this is the single source of truth that downstream control/SA mapping keys off.
 
 Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 """
@@ -90,7 +93,7 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
     ),
     "EY Entitlement Match": (
         "The best-matching EY standard entitlement, selected by the blended "
-        "confidence score (0.60·Jaccard + 0.40·coverage). 'Not Mapped' means the "
+        "confidence score (0.60·Jaccard + 0.30·coverage + 0.10·name_sim). 'Not Mapped' means the "
         "best candidate scored below the match threshold; '—' means no EY "
         "entitlement shares any privilege with this client entitlement."
     ),
@@ -105,8 +108,9 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
         "entitlement contains many privileges beyond what the client holds."
     ),
     "Confidence Score (%)": (
-        "Blended match score: 0.60·Jaccard + 0.40·coverage (coverage = matched ÷ "
-        "client privilege count). This is the score the match is selected and the "
+        "Blended match score: 0.60·Jaccard + 0.30·coverage + 0.10·name_sim "
+        "(coverage = matched ÷ client privilege count; name_sim = abbreviation-aware "
+        "entitlement-name match). This is the score the match is selected and the "
         "confidence tier is derived from."
     ),
     "Client Privilege Count": (
@@ -224,9 +228,11 @@ def run_mapping(
                 continue
 
             # ── Score every EY entitlement ────────────────────────────────────
-            # Blended confidence = 0.60·Jaccard + 0.40·coverage, where
-            # coverage = matched / client_total. Selection sorts by this blended
-            # score DESC, then overlap count DESC as a tie-break.
+            # Blended confidence = 0.60·Jaccard + 0.30·coverage + 0.10·name_sim, where
+            # coverage = matched / client_total, name_sim = abbreviation-aware name match.
+            # Selection sorts by blended score DESC, then overlap count DESC as a tie-break.
+            # Name-priority override then prefers candidates with name_sim ≥ 0.90 if they
+            # clear MATCH_THRESHOLD, to avoid mismatches based on privilege overlap alone.
             scored: list[tuple] = []
             for e_ent, e_privs in ey_groups.items():
                 matched = c_privs & e_privs
