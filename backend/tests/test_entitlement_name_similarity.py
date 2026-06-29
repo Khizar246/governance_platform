@@ -109,6 +109,62 @@ def test_asset_reimbursement_prefers_named_match():
     assert _match_for(res.data, "Asset Reimbursement") == "Asset Reimbursement"
 
 
+def test_name_override_skips_subthreshold_name_match():
+    # Exercises the blended >= 0.30 guard in the name-priority override.
+    #
+    # Client entitlement "Asset Reimbursement" has 10 privs {P1..P10}.
+    #
+    # EY candidate A — "Asset Reimbursement" (name_sim ≈ 1.0, shares only P1):
+    #   union = 10 + 10 - 1 = 19, jaccard = 1/19 ≈ 0.0526
+    #   coverage = 1/10 = 0.10, name_sim = 1.0
+    #   blended = 0.60*0.0526 + 0.30*0.10 + 0.10*1.0 ≈ 0.162  → < 0.30, guard rejects
+    #
+    # EY candidate B — "Asset Configuration" (name_sim ≈ 0, shares P1..P8):
+    #   union = 10 + 8 - 8 = 10, jaccard = 8/10 = 0.80
+    #   coverage = 8/10 = 0.80, name_sim ≈ 0
+    #   blended = 0.60*0.80 + 0.30*0.80 + 0.10*0 = 0.72  → >= 0.30, wins
+    #
+    # Expected: override must NOT fire for candidate A; "Asset Configuration" is returned.
+    client = _df([
+        ("Asset Reimbursement", "P1"),
+        ("Asset Reimbursement", "P2"),
+        ("Asset Reimbursement", "P3"),
+        ("Asset Reimbursement", "P4"),
+        ("Asset Reimbursement", "P5"),
+        ("Asset Reimbursement", "P6"),
+        ("Asset Reimbursement", "P7"),
+        ("Asset Reimbursement", "P8"),
+        ("Asset Reimbursement", "P9"),
+        ("Asset Reimbursement", "P10"),
+    ])
+    ey = _df([
+        # Candidate A: name matches but blended < 0.30 (1 shared priv, 9 unique)
+        ("Asset Reimbursement", "P1"),
+        ("Asset Reimbursement", "Q1"),
+        ("Asset Reimbursement", "Q2"),
+        ("Asset Reimbursement", "Q3"),
+        ("Asset Reimbursement", "Q4"),
+        ("Asset Reimbursement", "Q5"),
+        ("Asset Reimbursement", "Q6"),
+        ("Asset Reimbursement", "Q7"),
+        ("Asset Reimbursement", "Q8"),
+        ("Asset Reimbursement", "Q9"),
+        # Candidate B: different name, high privilege overlap (blended 0.72)
+        ("Asset Configuration", "P1"),
+        ("Asset Configuration", "P2"),
+        ("Asset Configuration", "P3"),
+        ("Asset Configuration", "P4"),
+        ("Asset Configuration", "P5"),
+        ("Asset Configuration", "P6"),
+        ("Asset Configuration", "P7"),
+        ("Asset Configuration", "P8"),
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    # Guard correctly blocks the sub-threshold name-matched candidate
+    assert _match_for(res.data, "Asset Reimbursement") == "Asset Configuration"
+
+
 def test_name_override_skips_implausible_match():
     # EY "Asset Reimbursement" shares ZERO privs here, so its blended is 0 (<30%):
     # the override must NOT pick it despite the perfect name match. Falls back to the
