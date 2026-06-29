@@ -13,7 +13,10 @@ Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+import re
+
 import pandas as pd
+from rapidfuzz import fuzz
 
 # Minimum blended confidence (%) for an entitlement to count as mapped. Below this,
 # the match column reads "Not Mapped". Downstream SoD/SA control mapping depends on
@@ -21,6 +24,56 @@ import pandas as pd
 # Calibrated against known cases: a correct match scored 31% and a wrong one 21%,
 # so 30 separates them. Revisit with more labelled examples if matches drift.
 MATCH_THRESHOLD = 30
+
+
+# Abbreviation/synonym map for name-similarity scoring. Keys are lowercase tokens
+# as they appear in entitlement names; values are the spelled-out phrase they
+# expand to before token comparison. AP and AR MUST expand to disjoint tokens so
+# "Process AP Payments" and "Process AR Payments" do not look alike. Seed list —
+# extend as new abbreviations appear in client/EY entitlement names.
+ABBREVIATION_MAP: dict[str, str] = {
+    "ap":     "accounts payable",
+    "ar":     "accounts receivable",
+    "gl":     "general ledger",
+    "po":     "purchase order",
+    "inv":    "invoice",
+    "invs":   "invoices",
+    "maint":  "maintain",
+    "mgmt":   "management",
+    "mgr":    "manager",
+    "recpt":  "receipt",
+    "rcpt":   "receipt",
+    "pmt":    "payment",
+    "pmts":   "payments",
+    "config": "configuration",
+    "admin":  "administration",
+    "acct":   "account",
+    "accts":  "accounts",
+    "fa":     "fixed assets",
+    "wip":    "work in progress",
+}
+
+_TOKEN_SPLIT = re.compile(r"[^a-z0-9]+")
+
+
+def _normalize_name_tokens(name: str) -> set[str]:
+    """Lowercase, strip punctuation, expand abbreviations, return a token set."""
+    tokens: set[str] = set()
+    for raw in _TOKEN_SPLIT.split(name.lower()):
+        if not raw:
+            continue
+        expanded = ABBREVIATION_MAP.get(raw, raw)
+        tokens.update(expanded.split())
+    return tokens
+
+
+def normalized_name_similarity(a: str, b: str) -> float:
+    """Similarity (0.0–1.0) of two entitlement names after abbreviation expansion."""
+    ta = _normalize_name_tokens(a)
+    tb = _normalize_name_tokens(b)
+    if not ta or not tb:
+        return 0.0
+    return fuzz.token_sort_ratio(" ".join(sorted(ta)), " ".join(sorted(tb))) / 100.0
 
 
 COLUMN_DESCRIPTIONS: dict[str, str] = {
