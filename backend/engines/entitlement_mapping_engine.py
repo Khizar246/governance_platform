@@ -25,6 +25,14 @@ from rapidfuzz import fuzz
 # so 30 separates them. Revisit with more labelled examples if matches drift.
 MATCH_THRESHOLD = 30
 
+# Name-similarity at or above this (0.0–1.0) triggers the name-priority override:
+# a near-exact entitlement-name match is preferred over a higher privilege-overlap
+# candidate, provided the name-matched candidate is itself a plausible match (its own
+# blended score clears MATCH_THRESHOLD). Guards the case where a client entitlement's
+# privileges are a subset of a differently-named EY entitlement (e.g. client
+# "Asset Reimbursement" privileges all contained in EY "Asset Configuration").
+NAME_OVERRIDE_THRESHOLD = 0.90
+
 
 # Abbreviation/synonym map for name-similarity scoring. Keys are lowercase tokens
 # as they appear in entitlement names; values are the spelled-out phrase they
@@ -230,11 +238,25 @@ def run_mapping(
                 coverage      = overlap_count / len(c_privs) if c_privs else 0
                 name_sim      = normalized_name_similarity(c_ent, e_ent)
                 blended       = 0.60 * jaccard + 0.30 * coverage + 0.10 * name_sim
-                scored.append((e_ent, matched, overlap_count, jaccard, e_privs, blended))
+                scored.append((e_ent, matched, overlap_count, jaccard, e_privs, blended, name_sim))
 
             scored.sort(key=lambda x: (x[5], x[2]), reverse=True)
 
-            best_ent, matched_privs, _, best_jaccard, best_e_privs, best_blended = scored[0]
+            # ── Name-priority override ────────────────────────────────────────
+            # Privilege math can prefer a differently-named EY entitlement that
+            # happens to contain all the client's privileges. When a candidate's
+            # name nearly matches (name_sim ≥ NAME_OVERRIDE_THRESHOLD) AND it is
+            # itself a plausible match (blended ≥ MATCH_THRESHOLD/100), prefer it.
+            name_matches = [
+                s for s in scored
+                if s[6] >= NAME_OVERRIDE_THRESHOLD and s[5] >= MATCH_THRESHOLD / 100
+            ]
+            if name_matches:
+                # highest name_sim, then highest blended
+                chosen = max(name_matches, key=lambda x: (x[6], x[5]))
+                scored = [chosen] + [s for s in scored if s is not chosen]
+
+            best_ent, matched_privs, _, best_jaccard, best_e_privs, best_blended = scored[0][:6]
 
             # Runner-ups (2nd & 3rd) — show blended confidence and overlap.
             runners = [

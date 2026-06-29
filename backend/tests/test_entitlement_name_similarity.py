@@ -107,3 +107,24 @@ def test_asset_reimbursement_prefers_named_match():
     res = run_mapping(client, ey)
     assert res.success
     assert _match_for(res.data, "Asset Reimbursement") == "Asset Reimbursement"
+
+
+def test_name_override_skips_implausible_match():
+    # EY "Asset Reimbursement" shares ZERO privs here, so its blended is 0 (<30%):
+    # the override must NOT pick it despite the perfect name match. Falls back to the
+    # best privilege match.
+    client = _df([
+        ("Asset Reimbursement", "A1"),
+        ("Asset Reimbursement", "A2"),
+        ("Asset Reimbursement", "A3"),
+    ])
+    ey = _df([
+        ("Asset Configuration", "A1"),
+        ("Asset Configuration", "A2"),
+        ("Asset Configuration", "A3"),
+        ("Asset Reimbursement", "Z9"),  # no overlap with client
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    # Reimbursement candidate has no overlap → not even in `scored` → override can't fire
+    assert _match_for(res.data, "Asset Reimbursement") == "Asset Configuration"
