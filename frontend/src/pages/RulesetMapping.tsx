@@ -31,11 +31,17 @@ const COLUMN_DESCRIPTIONS: Record<string, string> = {
   'Confidence Score': 'Per-leg Jaccard similarity of privilege sets × 100%. For SoD it is the weaker of the two legs (both must clear 60%). 100% = identical privilege sets.',
   'Match Type': '"Direct" = matched an existing target control (both SoD legs ≥ 60%). "Derived Control" = an inferred SoD pair (both entitlements map but no control pairs them; SoD only). "Unmatched" = no valid mapping.',
   'Missing Privileges': 'Privileges present in the matched target entitlement but absent from the source entitlement — the privileges to add, grouped by entitlement.',
+  'Missing Privilege': 'A single target privilege absent from the source entitlement — one row per missing privilege. These are the privileges to add to bring the source entitlement in line with its matched target entitlement.',
   'Entitlement': 'An entitlement name from the source ruleset, or its best target match.',
   'Privilege Match Count': 'Number of source privileges found in the matched target entitlement (matched/total).',
   'Jaccard Similarity (%)': 'Overlap ÷ union of the two privilege sets.',
-  'Match Confidence': 'Tier based on source privilege coverage: High ≥ 75%, Medium 40–74%, Low < 40%, None = no shared privileges.',
-  'Runner-Up EY Entitlements': 'The 2nd and 3rd best target candidates with their match counts and Jaccard scores.',
+  'Confidence Score (%)': 'Blended match score: 0.60×Jaccard + 0.40×coverage (coverage = matched ÷ source privilege count). The match is selected, and its confidence tier derived, from this score.',
+  'Client Privilege Count': 'Number of distinct privileges held by the source entitlement.',
+  'EY Privilege Count': 'Number of distinct privileges held by the matched target entitlement.',
+  'EY Privileges Missing in Client': 'Privileges in the matched target entitlement that the source entitlement lacks — the target-side gap.',
+  'Client Privileges Missing in EY': 'Privileges in the source entitlement absent from the matched target entitlement — the source-side gap.',
+  'Match Confidence': 'Tier for mapped entitlements (blended score ≥ 30%): High ≥ 70%, Medium 50–69%, Low 30–49%. Below 30% the entitlement is "Not Mapped"; "None" = no shared privileges.',
+  'Runner-Up EY Entitlements': 'The 2nd and 3rd best target candidates with their match counts and blended confidence scores.',
   'Control Type': 'Whether the missing control is a SoD or SA control.',
   'Source Control': 'The control in the source ruleset that was matched.',
   'Matched Control': 'The best-matching control in the target ruleset.',
@@ -116,6 +122,15 @@ const DIRECTIONS: { id: Direction; label: string }[] = [
   { id: 'c2e', label: 'Client → EY' },
   { id: 'e2c', label: 'EY → Client' },
 ]
+
+// The Missing Controls tab lists source controls with no target match, so its
+// label depends on the active direction (which ruleset is the source).
+function tabLabel(id: ResultTab, label: string, direction: Direction): string {
+  if (id === 'missing_ctrl') {
+    return direction === 'c2e' ? 'Client Controls Missing in EY' : 'EY Controls Missing in Client'
+  }
+  return label
+}
 
 // ── Preview cards config ──────────────────────────────────────────────────────
 
@@ -303,7 +318,7 @@ export default function RulesetMapping() {
           <HelpPill label="Step 1 — Entitlement Mapping" note="Each source entitlement is matched to the best-fitting target entitlement by comparing their Privilege Code sets via Jaccard similarity (|intersection| ÷ |union|). This lookup feeds Steps 2 and 3." />
           <HelpPill label="Step 2 — SoD Control Matching (two-leg)" note="A SoD control has two legs (LHS and RHS). Each leg is scored INDEPENDENTLY against a candidate target control's legs by per-entitlement Jaccard. A control is a Direct match only if BOTH legs clear 60% — a strong match on one leg can never carry an unrelated second leg. If no target control qualifies but both legs map to target entitlements, an inferred pair [T_LHS] AND [T_RHS] is created and labelled Derived Control." />
           <HelpPill label="Step 3 — SA Control Matching" note="Each source SA entitlement is looked up via Step 1. It is a Direct match only when the mapped target entitlement is itself a target SA control AND the per-entitlement similarity clears 60%; otherwise Unmatched. SA controls are NEVER labelled Derived." />
-          <HelpPill label="Missing Controls & Missing Privileges" note="Missing Controls lists every source control (SoD or SA) with no valid match in the target ruleset. Missing Privileges recommends, for each matched control, the target-side privileges absent from the source entitlement — i.e. which privileges to add and to which entitlement." />
+          <HelpPill label="Missing Controls & Missing Privileges" note="Missing Controls lists every source control (SoD or SA) with no valid match in the target ruleset. Missing Privileges lists, for each matched entitlement (confidence ≥ 60%), every target privilege absent from the source entitlement — one row per missing privilege (source entitlement, best matched target entitlement, missing privilege)." />
           <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Confidence Score = Jaccard similarity × 100%. For SoD it is the weaker of the two legs (both must clear 60%). "—" and Unmatched rows always show 0%.</p>
         </HelpAccordion>
         <TemplateDownloads templates={[
@@ -497,7 +512,7 @@ export default function RulesetMapping() {
                         : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
                     )}
                   >
-                    {label}
+                    {tabLabel(id, label, direction)}
                     <span
                       className={clsx(
                         'ml-2 text-[11px] px-1.5 py-0.5 rounded-full font-medium',

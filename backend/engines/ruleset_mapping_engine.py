@@ -2,9 +2,13 @@
 
 Maps SoD and SA ruleset controls between a Client ruleset and the EY ruleset in
 BOTH directions (Client→EY and EY→Client), using:
-  Step 1 — Entitlement-to-entitlement mapping (delegates to existing engine)
-  Step 2 — SoD control matching via per-leg Jaccard similarity on privilege-code sets
-  Step 3 — SA control matching via entitlement mapping result
+  Step 1 — Entitlement-to-entitlement mapping (delegates to existing engine), which
+           yields each source entitlement's best target match + blended confidence
+  Step 2 — SoD control matching: a control maps when BOTH its entitlements resolved
+           to a real target match (engine applied MATCH_THRESHOLD) — Direct if a
+           real target control pairs them, else Derived
+  Step 3 — SA control matching: maps when its single entitlement resolved to a real
+           target match that is itself a target SA control
 
 The core mapping is a pure function of (source, target). `run_ruleset_mapping`
 calls it twice — once per direction — so "missing controls", "missing privileges"
@@ -20,10 +24,17 @@ import pandas as pd
 
 from engines.entitlement_mapping_engine import run_mapping, EngineResult
 
-# Per-leg similarity threshold. A SoD/SA control matches only if every required
-# leg independently meets this Jaccard score — a strong match on one leg must NOT
-# compensate for an unrelated second leg (Enhancement 4).
-LEG_THRESHOLD = 0.60
+# Sentinel values the entitlement engine writes in the match column when there is
+# no usable mapping: "—" (no shared privilege) or "Not Mapped" (best candidate
+# below MATCH_THRESHOLD). A SoD/SA control maps only when every entitlement it
+# depends on resolved to a real target entitlement (the engine already applied the
+# confidence threshold — this is the single source of truth).
+_UNMAPPED = {"—", "Not Mapped", ""}
+
+
+def _is_mapped(ent_name: str) -> bool:
+    """True when the entitlement engine produced a real target match for this name."""
+    return ent_name not in _UNMAPPED
 
 
 def _find_col_pd(df: pd.DataFrame, target: str) -> str:
@@ -57,13 +68,6 @@ def _build_priv_groups(df: pd.DataFrame, ent_col: str, priv_col: str) -> dict[st
     return df_clean.groupby(ent_col)[priv_col].apply(set).to_dict()
 
 
-def _jaccard(a: set, b: set) -> float:
-    union = a | b
-    if not union:
-        return 0.0
-    return len(a & b) / len(union)
-
-
 def _missing_privs_text(
     src_privs: set[str],
     tgt_ent_names: list[str],
@@ -91,40 +95,44 @@ def _map_sod_controls(
     src_priv_groups: dict[str, set[str]],
     tgt_priv_groups: dict[str, set[str]],
     ent_mapping: dict[str, str],
+    ent_confidence: dict[str, float],
     cols: dict[str, str],
     cb: Callable,
     pct_lo: int,
     pct_hi: int,
 ) -> pd.DataFrame:
-    """Map each source SoD control to the best target SoD control.
+    """Map each source SoD control to a target SoD control via entitlement confidence.
 
-    Two-leg matching (Enhancement 4): each control has two legs (LHS/RHS). For a
-    candidate target control, both legs are scored INDEPENDENTLY by per-entitlement
-    Jaccard, trying both LHS/RHS pairings; the control's score against that target
-    is the weaker (min) of the chosen pairing's two legs. A target qualifies as a
-    Direct match only if BOTH chosen legs clear LEG_THRESHOLD — so a strong match
-    on one leg can never carry an unrelated second leg.
+    Each source control has two entitlements (LHS/RHS). The control maps only when
+    BOTH entitlements resolved to a real target match in `ent_mapping` (the engine
+    already dropped sub-threshold matches to "Not Mapped") — a strong match on one
+    entitlement can never carry a weak second one. The control's Confidence Score is
+    the weaker (min) of the two entitlement confidences (`ent_confidence`).
 
-    Derived Control (Enhancement 5): only an inferred SoD pair. When no target SoD
-    control qualifies but both source legs map to target entitlements, the inferred
-    control "[T_LHS] AND [T_RHS]" is created and labelled "Derived Control".
+    When both entitlements qualify:
+      • Direct — a real target SoD control already pairs those two matched EY
+        entitlements as its two legs (either LHS/RHS order).
+      • Derived Control — both qualify but no existing target control pairs them, so
+        the inferred control "[T_LHS] AND [T_RHS]" is created.
+    If either entitlement is unmapped or below threshold → Unmatched (no Derived).
     """
-    cb(pct_lo, "SoD: building target control privilege index…")
+    cb(pct_lo, "SoD: building target control index…")
 
     tgt_ctrl_col = _find_col_pd(tgt_sod_df, "Control Name")
     tgt_lhs_col  = _find_col_pd(tgt_sod_df, "LHS Entitlement")
     tgt_rhs_col  = _find_col_pd(tgt_sod_df, "RHS Entitlement")
 
-    # Pre-build target control → (lhs_ent, rhs_ent) keeping legs SEPARATE so we can
-    # score each leg independently (the old engine unioned them, masking one leg).
-    tgt_controls: list[tuple[str, str, str]] = []
+    # Index target SoD controls by the unordered pair of their two entitlements, so
+    # a Direct match is "is there a real control pairing these two EY entitlements?"
+    tgt_pair_to_ctrl: dict[frozenset, str] = {}
     for _, row in tgt_sod_df.iterrows():
         ctrl = row[tgt_ctrl_col]
         if pd.isna(ctrl):
             continue
         lhs = str(row[tgt_lhs_col]) if pd.notna(row[tgt_lhs_col]) else ""
         rhs = str(row[tgt_rhs_col]) if pd.notna(row[tgt_rhs_col]) else ""
-        tgt_controls.append((str(ctrl), lhs, rhs))
+        key = frozenset((lhs, rhs))
+        tgt_pair_to_ctrl.setdefault(key, str(ctrl))
 
     src_ctrl_col = _find_col_pd(src_sod_df, "Control Name")
     src_lhs_col  = _find_col_pd(src_sod_df, "LHS Entitlement")
@@ -143,85 +151,49 @@ def _map_sod_controls(
         lhs_ent  = str(row[src_lhs_col]) if pd.notna(row[src_lhs_col]) else ""
         rhs_ent  = str(row[src_rhs_col]) if pd.notna(row[src_rhs_col]) else ""
 
-        pL = src_priv_groups.get(lhs_ent, set())
-        pR = src_priv_groups.get(rhs_ent, set())
+        unmatched = {
+            cols["src_ctrl"]:   src_ctrl,
+            cols["tgt_ctrl"]:   "—",
+            "Confidence Score": "0%",
+            "Match Type":       "Unmatched",
+            "Missing Privileges": "",
+        }
 
-        # Both legs must have resolvable privileges to be matchable.
-        if not pL or not pR:
-            results.append({
-                cols["src_ctrl"]:   src_ctrl,
-                cols["tgt_ctrl"]:   "—",
-                "Confidence Score": "0%",
-                "Match Type":       "Unmatched",
-                "Missing Privileges": "",
-            })
-            continue
-
-        best_ctrl   = None
-        best_min    = -1.0
-        best_union  = float("inf")
-        best_pair   = None   # (tgt_ent_for_lhs, tgt_ent_for_rhs)
-
-        for tgt_ctrl, eL, eR in tgt_controls:
-            qL = tgt_priv_groups.get(eL, set())
-            qR = tgt_priv_groups.get(eR, set())
-
-            # Try both leg pairings; each pairing is limited by its weaker leg.
-            straight = (min(_jaccard(pL, qL), _jaccard(pR, qR)), eL, eR)
-            swapped  = (min(_jaccard(pL, qR), _jaccard(pR, qL)), eR, eL)
-            min_leg, ent_for_lhs, ent_for_rhs = max(straight, swapped, key=lambda x: x[0])
-
-            # Both legs of the chosen pairing must clear the threshold.
-            if min_leg < LEG_THRESHOLD:
-                continue
-
-            union_size = len((pL | pR) | (qL | qR))
-            if min_leg > best_min or (min_leg == best_min and union_size < best_union):
-                best_min   = min_leg
-                best_ctrl  = tgt_ctrl
-                best_union = union_size
-                best_pair  = (ent_for_lhs, ent_for_rhs)
-
-        if best_ctrl is not None:
-            missing = _missing_privs_text(
-                pL | pR, list(best_pair), tgt_priv_groups,
-            )
-            results.append({
-                cols["src_ctrl"]:   src_ctrl,
-                cols["tgt_ctrl"]:   best_ctrl,
-                "Confidence Score": f"{round(best_min * 100)}%",
-                "Match Type":       "Direct",
-                "Missing Privileges": missing,
-            })
-            continue
-
-        # Derived path — inferred SoD pair (no score gate).
         tgt_lhs_ent = ent_mapping.get(lhs_ent, "—")
         tgt_rhs_ent = ent_mapping.get(rhs_ent, "—")
 
-        if tgt_lhs_ent != "—" and tgt_rhs_ent != "—":
-            derived_name = f"[{tgt_lhs_ent}] AND [{tgt_rhs_ent}]"
-            E_derived = (
-                tgt_priv_groups.get(tgt_lhs_ent, set()) |
-                tgt_priv_groups.get(tgt_rhs_ent, set())
-            )
-            missing = _missing_privs_text(
-                pL | pR, [tgt_lhs_ent, tgt_rhs_ent], tgt_priv_groups,
-            )
+        # Gate: both entitlements must have resolved to a real target entitlement
+        # (the engine already enforced the confidence threshold). Applies to Derived
+        # controls too — a derived pair still needs both entitlements mapped.
+        if not _is_mapped(tgt_lhs_ent) or not _is_mapped(tgt_rhs_ent):
+            results.append(unmatched)
+            continue
+
+        ctrl_conf = round(min(ent_confidence.get(lhs_ent, 0.0),
+                              ent_confidence.get(rhs_ent, 0.0)))
+        missing = _missing_privs_text(
+            src_priv_groups.get(lhs_ent, set()) | src_priv_groups.get(rhs_ent, set()),
+            [tgt_lhs_ent, tgt_rhs_ent], tgt_priv_groups,
+        )
+
+        # Direct if a real target control pairs the two matched EY entitlements;
+        # otherwise an inferred Derived Control.
+        existing_ctrl = tgt_pair_to_ctrl.get(frozenset((tgt_lhs_ent, tgt_rhs_ent)))
+        if existing_ctrl is not None:
             results.append({
                 cols["src_ctrl"]:   src_ctrl,
-                cols["tgt_ctrl"]:   derived_name,
-                "Confidence Score": f"{round(_jaccard(pL | pR, E_derived) * 100)}%",
-                "Match Type":       "Derived Control",
+                cols["tgt_ctrl"]:   existing_ctrl,
+                "Confidence Score": f"{ctrl_conf}%",
+                "Match Type":       "Direct",
                 "Missing Privileges": missing,
             })
         else:
             results.append({
                 cols["src_ctrl"]:   src_ctrl,
-                cols["tgt_ctrl"]:   "—",
-                "Confidence Score": "0%",
-                "Match Type":       "Unmatched",
-                "Missing Privileges": "",
+                cols["tgt_ctrl"]:   f"[{tgt_lhs_ent}] AND [{tgt_rhs_ent}]",
+                "Confidence Score": f"{ctrl_conf}%",
+                "Match Type":       "Derived Control",
+                "Missing Privileges": missing,
             })
 
     out_cols = [cols["src_ctrl"], cols["tgt_ctrl"], "Confidence Score",
@@ -235,6 +207,7 @@ def _map_sa_controls(
     src_priv_groups: dict[str, set[str]],
     tgt_priv_groups: dict[str, set[str]],
     ent_mapping: dict[str, str],
+    ent_confidence: dict[str, float],
     cols: dict[str, str],
     cb: Callable,
     pct_lo: int,
@@ -243,9 +216,9 @@ def _map_sa_controls(
     """Map each source SA control to the best target SA control.
 
     SA controls are NEVER labelled "Derived" (Enhancement 5). An SA control is a
-    Direct match only when its entitlement maps to a target entitlement that is an
-    actual target SA control AND the per-entitlement Jaccard clears LEG_THRESHOLD;
-    otherwise it is Unmatched.
+    Direct match only when its entitlement resolved to a real target match (engine
+    applied MATCH_THRESHOLD) that is itself an actual target SA control; otherwise
+    it is Unmatched.
     """
     cb(pct_lo, "SA: building target control lookup…")
 
@@ -287,23 +260,17 @@ def _map_sa_controls(
             "Missing Privileges": "",
         }
 
-        # Must map to a target entitlement that is itself a target SA control.
-        if tgt_ent == "—" or tgt_ent not in tgt_ent_to_ctrl:
+        # Must map to a real target entitlement (engine already applied the
+        # confidence threshold) that is itself a target SA control.
+        if not _is_mapped(tgt_ent) or tgt_ent not in tgt_ent_to_ctrl:
             results.append(unmatched)
             continue
 
         src_privs = src_priv_groups.get(src_ent, set())
-        tgt_privs = tgt_priv_groups.get(tgt_ent, set())
-        score = _jaccard(src_privs, tgt_privs)
-
-        if score < LEG_THRESHOLD:
-            results.append(unmatched)
-            continue
-
         results.append({
             cols["src_ctrl"]:   src_ctrl,
             cols["tgt_ctrl"]:   tgt_ent_to_ctrl[tgt_ent],
-            "Confidence Score": f"{round(score * 100)}%",
+            "Confidence Score": f"{round(ent_confidence.get(src_ent, 0.0))}%",
             "Match Type":       "Direct",
             "Missing Privileges": _missing_privs_text(src_privs, [tgt_ent], tgt_priv_groups),
         })
@@ -334,28 +301,38 @@ def _build_missing_controls(
     return pd.DataFrame(rows, columns=["Control Name", "Control Type"])
 
 
-def _build_missing_privileges(sod_df: pd.DataFrame, sa_df: pd.DataFrame, cols: dict[str, str]) -> pd.DataFrame:
-    """Flatten the per-row Missing Privileges recommendations of matched controls
-    into a dedicated sheet (Enhancement 3): source control, matched target control,
-    and the privileges to add.
+def _build_missing_privileges(
+    ent_mapping: dict[str, str],
+    src_priv_groups: dict[str, set[str]],
+    tgt_priv_groups: dict[str, set[str]],
+    label_src: str,
+    label_tgt: str,
+) -> pd.DataFrame:
+    """Per-entitlement privilege gaps, one privilege per row.
+
+    For each source entitlement that resolved to a real target match (the engine
+    already applied the confidence threshold), list every target privilege the
+    source entitlement lacks (tgt_privs - src_privs) as its own row. Entitlements
+    with no missing privileges are omitted.
+
+    Columns (direction-aware): "{src} Entitlement", "Best Matched {tgt} Entitlement",
+    "Missing Privilege".
     """
+    src_col = f"{label_src} Entitlement"
+    tgt_col = f"Best Matched {label_tgt} Entitlement"
+    cols_out = [src_col, tgt_col, "Missing Privilege"]
+
     rows: list[dict] = []
-    for kind, df in [("SoD", sod_df), ("SA", sa_df)]:
-        if df.empty:
+    for src_ent, tgt_ent in ent_mapping.items():
+        if not _is_mapped(tgt_ent):
             continue
-        matched = df[df["Match Type"].isin(["Direct", "Derived Control"])]
-        for _, r in matched.iterrows():
-            missing = str(r.get("Missing Privileges", "") or "")
-            if missing.strip():
-                rows.append({
-                    "Source Control":      r[cols["src_ctrl"]],
-                    "Matched Control":     r[cols["tgt_ctrl"]],
-                    "Control Type":        kind,
-                    "Missing Privileges":  missing,
-                })
-    return pd.DataFrame(
-        rows, columns=["Source Control", "Matched Control", "Control Type", "Missing Privileges"]
-    )
+        missing = sorted(
+            tgt_priv_groups.get(tgt_ent, set()) - src_priv_groups.get(src_ent, set())
+        )
+        for priv in missing:
+            rows.append({src_col: src_ent, tgt_col: tgt_ent, "Missing Privilege": priv})
+
+    return pd.DataFrame(rows, columns=cols_out)
 
 
 def _map_direction(
@@ -410,6 +387,14 @@ def _map_direction(
         str(r[f"{label_src} Entitlement"]): str(r[f"{label_tgt} Entitlement Match"])
         for _, r in ent_df.iterrows()
     }
+    # {source_entitlement → blended confidence score (0-100)} — drives control
+    # matching: used only to display the control's Confidence Score (the mapped/
+    # not-mapped decision is the entitlement engine's, read from the match column).
+    ent_confidence: dict[str, float] = {
+        str(r[f"{label_src} Entitlement"]):
+            float(str(r["Confidence Score (%)"]).rstrip("%") or 0)
+        for _, r in ent_df.iterrows()
+    }
 
     cols = {
         "src_ctrl": f"{label_src} Control Name",
@@ -422,15 +407,18 @@ def _map_direction(
 
     sod_df = _map_sod_controls(
         src_sod_df, tgt_sod_df, src_priv_groups, tgt_priv_groups,
-        ent_mapping, cols, cb, sod_lo, sod_hi,
+        ent_mapping, ent_confidence, cols, cb, sod_lo, sod_hi,
     )
     sa_df = _map_sa_controls(
         src_sa_df, tgt_sa_df, src_priv_groups, tgt_priv_groups,
-        ent_mapping, cols, cb, sod_hi, sa_hi,
+        ent_mapping, ent_confidence, cols, cb, sod_hi, sa_hi,
     )
 
     missing_ctrl_df = _build_missing_controls(sod_df, sa_df, cols)
-    missing_priv_df = _build_missing_privileges(sod_df, sa_df, cols)
+    missing_priv_df = _build_missing_privileges(
+        ent_mapping, src_priv_groups, tgt_priv_groups,
+        label_src, label_tgt,
+    )
 
     def _count(df: pd.DataFrame, mt: str) -> int:
         if df.empty or "Match Type" not in df.columns:
@@ -490,11 +478,11 @@ def _build_excel(c2e: dict, e2c: dict) -> io.BytesIO:
         sheets = [
             (c2e["sod_df"],          "SoD Mapping (Client to EY)"),
             (c2e["sa_df"],           "SA Mapping (Client to EY)"),
-            (c2e["missing_ctrl_df"], "Missing Controls in Client"),
+            (c2e["missing_ctrl_df"], "Client Controls Missing in EY"),
             (c2e["missing_priv_df"], "Missing Privileges (C to EY)"),
             (e2c["sod_df"],          "SoD Mapping (EY to Client)"),
             (e2c["sa_df"],           "SA Mapping (EY to Client)"),
-            (e2c["missing_ctrl_df"], "Missing Controls in EY"),
+            (e2c["missing_ctrl_df"], "EY Controls Missing in Client"),
             (e2c["missing_priv_df"], "Missing Privileges (EY to C)"),
             (c2e["ent_df"],          "Entitlement Mapping (C to EY)"),
             (e2c["ent_df"],          "Entitlement Mapping (EY to C)"),
