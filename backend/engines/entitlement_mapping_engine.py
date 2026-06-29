@@ -228,7 +228,8 @@ def run_mapping(
                 union_size    = len(c_privs | e_privs)
                 jaccard       = overlap_count / union_size if union_size else 0
                 coverage      = overlap_count / len(c_privs) if c_privs else 0
-                blended       = 0.60 * jaccard + 0.40 * coverage
+                name_sim      = normalized_name_similarity(c_ent, e_ent)
+                blended       = 0.60 * jaccard + 0.30 * coverage + 0.10 * name_sim
                 scored.append((e_ent, matched, overlap_count, jaccard, e_privs, blended))
 
             scored.sort(key=lambda x: (x[5], x[2]), reverse=True)

@@ -47,3 +47,63 @@ def test_abbrev_matches_spelled_out():
         "Create Maintain Accounts Payable Invoice",
     )
     assert score > 0.9
+
+
+import pandas as pd
+
+from engines.entitlement_mapping_engine import run_mapping
+
+
+def _df(rows):
+    return pd.DataFrame(rows, columns=["Entitlement Name", "Privilege Code"])
+
+
+def _match_for(result_df, client_ent):
+    row = result_df[result_df["Client Entitlement"] == client_ent].iloc[0]
+    return row["EY Entitlement Match"]
+
+
+def test_ap_ar_no_longer_swapped():
+    # Both AP and AR client entitlements share identical privilege overlap with both
+    # EY candidates; only the name can disambiguate.
+    client = _df([
+        ("Process AP Payments", "P1"),
+        ("Process AP Payments", "P2"),
+        ("Process AR Payments", "P3"),
+        ("Process AR Payments", "P4"),
+    ])
+    ey = _df([
+        ("Process AP Payments", "P1"),
+        ("Process AP Payments", "P2"),
+        ("Process AP Payments", "P3"),
+        ("Process AP Payments", "P4"),
+        ("Process AR Payments", "P1"),
+        ("Process AR Payments", "P2"),
+        ("Process AR Payments", "P3"),
+        ("Process AR Payments", "P4"),
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    assert _match_for(res.data, "Process AP Payments") == "Process AP Payments"
+    assert _match_for(res.data, "Process AR Payments") == "Process AR Payments"
+
+
+def test_asset_reimbursement_prefers_named_match():
+    # Client Reimbursement (3 privs) fully contained in EY Configuration (superset),
+    # but only shares 1 priv with EY Reimbursement. Name term should tip it back.
+    client = _df([
+        ("Asset Reimbursement", "A1"),
+        ("Asset Reimbursement", "A2"),
+        ("Asset Reimbursement", "A3"),
+    ])
+    ey = _df([
+        ("Asset Configuration", "A1"),
+        ("Asset Configuration", "A2"),
+        ("Asset Configuration", "A3"),
+        ("Asset Configuration", "A4"),
+        ("Asset Configuration", "A5"),
+        ("Asset Reimbursement", "A1"),
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    assert _match_for(res.data, "Asset Reimbursement") == "Asset Reimbursement"
