@@ -8,6 +8,12 @@ backend/venv/
 # Backend runtime
 backend/logs/
 backend/temp/
+logs/
+temp/
+
+# Caches / scratch
+.pytest_cache/
+.superpowers/
 
 # Node
 frontend/node_modules/
