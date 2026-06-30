@@ -449,14 +449,125 @@ def _map_direction(
     }
 
 
-def _write_sheet(writer, df: pd.DataFrame, sheet_name: str, hdr_fmt) -> None:
-    """Write one DataFrame to a sheet with the styled header + auto-sized columns."""
-    df.to_excel(writer, sheet_name=sheet_name, index=False)
+# ── Plain-English readability text for the Excel report (Task 3) ──────────────────
+# Sheet-level description: what the sheet shows, how to read it, key assumptions.
+# Keyed by an exact sheet name. Kept in plain English (no formulas/jargon).
+_SHEET_DESCRIPTIONS: dict[str, str] = {
+    "SoD Mapping (Client to EY)": (
+        "What this shows: each Segregation-of-Duties control in the CLIENT ruleset and the "
+        "matching control in the EY standard ruleset. How to read it: a higher Confidence Score "
+        "means a stronger match; 'Direct' means we found an existing EY control that pairs the same "
+        "two access areas, 'Derived Control' means both areas matched but no single EY control pairs "
+        "them (so we describe the pair), and 'Unmatched' means we could not confidently map it. "
+        "'Missing Privileges' lists access the EY control expects that the client control does not grant."
+    ),
+    "SA Mapping (Client to EY)": (
+        "What this shows: each Sensitive-Access control in the CLIENT ruleset and the matching EY "
+        "standard control. How to read it: a higher Confidence Score means a stronger match; 'Direct' "
+        "means it maps to an existing EY control and 'Unmatched' means it could not be confidently "
+        "mapped. 'Missing Privileges' lists access the EY control expects that the client does not grant."
+    ),
+    "SoD Mapping (EY to Client)": (
+        "What this shows: the reverse view — each EY standard Segregation-of-Duties control and the "
+        "matching CLIENT control. Read it the same way as the Client-to-EY sheet; here the EY ruleset "
+        "is the starting point, so 'Unmatched' means the client has no equivalent control."
+    ),
+    "SA Mapping (EY to Client)": (
+        "What this shows: the reverse view — each EY standard Sensitive-Access control and the matching "
+        "CLIENT control. 'Unmatched' means the client has no equivalent control."
+    ),
+    "Client Controls Missing in EY": (
+        "What this shows: client controls (Segregation-of-Duties or Sensitive-Access) that have no "
+        "confident match in the EY standard ruleset. These are candidates to review — either the EY "
+        "standard does not cover them, or the underlying access did not line up well enough to map."
+    ),
+    "EY Controls Missing in Client": (
+        "What this shows: EY standard controls that have no confident match in the client ruleset. "
+        "These are gaps in the client's ruleset compared to the EY standard — controls the client may "
+        "be missing."
+    ),
+    "Missing Privileges (C to EY)": (
+        "What this shows: for every client entitlement that mapped to an EY entitlement, the individual "
+        "EY privileges that the client entitlement does NOT include — one privilege per row. Use this to "
+        "see exactly what access to add to bring a client entitlement in line with the EY standard."
+    ),
+    "Missing Privileges (EY to C)": (
+        "What this shows: the reverse view — for every EY entitlement that mapped to a client entitlement, "
+        "the individual client privileges the EY entitlement does not include, one per row."
+    ),
+    "Entitlement Mapping (C to EY)": (
+        "What this shows: each CLIENT entitlement matched to its best-fitting EY standard entitlement. "
+        "How to read it: the Confidence Score (%) combines how much the access overlaps, whether the two "
+        "entitlements belong to the same Module, and how much of the client's access the EY entitlement "
+        "covers. Match Confidence turns that score into a simple High / Medium / Low label; 'Not Mapped' "
+        "means no EY entitlement was a close enough fit. Entitlements with the same Module are favoured "
+        "when the access overlap is similar."
+    ),
+    "Entitlement Mapping (EY to C)": (
+        "What this shows: the reverse view — each EY standard entitlement matched to its best-fitting "
+        "client entitlement. Read the Confidence Score and Match Confidence the same way as the "
+        "Client-to-EY sheet."
+    ),
+}
+
+# Column-level one-line descriptors, matched by a token in the (direction-aware) header.
+# Plain English; first matching token wins.
+_COLUMN_DESCRIPTORS: list[tuple[str, str]] = [
+    ("Confidence Score", "How strong the match is, as a percentage — higher is a better match."),
+    ("Match Type", "Direct = matched an existing control; Derived Control = an inferred pair; Unmatched = no confident match."),
+    ("Match Confidence", "Simple label from the score: High / Medium / Low, or Not Mapped if too weak."),
+    ("Missing Privileges", "Access the matched target expects but the source does not grant, grouped by entitlement."),
+    ("Missing Privilege", "A single piece of access the matched target has that the source is missing (one per row)."),
+    ("Privilege Match Count", "How many of the source's access items were found in the matched entitlement (matched / total)."),
+    ("Jaccard Similarity", "How much the two access sets overlap relative to their combined size."),
+    ("Client Privilege Count", "Number of distinct access items in the source entitlement."),
+    ("EY Privilege Count", "Number of distinct access items in the matched entitlement."),
+    ("EY Privileges Missing in Client", "Access in the matched entitlement that the source entitlement lacks."),
+    ("Client Privileges Missing in EY", "Access in the source entitlement absent from the matched entitlement."),
+    ("Runner-Up", "The next-best alternative matches, with their counts and scores."),
+    ("Control Type", "Whether the control is a Segregation-of-Duties (SoD) or Sensitive-Access (SA) control."),
+    ("Entitlement Match", "The best-matching entitlement in the other ruleset, or 'Not Mapped'."),
+    ("Control Name", "The control being mapped (source) or its best match (target)."),
+    ("Entitlement", "An entitlement name — a named group of access privileges."),
+]
+
+
+def _column_descriptor(col: str) -> str:
+    """Plain-English one-liner for a (possibly direction-aware) column header."""
+    for token, text in _COLUMN_DESCRIPTORS:
+        if token in col:
+            return text
+    return ""
+
+
+def _write_sheet(writer, df: pd.DataFrame, sheet_name: str, hdr_fmt,
+                 desc_fmt, col_desc_fmt) -> None:
+    """Write one DataFrame to a sheet, prefixed by a plain-English sheet description
+    row and a per-column descriptor row, then the styled header + data.
+
+    Layout: row 0 = sheet description (merged), row 1 = column descriptors,
+    row 2 = column headers, row 3+ = data.
+    """
+    n_cols = max(1, len(df.columns))
+    # Data starts on row 3 (0-indexed); header lands on row 2.
+    df.to_excel(writer, sheet_name=sheet_name, index=False, startrow=2)
     ws = writer.sheets[sheet_name]
+
+    # Row 0 — sheet-level description, merged across all columns.
+    sheet_desc = _SHEET_DESCRIPTIONS.get(sheet_name, "")
+    if len(df.columns) > 1:
+        ws.merge_range(0, 0, 0, n_cols - 1, sheet_desc, desc_fmt)
+    else:
+        ws.write(0, 0, sheet_desc, desc_fmt)
+    ws.set_row(0, 60)
+
+    # Row 1 — per-column descriptors; Row 2 — styled headers; size columns.
     for ci, col in enumerate(df.columns):
-        ws.write(0, ci, col, hdr_fmt)
+        ws.write(1, ci, _column_descriptor(col), col_desc_fmt)
+        ws.write(2, ci, col, hdr_fmt)
         max_len = df[col].astype(str).map(len).max() if len(df) else 0
         ws.set_column(ci, ci, min(max(len(str(col)), max_len) + 3, 60))
+    ws.set_row(1, 42)
 
 
 def _build_excel(c2e: dict, e2c: dict) -> io.BytesIO:
@@ -473,6 +584,15 @@ def _build_excel(c2e: dict, e2c: dict) -> io.BytesIO:
     ) as writer:
         wb = writer.book
         hdr_fmt = wb.add_format({"bold": True, "bg_color": "#D7E4BC", "border": 1})
+        # Plain-English sheet description (row 0) and per-column descriptor (row 1).
+        desc_fmt = wb.add_format({
+            "italic": True, "text_wrap": True, "valign": "top",
+            "bg_color": "#F2F7FB", "border": 1, "font_size": 10,
+        })
+        col_desc_fmt = wb.add_format({
+            "italic": True, "text_wrap": True, "valign": "top",
+            "bg_color": "#FBFBF0", "border": 1, "font_size": 9, "font_color": "#555555",
+        })
 
         # Excel sheet names are capped at 31 chars — keep every name within the limit.
         sheets = [
@@ -488,7 +608,7 @@ def _build_excel(c2e: dict, e2c: dict) -> io.BytesIO:
             (e2c["ent_df"],          "Entitlement Mapping (EY to C)"),
         ]
         for df, name in sheets:
-            _write_sheet(writer, df, name, hdr_fmt)
+            _write_sheet(writer, df, name, hdr_fmt, desc_fmt, col_desc_fmt)
 
     buf.seek(0)
     return buf

@@ -1,14 +1,15 @@
 """Entitlement Mapping Engine — ported from Entitlement Analysis/app.py.
 
 Algorithm: map each client entitlement to the best-matching EY entitlement by a
-blended confidence score:
-  score = 0.60 · Jaccard + 0.30 · coverage + 0.10 · name_sim
-  (coverage = matched / client_total; name_sim = abbreviation-aware name match)
-Selection sorts by this blended score (overlap count breaks ties). A name-priority
-override prefers a near-exact name match (name_sim ≥ 0.90) over higher-scoring
-differently-named candidates, provided the name-matched candidate clears MATCH_THRESHOLD.
-When the best score is below MATCH_THRESHOLD the entitlement is reported as "Not Mapped";
-this is the single source of truth that downstream control/SA mapping keys off.
+weighted composite confidence score:
+  score = 0.65 · Jaccard + 0.20 · module_match + 0.15 · coverage
+  (coverage = matched / client_total; module_match = 1.0 when the two entitlements
+   share the same normalized Module name, else 0.0)
+Selection sorts by this composite score. Name similarity is NOT part of the numeric
+score — it is used only as a final tiebreaker when two candidates have the same
+composite score (and the same overlap count). When the best score is below
+MATCH_THRESHOLD the entitlement is reported as "Not Mapped"; this is the single
+source of truth that downstream control/SA mapping keys off.
 
 Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 """
@@ -28,13 +29,12 @@ from rapidfuzz import fuzz
 # so 30 separates them. Revisit with more labelled examples if matches drift.
 MATCH_THRESHOLD = 30
 
-# Name-similarity at or above this (0.0–1.0) triggers the name-priority override:
-# a near-exact entitlement-name match is preferred over a higher privilege-overlap
-# candidate, provided the name-matched candidate is itself a plausible match (its own
-# blended score clears MATCH_THRESHOLD). Guards the case where a client entitlement's
-# privileges are a subset of a differently-named EY entitlement (e.g. client
-# "Asset Reimbursement" privileges all contained in EY "Asset Configuration").
-NAME_OVERRIDE_THRESHOLD = 0.90
+# Composite confidence weights. Jaccard dominates; an exact Module-name match adds a
+# fixed bonus; privilege coverage is the smallest term. Name similarity is deliberately
+# NOT weighted here — it is only a tiebreaker when the composite scores tie.
+W_JACCARD = 0.65
+W_MODULE  = 0.20
+W_COVERAGE = 0.15
 
 
 # Abbreviation/synonym map for name-similarity scoring. Keys are lowercase tokens
@@ -87,13 +87,26 @@ def normalized_name_similarity(a: str, b: str) -> float:
     return fuzz.token_sort_ratio(" ".join(sorted(ta)), " ".join(sorted(tb))) / 100.0
 
 
+def _normalize_module(value: object) -> str:
+    """Normalize a Module name for exact comparison: trimmed, lowercased.
+
+    Returns "" for blanks/NaN so an absent module never matches another absent one.
+    """
+    if value is None:
+        return ""
+    s = str(value).strip()
+    if not s or s.lower() in {"nan", "none"}:
+        return ""
+    return s.lower()
+
+
 COLUMN_DESCRIPTIONS: dict[str, str] = {
     "Client Entitlement": (
         "The entitlement name as defined in the client's access control system."
     ),
     "EY Entitlement Match": (
-        "The best-matching EY standard entitlement, selected by the blended "
-        "confidence score (0.60·Jaccard + 0.30·coverage + 0.10·name_sim). 'Not Mapped' means the "
+        "The best-matching EY standard entitlement, selected by the composite "
+        "confidence score (0.65·Jaccard + 0.20·module match + 0.15·coverage). 'Not Mapped' means the "
         "best candidate scored below the match threshold; '—' means no EY "
         "entitlement shares any privilege with this client entitlement."
     ),
@@ -108,10 +121,10 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
         "entitlement contains many privileges beyond what the client holds."
     ),
     "Confidence Score (%)": (
-        "Blended match score: 0.60·Jaccard + 0.30·coverage + 0.10·name_sim "
-        "(coverage = matched ÷ client privilege count; name_sim = abbreviation-aware "
-        "entitlement-name match). This is the score the match is selected and the "
-        "confidence tier is derived from."
+        "Weighted composite match score: 0.65·Jaccard + 0.20·module match + 0.15·coverage "
+        "(module match = 1 when the client and EY entitlement share the same Module, "
+        "else 0; coverage = matched ÷ client privilege count). This is the score the "
+        "match is selected and the confidence tier is derived from."
     ),
     "Client Privilege Count": (
         "Number of distinct privileges held by the client entitlement."
@@ -128,13 +141,12 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
         "the client-side gap (privileges not covered by the EY standard)."
     ),
     "Match Confidence": (
-        "Tier for mapped entitlements (blended score ≥ 30%): High = 70%+, "
-        "Medium = 50–69%, Low = 30–49%. Below 30% the entitlement is 'Not Mapped'; "
-        "'None' = 0% overlap."
+        "Tier for mapped entitlements (composite score ≥ 30%): High = 70%+, "
+        "Medium = 50–69%, Low = 30–49%. Below 30% the entitlement is 'Not Mapped'."
     ),
     "Runner-Up EY Entitlements": (
         "The 2nd and 3rd best EY entitlement candidates, with their match counts and "
-        "blended confidence scores. Useful when the best match is imperfect — a "
+        "composite confidence scores. Useful when the best match is imperfect — a "
         "runner-up may cover privileges the best match misses."
     ),
 }
@@ -169,8 +181,8 @@ def run_mapping(
     """Full entitlement mapping pipeline.
 
     Args:
-        client_df: Pandas DataFrame with columns [Entitlement Name, Privilege Code]
-        ey_df:     Pandas DataFrame with the same two columns for the EY ruleset
+        client_df: Pandas DataFrame with columns [Entitlement Name, Privilege Code, Module]
+        ey_df:     Pandas DataFrame with the same three columns for the EY ruleset
         progress_callback: Called at key milestones with (percent: int, message: str)
 
     Returns:
@@ -188,6 +200,8 @@ def run_mapping(
         c_priv_col = _find_col(client_df, "Privilege Code")
         e_ent_col  = _find_col(ey_df, "Entitlement Name")
         e_priv_col = _find_col(ey_df, "Privilege Code")
+        c_mod_col  = _find_col(client_df, "Module")
+        e_mod_col  = _find_col(ey_df, "Module")
 
         # Group privileges per entitlement — groupby+set auto-deduplicates
         client_groups: dict[str, set] = (
@@ -197,6 +211,22 @@ def run_mapping(
             ey_df.groupby(e_ent_col)[e_priv_col].apply(set).to_dict()
         )
         all_ey_privs: set = set(ey_df[e_priv_col])
+
+        # One Module per entitlement: first non-blank value in the group (rows of an
+        # entitlement share a Module in practice). Normalized for exact comparison.
+        def _module_groups(df: pd.DataFrame, ent_col: str, mod_col: str) -> dict[str, str]:
+            out: dict[str, str] = {}
+            for ent, sub in df.groupby(ent_col)[mod_col]:
+                norm = ""
+                for v in sub:
+                    norm = _normalize_module(v)
+                    if norm:
+                        break
+                out[str(ent)] = norm
+            return out
+
+        client_modules = _module_groups(client_df, c_ent_col, c_mod_col)
+        ey_modules      = _module_groups(ey_df, e_ent_col, e_mod_col)
 
         total = len(client_groups)
         _cb(10, f"Scoring {total:,} client entitlements against {len(ey_groups):,} EY entitlements…")
@@ -218,21 +248,22 @@ def run_mapping(
                     "Privilege Match Count":           f"0/{len(c_privs)}",
                     "Jaccard Similarity (%)":          "0%",
                     "Confidence Score (%)":            "0%",
+                    "Match Confidence":                "Not Mapped",
                     "Client Privilege Count":          len(c_privs),
                     "EY Privilege Count":              0,
                     "EY Privileges Missing in Client": 0,
                     "Client Privileges Missing in EY": len(c_privs),
-                    "Match Confidence":                "None",
                     "Runner-Up EY Entitlements":       "",
                 })
                 continue
 
             # ── Score every EY entitlement ────────────────────────────────────
-            # Blended confidence = 0.60·Jaccard + 0.30·coverage + 0.10·name_sim, where
-            # coverage = matched / client_total, name_sim = abbreviation-aware name match.
-            # Selection sorts by blended score DESC, then overlap count DESC as a tie-break.
-            # Name-priority override then prefers candidates with name_sim ≥ 0.90 if they
-            # clear MATCH_THRESHOLD, to avoid mismatches based on privilege overlap alone.
+            # Composite confidence = 0.65·Jaccard + 0.20·module_match + 0.15·coverage,
+            # where coverage = matched / client_total and module_match = 1.0 when the two
+            # entitlements share the same normalized Module name, else 0.0.
+            # Selection sorts by composite DESC, then overlap count DESC, then name
+            # similarity DESC as the FINAL tiebreaker (name is NOT in the numeric score).
+            c_module = client_modules.get(c_ent, "")
             scored: list[tuple] = []
             for e_ent, e_privs in ey_groups.items():
                 matched = c_privs & e_privs
@@ -242,29 +273,18 @@ def run_mapping(
                 union_size    = len(c_privs | e_privs)
                 jaccard       = overlap_count / union_size if union_size else 0
                 coverage      = overlap_count / len(c_privs) if c_privs else 0
+                e_module      = ey_modules.get(e_ent, "")
+                module_match  = 1.0 if (c_module and c_module == e_module) else 0.0
+                composite     = W_JACCARD * jaccard + W_MODULE * module_match + W_COVERAGE * coverage
                 name_sim      = normalized_name_similarity(c_ent, e_ent)
-                blended       = 0.60 * jaccard + 0.30 * coverage + 0.10 * name_sim
-                scored.append((e_ent, matched, overlap_count, jaccard, e_privs, blended, name_sim))
+                scored.append((e_ent, matched, overlap_count, jaccard, e_privs, composite, name_sim))
 
-            scored.sort(key=lambda x: (x[5], x[2]), reverse=True)
+            # Sort by composite, then overlap count, then name similarity (tiebreaker only).
+            scored.sort(key=lambda x: (x[5], x[2], x[6]), reverse=True)
 
-            # ── Name-priority override ────────────────────────────────────────
-            # Privilege math can prefer a differently-named EY entitlement that
-            # happens to contain all the client's privileges. When a candidate's
-            # name nearly matches (name_sim ≥ NAME_OVERRIDE_THRESHOLD) AND it is
-            # itself a plausible match (blended ≥ MATCH_THRESHOLD/100), prefer it.
-            name_matches = [
-                s for s in scored
-                if s[6] >= NAME_OVERRIDE_THRESHOLD and s[5] >= MATCH_THRESHOLD / 100
-            ]
-            if name_matches:
-                # highest name_sim, then highest blended
-                chosen = max(name_matches, key=lambda x: (x[6], x[5]))
-                scored = [chosen] + [s for s in scored if s is not chosen]
+            best_ent, matched_privs, _, best_jaccard, best_e_privs, best_composite = scored[0][:6]
 
-            best_ent, matched_privs, _, best_jaccard, best_e_privs, best_blended = scored[0][:6]
-
-            # Runner-ups (2nd & 3rd) — show blended confidence and overlap.
+            # Runner-ups (2nd & 3rd) — show composite confidence and overlap.
             runners = [
                 f"{s[0]} ({s[2]}/{len(c_privs)}, {round(s[5] * 100)}%)"
                 for s in scored[1:3]
@@ -272,9 +292,9 @@ def run_mapping(
 
             matched_count   = len(matched_privs)
             jaccard_pct     = round(best_jaccard * 100)
-            confidence_pct  = round(best_blended * 100)
+            confidence_pct  = round(best_composite * 100)
 
-            # ── Match decision + confidence tier (blended confidence score %) ──
+            # ── Match decision + confidence tier (composite confidence score %) ──
             # Below MATCH_THRESHOLD the best candidate is too weak to trust, so the
             # entitlement is reported as "Not Mapped" (the numeric columns are kept
             # for transparency). This is the single source of truth for "is this
@@ -296,11 +316,11 @@ def run_mapping(
                 "Privilege Match Count":           f"{matched_count}/{len(c_privs)}",
                 "Jaccard Similarity (%)":          f"{jaccard_pct}%",
                 "Confidence Score (%)":            f"{confidence_pct}%",
+                "Match Confidence":                confidence,
                 "Client Privilege Count":          len(c_privs),
                 "EY Privilege Count":              len(best_e_privs),
                 "EY Privileges Missing in Client": len(best_e_privs - c_privs),
                 "Client Privileges Missing in EY": len(c_privs - best_e_privs),
-                "Match Confidence":                confidence,
                 "Runner-Up EY Entitlements":       " | ".join(runners) if runners else "",
             })
 

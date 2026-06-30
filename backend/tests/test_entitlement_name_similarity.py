@@ -1,4 +1,5 @@
-"""Unit tests for the name-similarity helper used by entitlement mapping.
+"""Unit tests for entitlement mapping: name-similarity helper, Module-aware
+composite scoring, name as a final tiebreaker, and the Manufacturing regression.
 
 Run:
     backend/venv/Scripts/python.exe -m pytest backend/tests/test_entitlement_name_similarity.py -v
@@ -32,11 +33,6 @@ def test_identical_names_score_one():
 
 def test_ap_vs_ar_scores_low():
     # Differ by one letter as raw strings, but semantically distinct after expansion.
-    # Threshold is 0.75: the actual score (~0.72) is well below the "good match"
-    # threshold of 0.9, confirming AP and AR are not confused. (Brief said < 0.7
-    # but token_sort_ratio on expanded tokens scores ~0.725 with this RapidFuzz
-    # version — threshold relaxed to 0.75 to match observed output while preserving
-    # the semantic intent of the test.)
     assert normalized_name_similarity("Process AP Payments", "Process AR Payments") < 0.75
 
 
@@ -55,7 +51,8 @@ from engines.entitlement_mapping_engine import run_mapping
 
 
 def _df(rows):
-    return pd.DataFrame(rows, columns=["Entitlement Name", "Privilege Code"])
+    """Rows are (Entitlement Name, Privilege Code, Module). Module may be ""."""
+    return pd.DataFrame(rows, columns=["Entitlement Name", "Privilege Code", "Module"])
 
 
 def _match_for(result_df, client_ent):
@@ -63,24 +60,25 @@ def _match_for(result_df, client_ent):
     return row["EY Entitlement Match"]
 
 
-def test_ap_ar_no_longer_swapped():
+def test_ap_ar_disambiguated_by_name_tiebreaker():
     # Both AP and AR client entitlements share identical privilege overlap with both
-    # EY candidates; only the name can disambiguate.
+    # EY candidates and the same (blank) module, so composite scores tie — name
+    # similarity is the FINAL tiebreaker and must keep AP→AP, AR→AR.
     client = _df([
-        ("Process AP Payments", "P1"),
-        ("Process AP Payments", "P2"),
-        ("Process AR Payments", "P3"),
-        ("Process AR Payments", "P4"),
+        ("Process AP Payments", "P1", ""),
+        ("Process AP Payments", "P2", ""),
+        ("Process AR Payments", "P3", ""),
+        ("Process AR Payments", "P4", ""),
     ])
     ey = _df([
-        ("Process AP Payments", "P1"),
-        ("Process AP Payments", "P2"),
-        ("Process AP Payments", "P3"),
-        ("Process AP Payments", "P4"),
-        ("Process AR Payments", "P1"),
-        ("Process AR Payments", "P2"),
-        ("Process AR Payments", "P3"),
-        ("Process AR Payments", "P4"),
+        ("Process AP Payments", "P1", ""),
+        ("Process AP Payments", "P2", ""),
+        ("Process AP Payments", "P3", ""),
+        ("Process AP Payments", "P4", ""),
+        ("Process AR Payments", "P1", ""),
+        ("Process AR Payments", "P2", ""),
+        ("Process AR Payments", "P3", ""),
+        ("Process AR Payments", "P4", ""),
     ])
     res = run_mapping(client, ey)
     assert res.success
@@ -88,99 +86,89 @@ def test_ap_ar_no_longer_swapped():
     assert _match_for(res.data, "Process AR Payments") == "Process AR Payments"
 
 
-def test_asset_reimbursement_prefers_named_match():
-    # Client Reimbursement (3 privs) fully contained in EY Configuration (superset),
-    # but only shares 1 priv with EY Reimbursement. Name term should tip it back.
+def test_module_match_breaks_a_priv_tie():
+    # Two EY candidates with identical privilege overlap; the one sharing the client's
+    # Module wins via the 20% module term (name is irrelevant here).
     client = _df([
-        ("Asset Reimbursement", "A1"),
-        ("Asset Reimbursement", "A2"),
-        ("Asset Reimbursement", "A3"),
+        ("Client Ent X", "P1", "Fixed Assets"),
+        ("Client Ent X", "P2", "Fixed Assets"),
     ])
     ey = _df([
-        ("Asset Configuration", "A1"),
-        ("Asset Configuration", "A2"),
-        ("Asset Configuration", "A3"),
-        ("Asset Configuration", "A4"),
-        ("Asset Configuration", "A5"),
-        ("Asset Reimbursement", "A1"),
+        ("EY Alpha", "P1", "Accounts Payable"),
+        ("EY Alpha", "P2", "Accounts Payable"),
+        ("EY Beta",  "P1", "Fixed Assets"),
+        ("EY Beta",  "P2", "Fixed Assets"),
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    assert _match_for(res.data, "Client Ent X") == "EY Beta"
+
+
+def test_module_match_outweighs_better_privilege_fit():
+    # EY "Asset Configuration" is a stronger pure-privilege fit, but client
+    # "Asset Reimbursement" shares the Module with EY "Asset Reimbursement", and the
+    # 20% module bonus tips the composite back to the correctly-named entitlement.
+    client = _df([
+        ("Asset Reimbursement", "A1", "Fixed Assets"),
+        ("Asset Reimbursement", "A2", "Fixed Assets"),
+        ("Asset Reimbursement", "A3", "Fixed Assets"),
+    ])
+    ey = _df([
+        ("Asset Configuration", "A1", "General Ledger"),
+        ("Asset Configuration", "A2", "General Ledger"),
+        ("Asset Configuration", "A3", "General Ledger"),
+        ("Asset Reimbursement", "A1", "Fixed Assets"),
+        ("Asset Reimbursement", "A2", "Fixed Assets"),
+        ("Asset Reimbursement", "A3", "Fixed Assets"),
     ])
     res = run_mapping(client, ey)
     assert res.success
     assert _match_for(res.data, "Asset Reimbursement") == "Asset Reimbursement"
 
 
-def test_name_override_skips_subthreshold_name_match():
-    # Exercises the blended >= 0.30 guard in the name-priority override.
-    #
-    # Client entitlement "Asset Reimbursement" has 10 privs {P1..P10}.
-    #
-    # EY candidate A — "Asset Reimbursement" (name_sim ≈ 1.0, shares only P1):
-    #   union = 10 + 10 - 1 = 19, jaccard = 1/19 ≈ 0.0526
-    #   coverage = 1/10 = 0.10, name_sim = 1.0
-    #   blended = 0.60*0.0526 + 0.30*0.10 + 0.10*1.0 ≈ 0.162  → < 0.30, guard rejects
-    #
-    # EY candidate B — "Asset Configuration" (name_sim ≈ 0, shares P1..P8):
-    #   union = 10 + 8 - 8 = 10, jaccard = 8/10 = 0.80
-    #   coverage = 8/10 = 0.80, name_sim ≈ 0
-    #   blended = 0.60*0.80 + 0.30*0.80 + 0.10*0 = 0.72  → >= 0.30, wins
-    #
-    # Expected: override must NOT fire for candidate A; "Asset Configuration" is returned.
+def test_manufacturing_regression_resolved():
+    # The known regression: client "Process Manufacturing Transactions" was mapping to
+    # EY "Process Inventory Transaction". With the same Module ("Manufacturing") shared
+    # only with the correct EY entitlement, the 20% module term must pull it to
+    # "Process Manufacturing Transaction".
     client = _df([
-        ("Asset Reimbursement", "P1"),
-        ("Asset Reimbursement", "P2"),
-        ("Asset Reimbursement", "P3"),
-        ("Asset Reimbursement", "P4"),
-        ("Asset Reimbursement", "P5"),
-        ("Asset Reimbursement", "P6"),
-        ("Asset Reimbursement", "P7"),
-        ("Asset Reimbursement", "P8"),
-        ("Asset Reimbursement", "P9"),
-        ("Asset Reimbursement", "P10"),
+        ("Process Manufacturing Transactions", "M1", "Manufacturing"),
+        ("Process Manufacturing Transactions", "M2", "Manufacturing"),
+        ("Process Manufacturing Transactions", "M3", "Manufacturing"),
     ])
     ey = _df([
-        # Candidate A: name matches but blended < 0.30 (1 shared priv, 9 unique)
-        ("Asset Reimbursement", "P1"),
-        ("Asset Reimbursement", "Q1"),
-        ("Asset Reimbursement", "Q2"),
-        ("Asset Reimbursement", "Q3"),
-        ("Asset Reimbursement", "Q4"),
-        ("Asset Reimbursement", "Q5"),
-        ("Asset Reimbursement", "Q6"),
-        ("Asset Reimbursement", "Q7"),
-        ("Asset Reimbursement", "Q8"),
-        ("Asset Reimbursement", "Q9"),
-        # Candidate B: different name, high privilege overlap (blended 0.72)
-        ("Asset Configuration", "P1"),
-        ("Asset Configuration", "P2"),
-        ("Asset Configuration", "P3"),
-        ("Asset Configuration", "P4"),
-        ("Asset Configuration", "P5"),
-        ("Asset Configuration", "P6"),
-        ("Asset Configuration", "P7"),
-        ("Asset Configuration", "P8"),
+        # Inventory shares heavy privilege overlap (the old, wrong winner)…
+        ("Process Inventory Transaction", "M1", "Inventory"),
+        ("Process Inventory Transaction", "M2", "Inventory"),
+        ("Process Inventory Transaction", "M3", "Inventory"),
+        ("Process Inventory Transaction", "M4", "Inventory"),
+        # …Manufacturing shares the same Module as the client.
+        ("Process Manufacturing Transaction", "M1", "Manufacturing"),
+        ("Process Manufacturing Transaction", "M2", "Manufacturing"),
     ])
     res = run_mapping(client, ey)
     assert res.success
-    # Guard correctly blocks the sub-threshold name-matched candidate
-    assert _match_for(res.data, "Asset Reimbursement") == "Asset Configuration"
+    assert _match_for(res.data, "Process Manufacturing Transactions") == \
+        "Process Manufacturing Transaction"
 
 
-def test_name_override_skips_implausible_match():
-    # EY "Asset Reimbursement" shares ZERO privs here, so its blended is 0 (<30%):
-    # the override must NOT pick it despite the perfect name match. Falls back to the
-    # best privilege match.
-    client = _df([
-        ("Asset Reimbursement", "A1"),
-        ("Asset Reimbursement", "A2"),
-        ("Asset Reimbursement", "A3"),
-    ])
-    ey = _df([
-        ("Asset Configuration", "A1"),
-        ("Asset Configuration", "A2"),
-        ("Asset Configuration", "A3"),
-        ("Asset Reimbursement", "Z9"),  # no overlap with client
-    ])
+def test_match_confidence_has_no_none_tier():
+    # Task 2: the "None" tier is removed. A zero-overlap entitlement now reads
+    # "Not Mapped" (never "None").
+    client = _df([("Lonely Ent", "Z1", "Misc")])
+    ey = _df([("EY Unrelated", "Q1", "Other")])
     res = run_mapping(client, ey)
     assert res.success
-    # Reimbursement candidate has no overlap → not even in `scored` → override can't fire
-    assert _match_for(res.data, "Asset Reimbursement") == "Asset Configuration"
+    row = res.data[res.data["Client Entitlement"] == "Lonely Ent"].iloc[0]
+    assert row["Match Confidence"] == "Not Mapped"
+    assert "None" not in set(res.data["Match Confidence"])
+
+
+def test_match_confidence_column_after_score():
+    # Task 3c: Match Confidence sits immediately after Confidence Score (%).
+    client = _df([("Ent A", "P1", "M")])
+    ey = _df([("Ent A", "P1", "M")])
+    res = run_mapping(client, ey)
+    assert res.success
+    cols = list(res.data.columns)
+    assert cols.index("Match Confidence") == cols.index("Confidence Score (%)") + 1

@@ -40,7 +40,7 @@ SHEET_REQUIRED_COLS: dict[str, set[str]] = {
         "Control Name", "Risk Ranking", "Entitlement", "Side", "Module(s)",
     },
     "Entitlement to Privilege": {
-        "Entitlement Name", "Privilege Name", "Privilege Code",
+        "Entitlement Name", "Privilege Name", "Privilege Code", "Module",
     },
 }
 
