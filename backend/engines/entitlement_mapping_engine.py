@@ -2,14 +2,16 @@
 
 Algorithm: map each client entitlement to the best-matching EY entitlement by a
 weighted composite confidence score:
-  score = 0.65 · Jaccard + 0.20 · module_match + 0.15 · coverage
+  score = 0.65 · Jaccard + 0.20 · module_match + 0.10 · coverage + 0.05 · name_sim
   (coverage = matched / client_total; module_match = 1.0 when the two entitlements
-   share the same normalized Module name, else 0.0)
-Selection sorts by this composite score. Name similarity is NOT part of the numeric
-score — it is used only as a final tiebreaker when two candidates have the same
-composite score (and the same overlap count). When the best score is below
-MATCH_THRESHOLD the entitlement is reported as "Not Mapped"; this is the single
-source of truth that downstream control/SA mapping keys off.
+   share the same normalized Module name, else 0.0; name_sim = abbreviation-aware
+   entitlement-name similarity)
+Selection sorts by this composite score, then a SOFT name-priority re-ranker
+promotes a near-exact name match (name_sim >= NAME_PRIORITY_FLOOR) when it is within
+NAME_PRIORITY_MARGIN of the leader — this recovers near-subset mismatches that raw
+overlap would win. When the best score is below MATCH_THRESHOLD the entitlement is
+reported as "Not Mapped"; this is the single source of truth that downstream
+control/SA mapping keys off.
 
 Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 """
@@ -29,12 +31,24 @@ from rapidfuzz import fuzz
 # so 30 separates them. Revisit with more labelled examples if matches drift.
 MATCH_THRESHOLD = 30
 
-# Composite confidence weights. Jaccard dominates; an exact Module-name match adds a
-# fixed bonus; privilege coverage is the smallest term. Name similarity is deliberately
-# NOT weighted here — it is only a tiebreaker when the composite scores tie.
-W_JACCARD = 0.65
-W_MODULE  = 0.20
-W_COVERAGE = 0.15
+# Composite confidence weights (must sum to 1.0). Jaccard dominates; an exact
+# Module-name match adds a fixed bonus; privilege coverage and abbreviation-aware
+# name similarity are the smaller terms.
+W_JACCARD  = 0.65
+W_MODULE   = 0.20
+W_COVERAGE = 0.10
+W_NAME     = 0.05
+
+# Soft name-priority re-ranker. After sorting by composite, a trailing candidate
+# whose name is a near-exact match (name_sim >= NAME_PRIORITY_FLOOR) AND whose
+# composite is within NAME_PRIORITY_MARGIN of the leader is promoted over the
+# leader. This recovers the case where a client entitlement's privileges are a
+# near-subset of a LARGER, differently-named EY entitlement (which would otherwise
+# win on raw overlap) — e.g. client "Maintain Supplier Master" vs the bloated
+# "Process Supplier Portal Transaction". The margin guard keeps name from ever
+# overriding a clearly-better privilege match.
+NAME_PRIORITY_FLOOR  = 0.90
+NAME_PRIORITY_MARGIN = 0.30
 
 
 # Abbreviation/synonym map for name-similarity scoring. Keys are lowercase tokens
@@ -106,9 +120,9 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
     ),
     "EY Entitlement Match": (
         "The best-matching EY standard entitlement, selected by the composite "
-        "confidence score (0.65·Jaccard + 0.20·module match + 0.15·coverage). 'Not Mapped' means the "
-        "best candidate scored below the match threshold; '—' means no EY "
-        "entitlement shares any privilege with this client entitlement."
+        "confidence score (0.65·Jaccard + 0.20·module match + 0.10·coverage + 0.05·name). "
+        "'Not Mapped' means the best candidate scored below the match threshold; "
+        "'—' means no EY entitlement shares any privilege with this client entitlement."
     ),
     "Privilege Match Count": (
         "Number of client privileges found in the matched EY entitlement, expressed "
@@ -121,9 +135,10 @@ COLUMN_DESCRIPTIONS: dict[str, str] = {
         "entitlement contains many privileges beyond what the client holds."
     ),
     "Confidence Score (%)": (
-        "Weighted composite match score: 0.65·Jaccard + 0.20·module match + 0.15·coverage "
-        "(module match = 1 when the client and EY entitlement share the same Module, "
-        "else 0; coverage = matched ÷ client privilege count). This is the score the "
+        "Weighted composite match score: 0.65·Jaccard + 0.20·module match + "
+        "0.10·coverage + 0.05·name (module match = 1 when the client and EY entitlement "
+        "share the same Module, else 0; coverage = matched ÷ client privilege count; "
+        "name = abbreviation-aware entitlement-name similarity). This is the score the "
         "match is selected and the confidence tier is derived from."
     ),
     "Client Privilege Count": (
@@ -258,11 +273,11 @@ def run_mapping(
                 continue
 
             # ── Score every EY entitlement ────────────────────────────────────
-            # Composite confidence = 0.65·Jaccard + 0.20·module_match + 0.15·coverage,
-            # where coverage = matched / client_total and module_match = 1.0 when the two
-            # entitlements share the same normalized Module name, else 0.0.
-            # Selection sorts by composite DESC, then overlap count DESC, then name
-            # similarity DESC as the FINAL tiebreaker (name is NOT in the numeric score).
+            # Composite = 0.65·Jaccard + 0.20·module_match + 0.10·coverage + 0.05·name_sim,
+            # where coverage = matched / client_total, module_match = 1.0 when the two
+            # entitlements share the same normalized Module name (else 0.0), and name_sim
+            # is the abbreviation-aware entitlement-name similarity.
+            # Selection sorts by composite DESC, then overlap count DESC, then name_sim DESC.
             c_module = client_modules.get(c_ent, "")
             scored: list[tuple] = []
             for e_ent, e_privs in ey_groups.items():
@@ -275,12 +290,29 @@ def run_mapping(
                 coverage      = overlap_count / len(c_privs) if c_privs else 0
                 e_module      = ey_modules.get(e_ent, "")
                 module_match  = 1.0 if (c_module and c_module == e_module) else 0.0
-                composite     = W_JACCARD * jaccard + W_MODULE * module_match + W_COVERAGE * coverage
                 name_sim      = normalized_name_similarity(c_ent, e_ent)
+                composite     = (W_JACCARD * jaccard + W_MODULE * module_match
+                                 + W_COVERAGE * coverage + W_NAME * name_sim)
                 scored.append((e_ent, matched, overlap_count, jaccard, e_privs, composite, name_sim))
 
-            # Sort by composite, then overlap count, then name similarity (tiebreaker only).
             scored.sort(key=lambda x: (x[5], x[2], x[6]), reverse=True)
+
+            # ── Soft name-priority re-ranker ──────────────────────────────────
+            # Among candidates within NAME_PRIORITY_MARGIN of the leader's composite,
+            # prefer one whose name is a near-exact match (name_sim >= floor). This
+            # rescues the "client privileges are a near-subset of a larger,
+            # differently-named EY entitlement" pattern that raw overlap would win,
+            # without letting name override a clearly-better privilege match.
+            leader_composite = scored[0][5]
+            close = [
+                s for s in scored
+                if leader_composite - s[5] <= NAME_PRIORITY_MARGIN
+                and s[6] >= NAME_PRIORITY_FLOOR
+            ]
+            if close:
+                chosen = max(close, key=lambda x: (x[6], x[5]))
+                if chosen is not scored[0]:
+                    scored = [chosen] + [s for s in scored if s is not chosen]
 
             best_ent, matched_privs, _, best_jaccard, best_e_privs, best_composite = scored[0][:6]
 

@@ -35,7 +35,7 @@ const COLUMN_DESCRIPTIONS: Record<string, string> = {
   'Entitlement': 'An entitlement name from the source ruleset, or its best target match.',
   'Privilege Match Count': 'Number of source privileges found in the matched target entitlement (matched/total).',
   'Jaccard Similarity (%)': 'Overlap ÷ union of the two privilege sets.',
-  'Confidence Score (%)': 'Weighted composite match score: 0.65×Jaccard + 0.20×module match + 0.15×coverage (module match = 1 when the source and target entitlement share the same Module, else 0; coverage = matched ÷ source privilege count). The match is selected, and its confidence tier derived, from this score.',
+  'Confidence Score (%)': 'Weighted composite match score: 0.65×Jaccard + 0.20×module match + 0.10×coverage + 0.05×name (module match = 1 when the source and target entitlement share the same Module, else 0; coverage = matched ÷ source privilege count; name = abbreviation-aware entitlement-name similarity). The match is selected, and its confidence tier derived, from this score.',
   'Client Privilege Count': 'Number of distinct privileges held by the source entitlement.',
   'EY Privilege Count': 'Number of distinct privileges held by the matched target entitlement.',
   'EY Privileges Missing in Client': 'Privileges in the matched target entitlement that the source entitlement lacks — the target-side gap.',

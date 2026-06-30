@@ -60,10 +60,10 @@ def _match_for(result_df, client_ent):
     return row["EY Entitlement Match"]
 
 
-def test_ap_ar_disambiguated_by_name_tiebreaker():
+def test_ap_ar_disambiguated_by_name():
     # Both AP and AR client entitlements share identical privilege overlap with both
-    # EY candidates and the same (blank) module, so composite scores tie — name
-    # similarity is the FINAL tiebreaker and must keep AP→AP, AR→AR.
+    # EY candidates and the same (blank) module, so Jaccard/coverage tie — the 5% name
+    # term (and name tiebreak) must keep AP→AP, AR→AR.
     client = _df([
         ("Process AP Payments", "P1", ""),
         ("Process AP Payments", "P2", ""),
@@ -150,6 +150,51 @@ def test_manufacturing_regression_resolved():
     assert res.success
     assert _match_for(res.data, "Process Manufacturing Transactions") == \
         "Process Manufacturing Transaction"
+
+
+def _named(name, n_shared, n_unique, module, shared_prefix="S"):
+    """Build (n_shared shared + n_unique unique) priv rows for one entitlement."""
+    rows = [(name, f"{shared_prefix}{i}", module) for i in range(n_shared)]
+    rows += [(name, f"{name[:2]}U{i}", module) for i in range(n_unique)]
+    return rows
+
+
+def test_supplier_master_prefers_correctly_named_match():
+    # Real reported case. Client "Maintain Supplier Master" (31 privs) was mapping to
+    # the bloated "Process Supplier Portal Transaction" (35 privs, 21 shared, J≈0.47)
+    # instead of "Maintain Supplier Master" (29 privs, 19 shared, J≈0.46). Same module
+    # for both candidates, so module can't decide — the 5% name term + soft re-ranker
+    # must select the correctly-named entitlement.
+    client = _df([("Maintain Supplier Master", f"S{i}", "Procurement") for i in range(31)])
+    ey = _df(
+        _named("Maintain Supplier Master", 19, 10, "Procurement")
+        + _named("Process Supplier Portal Transaction", 21, 14, "Procurement")
+    )
+    res = run_mapping(client, ey)
+    assert res.success
+    assert _match_for(res.data, "Maintain Supplier Master") == "Maintain Supplier Master"
+
+
+def test_subset_pattern_recovered_by_name_priority():
+    # Client privileges are a near-subset of a LARGER differently-named EY entitlement
+    # (wins on raw overlap), while the correctly-named EY entitlement shares fewer
+    # privileges. The soft name-priority re-ranker must recover the named match.
+    client = _df([
+        ("Asset Reimbursement", "A1", ""),
+        ("Asset Reimbursement", "A2", ""),
+        ("Asset Reimbursement", "A3", ""),
+    ])
+    ey = _df([
+        ("Asset Configuration", "A1", ""),
+        ("Asset Configuration", "A2", ""),
+        ("Asset Configuration", "A3", ""),
+        ("Asset Configuration", "B1", ""),
+        ("Asset Configuration", "B2", ""),
+        ("Asset Reimbursement", "A1", ""),  # correct name, only 1 shared priv
+    ])
+    res = run_mapping(client, ey)
+    assert res.success
+    assert _match_for(res.data, "Asset Reimbursement") == "Asset Reimbursement"
 
 
 def test_match_confidence_has_no_none_tier():
