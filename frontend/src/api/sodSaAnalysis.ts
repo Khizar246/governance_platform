@@ -109,3 +109,9 @@ export async function downloadResults(jobId: string, filename: string): Promise<
 export async function cancelJob(jobId: string): Promise<void> {
   await api.delete(`/api/sod-sa/job/${jobId}`)
 }
+
+/** Size in bytes of a bundled seeded file, via HEAD Content-Length. 0 if unavailable. */
+export async function getSeededFileSize(url: string): Promise<number> {
+  const resp = await api.head(url)
+  return Number(resp.headers['content-length'] ?? 0)
+}

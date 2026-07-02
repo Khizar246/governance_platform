@@ -15,7 +15,7 @@ import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
-  getSummary, getSheetResults, getFilterOptions,
+  getSummary, getSheetResults, getFilterOptions, getSeededFileSize,
 } from '../api/sodSaAnalysis'
 import type { SODSASummaryData, SODSATopItem } from '../api/sodSaAnalysis'
 import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
@@ -183,6 +183,7 @@ export default function SODSAAnalysis() {
   const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
   const [stagedJobId, setStagedJobId] = useState<string | null>(null)
   const [validationFailed, setValidationFailed] = useState(false)
+  const [seededSizes, setSeededSizes] = useState<{ ruleset: number; fpDb: number }>({ ruleset: 0, fpDb: 0 })
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Results step state
@@ -287,6 +288,14 @@ export default function SODSAAnalysis() {
     }, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
   }, [step, jobId])
+
+  // Real byte sizes for the bundled seeded files (shown in the upload cards).
+  useEffect(() => {
+    Promise.all([
+      getSeededFileSize('/api/seeded/ruleset.xlsx').catch(() => 0),
+      getSeededFileSize('/api/seeded/fp_database.xlsx').catch(() => 0),
+    ]).then(([ruleset, fpDb]) => setSeededSizes({ ruleset, fpDb }))
+  }, [])
 
   // ── Fetch summary when results appear ────────────────────────────────────────
   useEffect(() => {
@@ -655,7 +664,7 @@ export default function SODSAAnalysis() {
                   status={rulesetFile || rulesetSeeded ? 'success' : 'idle'}
                   fileInfo={
                     rulesetFile ? { name: rulesetFile.name, size: rulesetFile.size }
-                    : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: 0 }
+                    : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: seededSizes.ruleset }
                     : null
                   }
                   onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); setValidationFailed(false) }}
@@ -681,7 +690,7 @@ export default function SODSAAnalysis() {
                     status={fpDbFile || fpDbSeeded ? 'success' : 'idle'}
                     fileInfo={
                       fpDbFile ? { name: fpDbFile.name, size: fpDbFile.size }
-                      : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: 0 }
+                      : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: seededSizes.fpDb }
                       : null
                     }
                     onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); setValidationFailed(false) }}
