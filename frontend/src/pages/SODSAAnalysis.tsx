@@ -380,6 +380,7 @@ export default function SODSAAnalysis() {
     setEntitlementWarnings([])
     setRecommendedWarnings([])
     setStagedJobId(null)
+    setJobId(null)
     // Show the Processing step while uploading/validating; validation failures
     // drop the user back on the Upload step with the error rendered there.
     setStep('running')
