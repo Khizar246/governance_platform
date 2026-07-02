@@ -126,12 +126,15 @@ def _patch_selenium(monkeypatch):
         return _FakePopup(driver.nav_items)
 
     # _process_element: emulate click + Tasks-panel + screenshot using FakeDriver.
-    def fake_process(driver, interactor, sel, shot_dir, el_id, title, index, logger):
+    # Mirrors the real signature: keyword-only capture_tasks/task_start_index and a
+    # (work_area_result, task_results) tuple return.
+    def fake_process(driver, interactor, sel, shot_dir, el_id, title, index, logger,
+                     *, capture_tasks=False, task_start_index=0):
         if title in driver.fail_titles:
             raise RuntimeError(f"simulated failure on {title}")
         status = "captured_no_task" if title in driver.no_task_titles else "captured"
         shot = rte._capture_screenshot(driver, shot_dir, title, index)
-        return rte.ElementResult(index=index, title=title, screenshot=shot, status=status)
+        return rte.ElementResult(index=index, title=title, screenshot=shot, status=status), []
 
     # _Interactor.click is only used for nav-return + (real) popup open; make it a no-op.
     monkeypatch.setattr(rte, "_login", fake_login)
@@ -166,18 +169,22 @@ def _items(n):
 
 
 def test_run_captures_all(tmp_path):
+    # The engine also captures the Home page (index 0) and the open Navigator
+    # popup (index 1) before the work areas, so counts are areas + 2.
     driver = FakeDriver(_items(4))
     res = run("http://x", "u", "p", str(tmp_path), _LOG,
               driver_factory=_make_factory(driver))
     assert isinstance(res, EngineResult) and res.success
     data = res.data
-    assert data["captured"] == 4 and data["failed"] == 0 and data["skipped"] == 0
-    assert len(data["elements"]) == 4
+    assert data["captured"] == 6 and data["failed"] == 0 and data["skipped"] == 0
+    assert len(data["elements"]) == 6
     # Real PNG files exist on disk.
     pngs = [f for f in os.listdir(tmp_path) if f.endswith(".png")]
-    assert len(pngs) == 4
-    # Numbering starts at 2 (matches the original).
-    assert data["elements"][0].index == 2
+    assert len(pngs) == 6
+    # Home + Navigator preamble, then work-area numbering starts at 2.
+    assert data["elements"][0].title == "Home Page" and data["elements"][0].index == 0
+    assert data["elements"][1].index == 1
+    assert data["elements"][2].index == 2
 
 
 def test_no_task_panel_status(tmp_path):
@@ -187,7 +194,7 @@ def test_no_task_panel_status(tmp_path):
     statuses = {e.title: e.status for e in res.data["elements"]}
     assert statuses["Area 1"] == "captured"
     assert statuses["Area 2"] == "captured_no_task"
-    assert res.data["captured"] == 2  # both count as captured
+    assert res.data["captured"] == 4  # both areas count as captured (+ Home + Navigator)
 
 
 def test_one_element_failure_does_not_abort(tmp_path):
@@ -195,7 +202,8 @@ def test_one_element_failure_does_not_abort(tmp_path):
     res = run("http://x", "u", "p", str(tmp_path), _LOG,
               driver_factory=_make_factory(driver))
     assert res.success
-    assert res.data["captured"] == 2 and res.data["failed"] == 1
+    # 2 areas + Home + Navigator captured; the failing area counts as failed.
+    assert res.data["captured"] == 4 and res.data["failed"] == 1
     bad = next(e for e in res.data["elements"] if e.title == "Area 2")
     assert bad.status == "error" and "simulated failure" in bad.message
 
@@ -216,8 +224,9 @@ def test_max_elements_cap(tmp_path):
     driver = FakeDriver(_items(10))
     res = run("http://x", "u", "p", str(tmp_path), _LOG,
               max_elements=3, driver_factory=_make_factory(driver))
-    assert len(res.data["elements"]) == 3
-    assert res.data["captured"] == 3
+    # Cap applies to work areas only; Home + Navigator are always captured.
+    assert len(res.data["elements"]) == 5
+    assert res.data["captured"] == 5
 
 
 def test_overall_timeout_stops_early(tmp_path, monkeypatch):
@@ -254,7 +263,8 @@ def test_router_full_flow(client, monkeypatch, tmp_path):
     driver = FakeDriver(_items(3), no_task_titles={"Area 3"})
 
     # Patch the engine's default factory so the thread's run_bot uses FakeDriver.
-    monkeypatch.setattr(rte, "_default_chrome_driver", _make_factory(driver))
+    # The real factory takes headless=…, so the fake must accept kwargs too.
+    monkeypatch.setattr(rte, "_default_chrome_driver", lambda **_kw: driver)
     monkeypatch.setattr(rte.time, "sleep", lambda *_: None)
 
     r = client.post("/api/role-testing/run", json={
@@ -273,7 +283,8 @@ def test_router_full_flow(client, monkeypatch, tmp_path):
     assert s["status"] == "complete", s
 
     summary = client.get(f"/api/role-testing/results/{job_id}").json()
-    assert summary["total"] == 3 and summary["captured"] == 3
+    # 3 work areas + Home + Navigator preamble shots.
+    assert summary["total"] == 5 and summary["captured"] == 5
     fname = summary["screenshots"][0]["filename"]
 
     # Serve one image.
