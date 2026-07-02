@@ -372,6 +372,16 @@ export default function SODSAAnalysis() {
     setActiveFilters({})
   }, [])
 
+  // A staged job (recommended-columns pause) snapshots the files at upload time.
+  // Any change to a file source makes it stale — discard it (and the warnings that
+  // came from that upload) so the button reverts to "Run Analysis" and the next
+  // click re-uploads and re-validates the current files.
+  const discardStagedJob = useCallback(() => {
+    setStagedJobId(null)
+    setRecommendedWarnings([])
+    setEntitlementWarnings([])
+  }, [])
+
   const startRun = useCallback(async (id: string) => {
     setJobId(id)
     await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
@@ -653,8 +663,8 @@ export default function SODSAAnalysis() {
                   hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
                   status={roleHierarchyFile ? 'success' : 'idle'}
                   fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
-                  onUpload={(f) => { setRoleHierarchyFile(f); setValidationFailed(false) }}
-                  onRemove={() => setRoleHierarchyFile(null)}
+                  onUpload={(f) => { setRoleHierarchyFile(f); setValidationFailed(false); discardStagedJob() }}
+                  onRemove={() => { setRoleHierarchyFile(null); discardStagedJob() }}
                 />
               </div>
               <div>
@@ -669,13 +679,13 @@ export default function SODSAAnalysis() {
                     : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: seededSizes.ruleset }
                     : null
                   }
-                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); setValidationFailed(false) }}
-                  onRemove={() => { setRulesetFile(null); setRulesetSeeded(false) }}
+                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); setValidationFailed(false); discardStagedJob() }}
+                  onRemove={() => { setRulesetFile(null); setRulesetSeeded(false); discardStagedJob() }}
                 />
                 {!rulesetFile && (
                   <button
                     type="button"
-                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); setValidationFailed(false) }}
+                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); setValidationFailed(false); discardStagedJob() }}
                     className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                   >
                     {rulesetSeeded ? 'Use my own file instead' : 'Use seeded ruleset →'}
@@ -695,13 +705,13 @@ export default function SODSAAnalysis() {
                       : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: seededSizes.fpDb }
                       : null
                     }
-                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); setValidationFailed(false) }}
-                    onRemove={() => { setFpDbFile(null); setFpDbSeeded(false) }}
+                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); setValidationFailed(false); discardStagedJob() }}
+                    onRemove={() => { setFpDbFile(null); setFpDbSeeded(false); discardStagedJob() }}
                   />
                   {!fpDbFile && (
                     <button
                       type="button"
-                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); setValidationFailed(false) }}
+                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); setValidationFailed(false); discardStagedJob() }}
                       className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                     >
                       {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
@@ -722,8 +732,8 @@ export default function SODSAAnalysis() {
                   hint="Columns: User Name, Assigned Role Name"
                   status={userRoleFile ? 'success' : 'idle'}
                   fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
-                  onUpload={(f) => { setUserRoleFile(f); setValidationFailed(false) }}
-                  onRemove={() => setUserRoleFile(null)}
+                  onUpload={(f) => { setUserRoleFile(f); setValidationFailed(false); discardStagedJob() }}
+                  onRemove={() => { setUserRoleFile(null); discardStagedJob() }}
                 />
               </div>
             )}
