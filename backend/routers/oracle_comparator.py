@@ -266,9 +266,10 @@ async def download(job_id: str):
             content={"error": True, "message": "Download not available.", "code": "NOT_FOUND", "details": []},
         )
 
-    job.output_buffer.seek(0)
+    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
+    # other (each seek(0) rewinds the stream the other is mid-way through).
     return StreamingResponse(
-        job.output_buffer,
+        io.BytesIO(job.output_buffer.getvalue()),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
     )

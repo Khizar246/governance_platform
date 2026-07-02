@@ -147,19 +147,23 @@ def _run_thread(
 
 @router.post("/run", response_model=AnalysisResponse)
 async def run(config: RoleTestingRunConfig):
-    if not (config.url.strip() and config.username.strip() and config.password):
+    # URL validity, non-empty credentials, and positive limits are enforced
+    # declaratively by RoleTestingRunConfig (422 on violation). Only
+    # whitespace-only credentials still need a manual check here.
+    if not (config.username.strip() and config.password.strip()):
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": "Oracle URL, username, and password are required.",
                      "code": "VALIDATION_ERROR", "details": []},
         )
+    oracle_url = str(config.url)
 
     job = job_manager.create_job("role_testing")
     shot_dir = _job_dir(job.id)
     shot_dir.mkdir(parents=True, exist_ok=True)
     # Store config WITHOUT the password (never persisted in the job record).
     job_manager.set_config(job.id, {
-        "url": config.url,
+        "url": oracle_url,
         "username": config.username,
         "max_elements": config.max_elements,
         "overall_timeout_seconds": config.overall_timeout_seconds,
@@ -168,15 +172,11 @@ async def run(config: RoleTestingRunConfig):
     })
     job_manager.set_status(job.id, JobStatus.RUNNING, "Starting Role Testing Bot…")
 
-    timeout = (config.overall_timeout_seconds
-               if config.overall_timeout_seconds and config.overall_timeout_seconds > 0
-               else None)
-    max_el = config.max_elements if config.max_elements and config.max_elements > 0 else None
-
     threading.Thread(
         target=_run_thread,
-        args=(job.id, config.url, config.username, config.password,
-              max_el, timeout, config.headless, config.capture_tasks, str(shot_dir)),
+        args=(job.id, oracle_url, config.username, config.password,
+              config.max_elements, config.overall_timeout_seconds,
+              config.headless, config.capture_tasks, str(shot_dir)),
         daemon=True,
     ).start()
 
@@ -242,9 +242,10 @@ async def download(job_id: str):
             content={"error": True, "message": "Download not available.",
                      "code": "NOT_FOUND", "details": []},
         )
-    job.output_buffer.seek(0)
+    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
+    # other (each seek(0) rewinds the stream the other is mid-way through).
     return StreamingResponse(
-        job.output_buffer,
+        io.BytesIO(job.output_buffer.getvalue()),
         media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
     )

@@ -185,19 +185,25 @@ class JobManager:
     # ── Response serialisation ─────────────────────────────────────────────────
 
     def to_job_response(self, job: Job) -> JobResponse:
-        """Convert a Job dataclass into a JobResponse Pydantic model."""
-        return JobResponse(
-            job_id=job.id,
-            tool=job.tool,
-            status=job.status,
-            progress=job.progress,
-            progress_message=job.progress_message,
-            step=job.step,
-            created_at=job.created_at,
-            errors=list(job.errors),
-            warnings=list(job.warnings),
-            results=dict(job.results),
-        )
+        """Convert a Job dataclass into a JobResponse Pydantic model.
+
+        Fields are snapshotted under the lock so a worker thread mutating the
+        job mid-serialisation cannot produce a torn read (e.g. COMPLETE status
+        paired with stale results).
+        """
+        with self._lock:
+            return JobResponse(
+                job_id=job.id,
+                tool=job.tool,
+                status=job.status,
+                progress=job.progress,
+                progress_message=job.progress_message,
+                step=job.step,
+                created_at=job.created_at,
+                errors=list(job.errors),
+                warnings=list(job.warnings),
+                results=dict(job.results),
+            )
 
     # ── Maintenance ────────────────────────────────────────────────────────────
 

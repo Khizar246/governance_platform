@@ -7,15 +7,15 @@ any response.
 
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import AnyHttpUrl, BaseModel, Field, PositiveInt
 
 
 class RoleTestingRunConfig(BaseModel):
-    url: str
-    username: str
-    password: str
-    max_elements: Optional[int] = None
-    overall_timeout_seconds: Optional[int] = None
+    url: AnyHttpUrl
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+    max_elements: Optional[PositiveInt] = None
+    overall_timeout_seconds: Optional[PositiveInt] = None
     headless: bool = True           # run Chrome headless (off for local review)
     capture_tasks: bool = False     # drill into each task inside a work area
 
