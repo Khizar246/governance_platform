@@ -159,6 +159,7 @@ export default function RulesetMapping() {
   const [summary, setSummary]             = useState<RulesetMappingSummary | null>(null)
   const [errors, setErrors]               = useState<string[]>([])
   const [uploadError, setUploadError]     = useState('')
+  const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
   const [activeTab, setActiveTab]         = useState<ResultTab>('sod')
   const [direction, setDirection]         = useState<Direction>('c2e')
   const [confirmReset, setConfirmReset]   = useState(false)
@@ -226,18 +227,21 @@ export default function RulesetMapping() {
     setIsUploading(true)
     setUploadProgress(0)
     setUploadError('')
+    setUploadErrorDetails([])
     try {
       const resp = await uploadFiles(clientFile, eyFile, setUploadProgress)
       if (resp.errors?.length) {
         setUploadError(resp.errors[0])
+        setUploadErrorDetails(resp.errors.slice(1))
         return
       }
       setUploadResponse(resp)
       setJobId(resp.job_id)
       setStep('preview')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Upload failed.'
-      setUploadError(msg)
+      const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
+      setUploadError(data?.message || 'Upload failed.')
+      setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
     } finally {
       setIsUploading(false)
     }
@@ -273,6 +277,7 @@ export default function RulesetMapping() {
     setSummary(null)
     setErrors([])
     setUploadError('')
+    setUploadErrorDetails([])
     setActiveTab('sod')
     setDirection('c2e')
     setConfirmReset(false)
@@ -377,8 +382,20 @@ export default function RulesetMapping() {
             {uploadError && (
               <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span className="flex-1">{uploadError}</span>
-                <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
+                <div className="flex-1 space-y-1.5">
+                  <span>{uploadError}</span>
+                  {uploadErrorDetails.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {uploadErrorDetails.map((d, i) => (
+                        <li key={i} className="break-words">{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button
+                  onClick={() => { setUploadError(''); setUploadErrorDetails([]) }}
+                  className="text-error/60 hover:text-error shrink-0"
+                >
                   <X size={14} />
                 </button>
               </div>
