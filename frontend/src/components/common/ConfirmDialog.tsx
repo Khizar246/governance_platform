@@ -1,3 +1,4 @@
+import { createPortal } from 'react-dom'
 import { AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -25,7 +26,14 @@ export default function ConfirmDialog({
 }: ConfirmDialogProps) {
   if (!open) return null
 
-  return (
+  // Portaled to document.body: an ancestor page wraps its content in a
+  // `.fade-in`/`.slide-in` animation using `animation: ... both`, whose fill-mode
+  // leaves `transform` applied on the element permanently. A `transform` on any
+  // ancestor creates a new containing block for `position: fixed` descendants,
+  // so without the portal this dialog would be positioned relative to that
+  // scrolled ancestor instead of the viewport — appearing to render "above the
+  // page" whenever the user had scrolled down.
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
@@ -59,6 +67,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
