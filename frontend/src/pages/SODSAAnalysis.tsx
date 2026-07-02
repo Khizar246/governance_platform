@@ -25,6 +25,7 @@ import { POLL_INTERVAL_MS } from '../utils/constants'
 type Step = 'config' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'role' | 'user' | 'both'
 type SODRow = Record<string, unknown>
+type IntegrityItem = { control: string; privileges: string[]; lhs: string; rhs: string }
 
 const STEPS = ['Configure Analysis', 'Upload Files', 'Processing', 'Results']
 const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, results: 3, error: 0 }
@@ -177,6 +178,7 @@ export default function SODSAAnalysis() {
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
   const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
+  const [integrityItems, setIntegrityItems] = useState<IntegrityItem[]>([])
   const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
   const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
   const [stagedJobId, setStagedJobId] = useState<string | null>(null)
@@ -373,6 +375,7 @@ export default function SODSAAnalysis() {
     setIsUploading(true)
     setUploadError('')
     setUploadErrorDetails([])
+    setIntegrityItems([])
     setEntitlementWarnings([])
     setRecommendedWarnings([])
     setStagedJobId(null)
@@ -394,9 +397,10 @@ export default function SODSAAnalysis() {
       }
       await startRun(id)
     } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
+      const data = (err as { response?: { data?: { message?: string; details?: string[]; integrity_items?: IntegrityItem[] } } })?.response?.data
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
+      setIntegrityItems(Array.isArray(data?.integrity_items) ? data.integrity_items : [])
     } finally {
       setIsUploading(false)
     }
@@ -454,6 +458,7 @@ export default function SODSAAnalysis() {
     setErrors([])
     setUploadError('')
     setUploadErrorDetails([])
+    setIntegrityItems([])
     setEntitlementWarnings([])
     setConfirmReset(false)
     setSodSaSummaryData(null)
@@ -710,16 +715,36 @@ export default function SODSAAnalysis() {
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-1.5">
                   <span>{uploadError}</span>
-                  {uploadErrorDetails.length > 0 && (
+                  {integrityItems.length > 0 ? (
+                    <div className="space-y-2.5 pt-1">
+                      {integrityItems.map((item, i) => (
+                        <div key={i}>
+                          <p className="font-semibold break-words">• {item.control}</p>
+                          <div className="pl-5 space-y-0.5 mt-0.5">
+                            <p className="break-words">
+                              Privilege{item.privileges.length > 1 ? 's' : ''}: {item.privileges.join(', ')}
+                            </p>
+                            <p className="break-words">
+                              Mapped to both entitlements: <span className="font-semibold">{item.lhs}</span> and{' '}
+                              <span className="font-semibold">{item.rhs}</span>
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                      <p className="pt-1">
+                        These entitlement-to-privilege mappings should be corrected and the file re-uploaded.
+                      </p>
+                    </div>
+                  ) : uploadErrorDetails.length > 0 ? (
                     <ul className="list-disc pl-5 space-y-0.5">
                       {uploadErrorDetails.map((d, i) => (
                         <li key={i} className="break-words">{d}</li>
                       ))}
                     </ul>
-                  )}
+                  ) : null}
                 </div>
                 <button
-                  onClick={() => { setUploadError(''); setUploadErrorDetails([]) }}
+                  onClick={() => { setUploadError(''); setUploadErrorDetails([]); setIntegrityItems([]) }}
                   className="text-error/60 hover:text-error shrink-0"
                 >
                   <X size={14} />
