@@ -182,6 +182,7 @@ export default function SODSAAnalysis() {
   const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
   const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
   const [stagedJobId, setStagedJobId] = useState<string | null>(null)
+  const [validationFailed, setValidationFailed] = useState(false)
   const [confirmReset, setConfirmReset] = useState(false)
 
   // Results step state
@@ -379,12 +380,23 @@ export default function SODSAAnalysis() {
     setEntitlementWarnings([])
     setRecommendedWarnings([])
     setStagedJobId(null)
+    // Show the Processing step while uploading/validating; validation failures
+    // drop the user back on the Upload step with the error rendered there.
+    setStep('running')
+    setProgress(0)
+    setCurrentStep(0)
+    setProgressMessage('Uploading and validating files…')
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
       const seedFp = withFp && fpDbSeeded
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp)
-      if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
+      if (resp.errors?.length) {
+        setUploadError(resp.errors[0])
+        setValidationFailed(true)
+        setStep('upload')
+        return
+      }
       setEntitlementWarnings(resp.entitlement_warnings ?? [])
       const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
       const id = resp.job_id
@@ -393,6 +405,7 @@ export default function SODSAAnalysis() {
       if (recommended.length > 0) {
         setRecommendedWarnings(recommended)
         setStagedJobId(id)
+        setStep('upload')
         return
       }
       await startRun(id)
@@ -401,21 +414,28 @@ export default function SODSAAnalysis() {
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
       setIntegrityItems(Array.isArray(data?.integrity_items) ? data.integrity_items : [])
+      setValidationFailed(true)
+      setStep('upload')
     } finally {
       setIsUploading(false)
     }
-  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, selectedAnalyses, startRun])
+  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, startRun])
 
   const handleProceedAnyway = useCallback(async () => {
     if (!stagedJobId) return
     setIsUploading(true)
     setUploadError('')
+    setStep('running')
+    setProgress(0)
+    setCurrentStep(0)
+    setProgressMessage('Starting SOD & SA analysis…')
     try {
       await startRun(stagedJobId)
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
       setUploadError(data?.message || 'Run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
+      setStep('upload')
     } finally {
       setIsUploading(false)
     }
@@ -460,6 +480,9 @@ export default function SODSAAnalysis() {
     setUploadErrorDetails([])
     setIntegrityItems([])
     setEntitlementWarnings([])
+    setValidationFailed(false)
+    setStagedJobId(null)
+    setRecommendedWarnings([])
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
@@ -618,7 +641,7 @@ export default function SODSAAnalysis() {
                   hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
                   status={roleHierarchyFile ? 'success' : 'idle'}
                   fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
-                  onUpload={setRoleHierarchyFile}
+                  onUpload={(f) => { setRoleHierarchyFile(f); setValidationFailed(false) }}
                   onRemove={() => setRoleHierarchyFile(null)}
                 />
               </div>
@@ -634,13 +657,13 @@ export default function SODSAAnalysis() {
                     : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: 0 }
                     : null
                   }
-                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false) }}
+                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); setValidationFailed(false) }}
                   onRemove={() => { setRulesetFile(null); setRulesetSeeded(false) }}
                 />
                 {!rulesetFile && (
                   <button
                     type="button"
-                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null) }}
+                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); setValidationFailed(false) }}
                     className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                   >
                     {rulesetSeeded ? 'Use my own file instead' : 'Use seeded ruleset →'}
@@ -660,13 +683,13 @@ export default function SODSAAnalysis() {
                       : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: 0 }
                       : null
                     }
-                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false) }}
+                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); setValidationFailed(false) }}
                     onRemove={() => { setFpDbFile(null); setFpDbSeeded(false) }}
                   />
                   {!fpDbFile && (
                     <button
                       type="button"
-                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null) }}
+                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); setValidationFailed(false) }}
                       className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                     >
                       {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
@@ -687,7 +710,7 @@ export default function SODSAAnalysis() {
                   hint="Columns: User Name, Assigned Role Name"
                   status={userRoleFile ? 'success' : 'idle'}
                   fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
-                  onUpload={setUserRoleFile}
+                  onUpload={(f) => { setUserRoleFile(f); setValidationFailed(false) }}
                   onRemove={() => setUserRoleFile(null)}
                 />
               </div>
@@ -812,7 +835,7 @@ export default function SODSAAnalysis() {
               ) : (
                 <button
                   className="btn-gold"
-                  disabled={!canRun || isUploading}
+                  disabled={!canRun || validationFailed}
                   onClick={handleRunAnalysis}
                 >
                   {isUploading ? 'Uploading…' : 'Run Analysis →'}
