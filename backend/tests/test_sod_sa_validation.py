@@ -195,6 +195,11 @@ def test_shared_privilege(upload):
     sheets["Entitlement to Privilege"] = b._df(rows, b.MAPPING_COLS)
     r = upload(role_hierarchy=rh(), ruleset=rs(sheets=sheets))
     _assert(r, _S("shared_privilege"))
+    items = r.json()["integrity_items"]
+    assert len(items) == 1
+    assert items[0]["privileges"] == ["PRIV1"]
+    assert items[0]["lhs"] == "ENT_A"
+    assert items[0]["rhs"] == "ENT_B"
 
 
 # ── Phase 4 (run-time) ───────────────────────────────────────────────────────

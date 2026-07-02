@@ -329,7 +329,7 @@ def _check_missing_entitlement_mappings(
 def _check_shared_privileges_in_controls(
     sod_df: pl.DataFrame,
     mapping_df: pl.DataFrame,
-) -> list[str]:
+) -> list[dict]:
     """Detect privileges mapped to BOTH entitlements of the same SoD control.
 
     WHY THIS GUARD EXISTS
@@ -349,7 +349,7 @@ def _check_shared_privileges_in_controls(
     in entitlements that belong to DIFFERENT controls; the problem is only an
     overlap WITHIN a single control's two entitlements.
 
-    Returns one human-readable error line per offending control. Empty list when
+    Returns one dict per offending control (control, privileges, lhs, rhs). Empty list when
     the mapping is clean. Callers treat a non-empty result as a hard upload
     rejection — analysis must not run on a control whose mapping is invalid.
 
@@ -373,7 +373,7 @@ def _check_shared_privileges_in_controls(
         if ent_s and priv_s:
             ent_to_privs.setdefault(ent_s, set()).add(priv_s)
 
-    errors: list[str] = []
+    issues: list[dict] = []
     # One iteration per control row. Each row carries its own LHS/RHS entitlements,
     # so the overlap test is naturally scoped to a single control.
     for row in sod_df.select(["CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"]).iter_rows():
@@ -384,15 +384,14 @@ def _check_shared_privileges_in_controls(
         # Privileges shared between the two sides of THIS control.
         shared = ent_to_privs.get(lhs_s, set()) & ent_to_privs.get(rhs_s, set())
         if shared:
-            shared_list = ", ".join(f'"{p}"' for p in sorted(shared))
-            errors.append(
-                f'Control "{control_name}": privilege(s) {shared_list} mapped to both '
-                f'entitlements ({lhs_s}, {rhs_s}). An entity holding only such a privilege '
-                f'would falsely violate this control. Fix the Entitlement-to-Privilege '
-                f'mapping and re-upload.'
-            )
+            issues.append({
+                "control": str(control_name),
+                "privileges": sorted(shared),
+                "lhs": lhs_s,
+                "rhs": rhs_s,
+            })
 
-    return errors
+    return issues
 
 
 def _run_thread(
@@ -832,8 +831,17 @@ async def upload(
     # privilege would falsely satisfy both legs). Reject the whole upload so the user
     # fixes the mapping before they can reach the Run step. See
     # _check_shared_privileges_in_controls for the full rationale.
-    integrity_errors = _check_shared_privileges_in_controls(sod_df, mapping_df)
-    if integrity_errors:
+    integrity_items = _check_shared_privileges_in_controls(sod_df, mapping_df)
+    if integrity_items:
+        integrity_errors = []
+        for it in integrity_items:
+            shared_list = ", ".join('"{}"'.format(p) for p in it["privileges"])
+            integrity_errors.append(
+                f'Control "{it["control"]}": privilege(s) {shared_list} mapped to both '
+                f'entitlements ({it["lhs"]}, {it["rhs"]}). An entity holding only such a privilege '
+                f'would falsely violate this control. Fix the Entitlement-to-Privilege '
+                f'mapping and re-upload.'
+            )
         logger.error(f"SOD & SA upload rejected — {len(integrity_errors)} shared-privilege issue(s):")
         for _e in integrity_errors:
             logger.error(f"  • {_e}")
@@ -847,6 +855,7 @@ async def upload(
                 ),
                 "code": "DATA_INTEGRITY_ERROR",
                 "details": integrity_errors,
+                "integrity_items": integrity_items,
             },
         )
 
