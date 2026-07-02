@@ -16,9 +16,9 @@ import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import Badge from '../components/common/Badge'
 import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults, getFilterOptions } from '../api/oracleComparator'
-import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { OracleComparatorSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
+import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 
 type Step = 'type' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'rbac' | 'dsp' | 'both'
@@ -108,6 +108,7 @@ function matchRatePill(rate: number) {
 
 export default function OracleComparator() {
   const [step, setStep] = useState<Step>('type')
+  useScrollToTopOnChange(step)
   const [analysisType, setAnalysisType] = useState<AnalysisType>('rbac')
   const [env1Name, setEnv1Name] = useState('')
   const [env2Name, setEnv2Name] = useState('')
@@ -314,26 +315,6 @@ export default function OracleComparator() {
         title="Oracle Comparator"
         subtitle="Compare duty roles, privileges, and DSP across two Oracle environments"
       />
-
-      <div style={{ marginBottom: 20 }}>
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
-          <HelpStep num={1} text="Choose your analysis type. RBAC Analysis compares duty roles, inherited role assignments, and privilege-to-role mappings. DSP Analysis compares data security policies and column-level grants. Complete Analysis covers both and is recommended for production-to-UAT sign-off." />
-          <HelpStep num={2} text="Enter a short label for each environment (e.g. 'Production', 'UAT') — these labels appear in the output to distinguish which side each row belongs to." />
-          <HelpStep num={3} text="Export the required files from Oracle Fusion. For RBAC: Security Console → Roles → Export. For DSP: Security Console → Data Security Policies → Export. Upload each file to its corresponding zone." />
-          <HelpStep num={4} text="Click Run Comparison. The output lists objects unique to each environment and those present in both. Export before closing." />
-        </HelpAccordion>
-        <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The comparator performs a bi-directional set difference between the two environment exports:</p>
-          <HelpPill label="RBAC comparison" note="Computes (Env1 − Env2), (Env2 − Env1), and the intersection across duty roles, inherited role links, and privilege-to-role mappings." />
-          <HelpPill label="DSP comparison" note="Applies the same set logic to data security policies: object name, condition statement, and column-level access grants compared independently." />
-          <HelpPill label="Key matching" note="Rows are matched on a composite key of ROLE NAME + ENTITLEMENT (RBAC) or ROLE NAME + OBJECT NAME (DSP). Whitespace and case are normalised before matching." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Particularly useful for post-migration checks — anything in Env1 but absent from Env2 is a potential missed configuration.</p>
-        </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
-          ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
-        ]} />
-      </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 

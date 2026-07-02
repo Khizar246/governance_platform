@@ -18,9 +18,9 @@ import {
   getSummary, getSheetResults, getFilterOptions, getSeededFileSize,
 } from '../api/sodSaAnalysis'
 import type { SODSASummaryData, SODSATopItem } from '../api/sodSaAnalysis'
-import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import type { SODSASummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
+import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 
 type Step = 'config' | 'upload' | 'running' | 'results' | 'error'
 type AnalysisType = 'role' | 'user' | 'both'
@@ -160,6 +160,7 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
 
 export default function SODSAAnalysis() {
   const [step, setStep] = useState<Step>('config')
+  useScrollToTopOnChange(step)
   const [withFp, setWithFp] = useState(false)
   const [withObservation, setWithObservation] = useState(false)
   const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
@@ -182,7 +183,6 @@ export default function SODSAAnalysis() {
   const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
   const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
   const [stagedJobId, setStagedJobId] = useState<string | null>(null)
-  const [validationFailed, setValidationFailed] = useState(false)
   const [seededSizes, setSeededSizes] = useState<{ ruleset: number; fpDb: number }>({ ruleset: 0, fpDb: 0 })
   const [confirmReset, setConfirmReset] = useState(false)
 
@@ -406,7 +406,6 @@ export default function SODSAAnalysis() {
     setProgress(0)
     setCurrentStep(0)
     setProgressMessage('Uploading and validating files…')
-    let uploadOk = false
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
@@ -414,11 +413,9 @@ export default function SODSAAnalysis() {
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp)
       if (resp.errors?.length) {
         setUploadError(resp.errors[0])
-        setValidationFailed(true)
         setStep('upload')
         return
       }
-      uploadOk = true
       const entWarnings = resp.entitlement_warnings ?? []
       setEntitlementWarnings(entWarnings)
       const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
@@ -439,7 +436,6 @@ export default function SODSAAnalysis() {
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
       setIntegrityItems(Array.isArray(data?.integrity_items) ? data.integrity_items : [])
-      if (!uploadOk) setValidationFailed(true)
       setStep('upload')
     } finally {
       setIsUploading(false)
@@ -505,7 +501,6 @@ export default function SODSAAnalysis() {
     setUploadErrorDetails([])
     setIntegrityItems([])
     setEntitlementWarnings([])
-    setValidationFailed(false)
     setStagedJobId(null)
     setRecommendedWarnings([])
     setConfirmReset(false)
@@ -526,33 +521,6 @@ export default function SODSAAnalysis() {
         title="SOD & SA Analysis"
         subtitle="Segregation of Duties and Sensitive Access violation detection at role and user level"
       />
-
-      <div style={{ marginBottom: 20 }}>
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
-          <HelpStep num={1} text="Choose your scope. Role Analysis needs 2 files and is faster. User Analysis needs 3 files and attributes violations to individual users. Role + User is the recommended default for client deliverables." />
-          <HelpStep num={2} text="Upload the Role Hierarchy CSV/XLSX — export from Oracle Fusion via Security Console → Roles → Export Hierarchy. Required columns: TOP_ROLE_CODE, TOP_ROLE_NAME, ROLE_CODE, ROLE_NAME, PRIVILEGE_CODE, PRIVILEGE_NAME." />
-          <HelpStep num={3} text="Upload the SOD SA Ruleset XLSX — the standard EY ruleset file. Must contain three sheets: SoD Ruleset, SA Ruleset, and Entitlement to Privilege." />
-          <HelpStep num={4} text="If running User Analysis, also upload the User Role Membership CSV/XLSX. Required columns: User Name, Assigned Role Name." />
-          <HelpStep num={5} text="If False-Positive Detection is enabled, upload the FP Database XLSX. It must contain two sheets: No_action_Privileges (columns: PRIVILEGE_NAME, False Positive Reason) and WorkArea_Privileges (columns: PRIVILEGE_NAME, WORK_AREA_PRIVILEGE_CODE). PRIVILEGE_NAME must match the privilege codes in the role hierarchy." />
-          <HelpStep num={6} text="Click Run Analysis. A progress bar shows the processing milestones. Export the output before closing — results are not stored between sessions." />
-        </HelpAccordion>
-        <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The engine joins the pre-flattened role hierarchy with the entitlement mapping, then checks every resolved privilege combination against the ruleset:</p>
-          <HelpPill label="Hierarchy join" note="The role hierarchy export from Oracle Fusion is already flattened — each row maps a top-level role to an inherited sub-role and its leaf privileges. The engine joins this flat structure with the Entitlement-to-Privilege mapping to resolve each role's full entitlement set." />
-          <HelpPill label="SoD detection" note="Each role's entitlement set is checked against the SoD Ruleset. A violation occurs when the role holds privileges that satisfy both the LHS and RHS entitlements of a control. Violations are recorded with the conflicting control and entitlement names." />
-          <HelpPill label="SA detection" note="Each individual privilege is checked against the SA Ruleset independently. Sensitive access violations are reported separately from SoD." />
-          <HelpPill label="User expansion" note="When User Analysis is included, each user's assigned roles are resolved through the hierarchy and the same SoD and SA checks applied, attributing violations to named users." />
-          <HelpPill label="False-positive pipeline" note="When enabled, violations are classified in three levels: Level 1 marks any privilege listed in No_action_Privileges as FP. Level 2 checks if the role or user holds the work-area gatekeeping privilege (WORK_AREA_PRIVILEGE_CODE) required to navigate to the activity — if the privilege is absent, the conflict cannot be exploited and is marked FP. Level 3 classifies remaining violations: one conflicting entitlement → SL (single-leg), two or more → True Conflict." />
-          <HelpPill label="User grouping" note="Users sharing an identical role portfolio are assigned a shared group name, reducing noise in large datasets. The User Groups tabs show each group's member roles and the number of users in the group." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>The progress bar reflects pipeline milestones (mapping, SOD check, SA check, FP pipeline, export), not individual row counts.</p>
-        </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
-          ['SOD SA Ruleset Template',        'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
-          ['User Role Membership Template',  'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
-          ['FP Database Template',           'XLSX', '/api/templates/sod-sa-analysis/fp_database_template.xlsx'],
-        ]} />
-      </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
@@ -666,7 +634,7 @@ export default function SODSAAnalysis() {
                   hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
                   status={roleHierarchyFile ? 'success' : 'idle'}
                   fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
-                  onUpload={(f) => { setRoleHierarchyFile(f); setValidationFailed(false); discardStagedJob() }}
+                  onUpload={(f) => { setRoleHierarchyFile(f); discardStagedJob() }}
                   onRemove={() => { setRoleHierarchyFile(null); discardStagedJob() }}
                 />
               </div>
@@ -682,13 +650,13 @@ export default function SODSAAnalysis() {
                     : rulesetSeeded ? { name: 'Seeded ruleset (bundled)', size: seededSizes.ruleset }
                     : null
                   }
-                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); setValidationFailed(false); discardStagedJob() }}
+                  onUpload={(f) => { setRulesetFile(f); setRulesetSeeded(false); discardStagedJob() }}
                   onRemove={() => { setRulesetFile(null); setRulesetSeeded(false); discardStagedJob() }}
                 />
                 {!rulesetFile && (
                   <button
                     type="button"
-                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); setValidationFailed(false); discardStagedJob() }}
+                    onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); discardStagedJob() }}
                     className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                   >
                     {rulesetSeeded ? 'Use my own file instead' : 'Use seeded ruleset →'}
@@ -708,13 +676,13 @@ export default function SODSAAnalysis() {
                       : fpDbSeeded ? { name: 'Seeded FP Database (bundled)', size: seededSizes.fpDb }
                       : null
                     }
-                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); setValidationFailed(false); discardStagedJob() }}
+                    onUpload={(f) => { setFpDbFile(f); setFpDbSeeded(false); discardStagedJob() }}
                     onRemove={() => { setFpDbFile(null); setFpDbSeeded(false); discardStagedJob() }}
                   />
                   {!fpDbFile && (
                     <button
                       type="button"
-                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); setValidationFailed(false); discardStagedJob() }}
+                      onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); discardStagedJob() }}
                       className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
                     >
                       {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
@@ -735,7 +703,7 @@ export default function SODSAAnalysis() {
                   hint="Columns: User Name, Assigned Role Name"
                   status={userRoleFile ? 'success' : 'idle'}
                   fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
-                  onUpload={(f) => { setUserRoleFile(f); setValidationFailed(false); discardStagedJob() }}
+                  onUpload={(f) => { setUserRoleFile(f); discardStagedJob() }}
                   onRemove={() => { setUserRoleFile(null); discardStagedJob() }}
                 />
               </div>
@@ -860,7 +828,7 @@ export default function SODSAAnalysis() {
               ) : (
                 <button
                   className="btn-gold"
-                  disabled={!canRun || validationFailed}
+                  disabled={!canRun}
                   onClick={handleRunAnalysis}
                 >
                   {isUploading ? 'Uploading…' : 'Run Analysis →'}

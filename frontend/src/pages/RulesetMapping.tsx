@@ -12,7 +12,6 @@ import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import HelpAccordion, { HelpStep, HelpPill, TemplateDownloads } from '../components/common/HelpAccordion'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
   getResults, getFilterOptions,
@@ -20,6 +19,7 @@ import {
 import type { ResultTab, Direction } from '../api/rulesetMapping'
 import type { UploadResponse, RulesetMappingSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
+import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
 
 // ── Column definitions ────────────────────────────────────────────────────────
@@ -147,6 +147,7 @@ const PREVIEW_CARDS: { key: string; label: string }[] = [
 
 export default function RulesetMapping() {
   const [step, setStep]                   = useState<Step>('upload')
+  useScrollToTopOnChange(step)
   const [clientFile, setClientFile]       = useState<File | null>(null)
   const [eyFile, setEyFile]               = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
@@ -310,27 +311,6 @@ export default function RulesetMapping() {
         title="Ruleset Mapping"
         subtitle="Map client SoD and SA controls to EY controls using privilege-set Jaccard similarity"
       />
-
-      <div style={{ marginBottom: 20 }}>
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
-          <HelpStep num={1} text="Download the templates below and populate them with your client and EY ruleset data. Each file must contain exactly three sheets: 'SoD Ruleset', 'SA Ruleset', and 'Entitlement to Privilege'." />
-          <HelpStep num={2} text="SoD Ruleset columns: Control Name, Risk Ranking, LHS Entitlement, RHS Entitlement, Module(s). SA Ruleset columns: Control Name, Risk Ranking, Entitlement, Side, Module(s). Entitlement to Privilege columns: Entitlement Name, Privilege Name, Privilege Code." />
-          <HelpStep num={3} text="Upload both the Client Ruleset and EY Ruleset .xlsx files. The tool validates all required sheets and columns are present before allowing you to proceed." />
-          <HelpStep num={4} text="Click Run Mapping. The tool maps in BOTH directions (Client → EY and EY → Client). Once complete, use the direction toggle and the tabs — SoD Mapping, SA Mapping, Entitlement Mapping, Missing Controls, Missing Privileges — to review results, then download the single multi-sheet Excel report." />
-        </HelpAccordion>
-        <HelpAccordion title="How the Tool Works" icon={<Layers size={14} color="#0F1E3D" />} accentColor="#0F1E3D">
-          <p style={{ fontSize: 13, color: '#64748B', lineHeight: 1.7, marginBottom: 12 }}>The pipeline runs in BOTH directions (Client → EY and EY → Client) so that "missing controls" and "missing privileges" are recomputed relative to whichever ruleset is the source. Privilege codes from the Entitlement to Privilege sheet are the source of truth for all matching.</p>
-          <HelpPill label="Step 1 — Entitlement Mapping" note="Each source entitlement is matched to the best-fitting target entitlement by comparing their Privilege Code sets via Jaccard similarity (|intersection| ÷ |union|). This lookup feeds Steps 2 and 3." />
-          <HelpPill label="Step 2 — SoD Control Matching (two-leg)" note="A SoD control has two legs (LHS and RHS). Each leg is scored INDEPENDENTLY against a candidate target control's legs by per-entitlement Jaccard. A control is a Direct match only if BOTH legs clear 60% — a strong match on one leg can never carry an unrelated second leg. If no target control qualifies but both legs map to target entitlements, an inferred pair [T_LHS] AND [T_RHS] is created and labelled Derived Control." />
-          <HelpPill label="Step 3 — SA Control Matching" note="Each source SA entitlement is looked up via Step 1. It is a Direct match only when the mapped target entitlement is itself a target SA control AND the per-entitlement similarity clears 60%; otherwise Unmatched. SA controls are NEVER labelled Derived." />
-          <HelpPill label="Missing Controls & Missing Privileges" note="Missing Controls lists every source control (SoD or SA) with no valid match in the target ruleset. Missing Privileges lists, for each matched entitlement (confidence ≥ 60%), every target privilege absent from the source entitlement — one row per missing privilege (source entitlement, best matched target entitlement, missing privilege)." />
-          <p style={{ fontSize: 12.5, color: '#94A3B8', marginTop: 10, lineHeight: 1.6 }}>Confidence Score = Jaccard similarity × 100%. For SoD it is the weaker of the two legs (both must clear 60%). "—" and Unmatched rows always show 0%.</p>
-        </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['Client Ruleset Template', 'XLSX', '/api/templates/ruleset-mapping/client_ruleset_template.xlsx'],
-          ['EY Ruleset Template',     'XLSX', '/api/templates/ruleset-mapping/ey_ruleset_template.xlsx'],
-        ]} />
-      </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 

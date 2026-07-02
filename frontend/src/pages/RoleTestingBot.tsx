@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Info, Lock, Camera, AlertTriangle, ImageOff, RotateCcw } from 'lucide-react'
+import { Camera, AlertTriangle, ImageOff, RotateCcw } from 'lucide-react'
 
 import PageHeader from '../components/layout/PageHeader'
 import StepIndicator from '../components/common/StepIndicator'
 import DownloadButton from '../components/common/DownloadButton'
-import HelpAccordion, { HelpStep } from '../components/common/HelpAccordion'
 import { POLL_INTERVAL_MS } from '../utils/constants'
+import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 import {
   runBot, getStatus, getResults, imageUrl, downloadZip, cancelJob,
 } from '../api/roleTesting'
@@ -25,6 +25,7 @@ const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }>
 
 export default function RoleTestingBot() {
   const [step, setStep] = useState<Step>('config')
+  useScrollToTopOnChange(step)
 
   // Configure
   const [url, setUrl] = useState('')
@@ -127,19 +128,6 @@ export default function RoleTestingBot() {
         subtitle="Drive Oracle Fusion Cloud and capture a screenshot of every Navigator work area."
       />
 
-      <HelpAccordion title="How it works" icon={<Info size={14} color="#0EA5E9" />} accentColor="#0EA5E9">
-        <HelpStep num={1} text="Enter the Oracle Cloud URL, your username, and password. The bot signs in on a headless server browser." />
-        <HelpStep num={2} text="It opens the Navigator menu, walks every work area, opens each Tasks/Actions panel when present, and captures a screenshot." />
-        <HelpStep num={3} text="When it finishes, review the screenshots in the gallery and download them all as a ZIP." />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 12px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
-          <Lock size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>
-            Your credentials are used only for this run and are never stored, logged, or saved.
-          </span>
-        </div>
-      </HelpAccordion>
-
-      <div style={{ height: 8 }} />
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
       {step === 'config' && (
