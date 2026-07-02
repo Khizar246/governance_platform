@@ -419,12 +419,15 @@ export default function SODSAAnalysis() {
         return
       }
       uploadOk = true
-      setEntitlementWarnings(resp.entitlement_warnings ?? [])
+      const entWarnings = resp.entitlement_warnings ?? []
+      setEntitlementWarnings(entWarnings)
       const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
       const id = resp.job_id
-      // If recommended ruleset columns are missing, pause on the upload step and
-      // let the user review the warning before proceeding (export won't be client-ready).
-      if (recommended.length > 0) {
+      // Pause on the upload step when the upload produced warnings the user must
+      // review before running: missing recommended columns (export won't be
+      // client-ready) or unmapped entitlements (those controls would be silently
+      // excluded from the analysis).
+      if (recommended.length > 0 || entWarnings.length > 0) {
         setRecommendedWarnings(recommended)
         setStagedJobId(id)
         setStep('upload')
