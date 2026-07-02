@@ -396,6 +396,7 @@ export default function SODSAAnalysis() {
     setProgress(0)
     setCurrentStep(0)
     setProgressMessage('Uploading and validating files…')
+    let uploadOk = false
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
@@ -407,6 +408,7 @@ export default function SODSAAnalysis() {
         setStep('upload')
         return
       }
+      uploadOk = true
       setEntitlementWarnings(resp.entitlement_warnings ?? [])
       const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
       const id = resp.job_id
@@ -424,7 +426,7 @@ export default function SODSAAnalysis() {
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
       setIntegrityItems(Array.isArray(data?.integrity_items) ? data.integrity_items : [])
-      setValidationFailed(true)
+      if (!uploadOk) setValidationFailed(true)
       setStep('upload')
     } finally {
       setIsUploading(false)
