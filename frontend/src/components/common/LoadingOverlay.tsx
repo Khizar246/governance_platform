@@ -25,6 +25,12 @@ const PHASE_LABELS: Record<number, string> = {
 export default function LoadingOverlay({ message, progress, currentStep, steps, withFp }: LoadingOverlayProps) {
   const pct = Math.min(100, Math.round(progress))
 
+  // Step ids are backend milestone ids and may have gaps when the run's options
+  // exclude some steps (e.g. 16 of 22 for a run without FP/observation). Number
+  // the display by position in the visible list, not by raw id.
+  const stepOrdinals = new Map(steps.map((s, i) => [s.step, i + 1]))
+  const currentOrdinal = steps.filter(s => s.step <= currentStep).length
+
   // Derive phase state
   const stepsByPhase: Record<number, ProgressStep[]> = { 1: [], 2: [], 3: [], 4: [] }
   for (const s of steps) stepsByPhase[s.phase].push(s)
@@ -67,7 +73,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
             <div className="min-w-0">
               <h3 className="font-serif text-[15px] font-semibold leading-tight text-navy truncate">{message}</h3>
               <p className="text-[11px] text-gray-400 mt-0.5">
-                {currentStep > 0 ? `Step ${currentStep} of ${steps.length}` : 'Starting…'}
+                {currentStep > 0 ? `Step ${currentOrdinal} of ${steps.length}` : 'Starting…'}
               </p>
             </div>
             <span className="font-serif text-3xl font-semibold text-navy tabular-nums leading-none shrink-0">
@@ -154,7 +160,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                       )}>
                         {status === 'done'
                           ? <Check size={11} strokeWidth={3} />
-                          : s.step
+                          : stepOrdinals.get(s.step)
                         }
                       </div>
 
