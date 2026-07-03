@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Camera, AlertTriangle, ImageOff, RotateCcw } from 'lucide-react'
+import { Info, Lock, Camera, AlertTriangle, ImageOff, RotateCcw } from 'lucide-react'
 
 import PageHeader from '../components/layout/PageHeader'
 import StepIndicator from '../components/common/StepIndicator'
 import DownloadButton from '../components/common/DownloadButton'
+import HelpAccordion, { HelpStep } from '../components/common/HelpAccordion'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 import {
@@ -128,6 +129,20 @@ export default function RoleTestingBot() {
         subtitle="Drive Oracle Fusion Cloud and capture a screenshot of every Navigator work area."
       />
 
+      <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#0EA5E9" />} accentColor="#0EA5E9">
+        <HelpStep num={1} text="Type in the Oracle Cloud web address, your username, and your password. There is nothing to upload — just fill in the form." />
+        <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
+        <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />
+        <HelpStep num={4} text="When it's done, review the screenshots on the results page and download them all as one ZIP file." />
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 12px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+          <Lock size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
+          <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>
+            Your username and password are used only for this one run. They are never stored, logged, or saved anywhere.
+          </span>
+        </div>
+      </HelpAccordion>
+
+      <div style={{ height: 8 }} />
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
       {step === 'config' && (
