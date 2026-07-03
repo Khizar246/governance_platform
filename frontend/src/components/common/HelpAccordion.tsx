@@ -70,6 +70,64 @@ export function TemplateDownloads({ templates }: { templates: [string, string, s
   )
 }
 
+export function SchemaTable({
+  fileLabel,
+  rows,
+}: {
+  fileLabel: string
+  rows: { sheet?: string; column: string; status: string; note?: string }[]
+}) {
+  return (
+    <div style={{ marginBottom: 14 }}>
+      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#0F1E3D', marginBottom: 6 }}>{fileLabel}</p>
+      <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr style={{ background: '#F7F6F3' }}>
+              {rows.some(r => r.sheet) && (
+                <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sheet</th>
+              )}
+              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Column</th>
+              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
+              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>What it means</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={i} style={{ borderTop: '1px solid #F1F0EA', background: i % 2 === 1 ? '#FAFAF8' : '#FFFFFF' }}>
+                {rows.some(row => row.sheet) && (
+                  <td style={{ padding: '7px 10px', color: '#64748B' }}>{r.sheet ?? ''}</td>
+                )}
+                <td style={{ padding: '7px 10px', color: '#334155', fontWeight: 500 }}>{r.column}</td>
+                <td style={{ padding: '7px 10px' }}>
+                  {(r.status === 'Required' || r.status === 'Optional') ? (
+                    <span
+                      style={{
+                        display: 'inline-block',
+                        padding: '2px 8px',
+                        borderRadius: 999,
+                        fontSize: 10.5,
+                        fontWeight: 600,
+                        background: r.status === 'Required' ? '#FEE2E2' : '#DCFCE7',
+                        color: r.status === 'Required' ? '#B91C1C' : '#166534',
+                      }}
+                    >
+                      {r.status}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 11.5, color: '#B45309', fontWeight: 500 }}>{r.status}</span>
+                  )}
+                </td>
+                <td style={{ padding: '7px 10px', color: '#64748B' }}>{r.note ?? ''}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────
 
 interface HelpAccordionProps {
