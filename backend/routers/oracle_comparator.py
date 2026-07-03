@@ -23,9 +23,9 @@ from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStat
 from models.oracle_comparator import OracleRunConfig, ComparisonTypeSummary, OracleComparatorSummary
 from services.job_manager import job_manager
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
-from shared.validators import validate_upload
+from shared.validators import validate_upload, validate_dataframe_schema
 from shared.logger import get_logger
-from engines.oracle_comparator_engine import run_analysis, generate_report
+from engines.oracle_comparator_engine import run_analysis, generate_report, FILE_CONFIGS
 
 router = APIRouter(prefix="/api/oracle-comparator", tags=["Oracle Comparator"])
 logger = get_logger("oracle_comparator")
@@ -190,6 +190,23 @@ async def upload(
         return JSONResponse(
             status_code=400,
             content={"error": True, "message": f"Found {len(load_errors)} file loading error(s). See details below.", "code": "FILE_FORMAT_ERROR", "details": load_errors},
+        )
+
+    # ── Schema validation — required columns per file type ──────────────────
+    schema_errors: list[str] = []
+    for key, df in loaded.items():
+        file_type = "rbac" if key.startswith("rbac") else "dsp"
+        required_cols = set(FILE_CONFIGS[file_type]["required_columns"])
+        valid, missing = validate_dataframe_schema(set(df.columns), required_cols, file_names[key])
+        if not valid:
+            for col in missing:
+                schema_errors.append(f"{file_names[key]} ({key}): Missing required column '{col}'")
+
+    if schema_errors:
+        logger.error(f"Oracle Comparator upload failed schema validation with {len(schema_errors)} error(s): {schema_errors}")
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": f"Found {len(schema_errors)} missing column error(s). See details below.", "code": "MISSING_COLUMN", "details": schema_errors},
         )
 
     # Verify that all required files were loaded

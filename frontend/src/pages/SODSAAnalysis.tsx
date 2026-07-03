@@ -525,11 +525,11 @@ export default function SODSAAnalysis() {
 
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
-          <HelpStep num={1} text="First pick what you want to check: Role-level (fast, 2 files), User-level (attributes issues to named people, needs 3 files), or both. You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
-          <HelpStep num={2} text="Upload the Role Hierarchy file — export it from Oracle Fusion (Security Console → Roles → Export Hierarchy)." />
-          <HelpStep num={3} text="Upload the SOD SA Ruleset file, or use the bundled sample ruleset instead." />
-          <HelpStep num={4} text="If you picked User-level (or both), also upload the User Role Membership file." />
-          <HelpStep num={5} text="If False-Positive Detection is on, upload the FP Database file, or use the bundled sample." />
+          <HelpStep num={1} text="First pick what level of analysis you want to do: Role-level (2 files required), User-level (3 files required), or both (3 files required). You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
+          <HelpStep num={2} text="Upload the Role Hierarchy report received from client. No need to make any changes just upload directly tool handles everything." />
+          <HelpStep num={3} text="If you picked User-level (or both), also upload the User Role Membership Report received from client. No need to make any changes just upload directly tool handles everything." />
+          <HelpStep num={4} text="Upload the SOD SA Ruleset file, or use the bundled sample ruleset instead." />
+          <HelpStep num={5} text="If False-Positive Detection is on, upload the FP Database file, or use the bundled sample instead." />
           <HelpStep num={6} text="Click Run Analysis. If something required is missing, the tool stops and tells you exactly what to fix. If only 'nice to have' columns are missing, you can still proceed — just know the export will use placeholder text for those columns." />
           <SchemaTable
             fileLabel="Role Hierarchy (.csv or .xlsx) — always required"

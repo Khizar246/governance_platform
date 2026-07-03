@@ -321,8 +321,14 @@ export default function OracleComparator() {
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two Oracle environments — like Production and a test environment — and shows what's different between them. Pick RBAC (roles and privileges), DSP (data security policies), or Complete (both)." />
           <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
-          <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs — get the column names exactly right, since this tool does not check them until it starts comparing." />
+          <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs. The tool checks for these columns as soon as you upload and will tell you right away if any are missing." />
           <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 14, padding: '9px 12px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
+            <Info size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
+            <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>
+              In most cases, the files you export directly from Oracle Fusion already match the format below — you can upload them as-is without any changes.
+            </span>
+          </div>
           <SchemaTable
             fileLabel="RBAC files (Environment 1 and Environment 2) — .csv, .xlsx, or .xls"
             rows={[
@@ -343,10 +349,13 @@ export default function OracleComparator() {
             ]}
           />
         </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
-          ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
-        ]} />
+        <TemplateDownloads
+          templates={[
+            ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
+            ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
+          ]}
+          note="These templates are for reference only. If you already have RBAC or DSP extracts from Oracle Fusion, you can upload them directly — no need to reformat them to match the template."
+        />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />

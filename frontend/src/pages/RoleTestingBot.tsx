@@ -130,7 +130,7 @@ export default function RoleTestingBot() {
       />
 
       <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#0EA5E9" />} accentColor="#0EA5E9">
-        <HelpStep num={1} text="Type in the Oracle Cloud web address, your username, and your password. There is nothing to upload — just fill in the form." />
+        <HelpStep num={1} text="Type in the Oracle Cloud web address, your username, and your password." />
         <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
         <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />
         <HelpStep num={4} text="When it's done, review the screenshots on the results page and download them all as one ZIP file." />

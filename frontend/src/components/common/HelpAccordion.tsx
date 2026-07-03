@@ -23,12 +23,17 @@ export function HelpPill({ label, note }: { label: string; note: string }) {
   )
 }
 
-export function TemplateDownloads({ templates }: { templates: [string, string, string?][] }) {
+export function TemplateDownloads({ templates, note }: { templates: [string, string, string?][]; note?: string }) {
   return (
     <HelpAccordion title="Template Files" icon={<Download size={14} color="#D97706" />} accentColor="#D97706">
       <p style={{ fontSize: 12.5, color: '#64748B', marginBottom: 12, lineHeight: 1.55 }}>
         Blank templates with the correct column headers and a "How to Fill Data" guide sheet pre-filled.
       </p>
+      {note && (
+        <p style={{ fontSize: 12.5, color: '#64748B', marginBottom: 12, lineHeight: 1.55 }}>
+          {note}
+        </p>
+      )}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 7 }}>
         {templates.map(([name, fmt, url]) => {
           const inner = (
