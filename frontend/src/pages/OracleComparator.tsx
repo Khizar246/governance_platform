@@ -14,6 +14,7 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
+import HelpAccordion, { HelpStep, SchemaTable, TemplateDownloads } from '../components/common/HelpAccordion'
 import Badge from '../components/common/Badge'
 import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults, getFilterOptions } from '../api/oracleComparator'
 import type { OracleComparatorSummary } from '../types'
@@ -315,6 +316,38 @@ export default function OracleComparator() {
         title="Oracle Comparator"
         subtitle="Compare duty roles, privileges, and DSP across two Oracle environments"
       />
+
+      <div style={{ marginBottom: 20 }}>
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
+          <HelpStep num={1} text="This tool compares two Oracle environments — like Production and a test environment — and shows what's different between them. Pick RBAC (roles and privileges), DSP (data security policies), or Complete (both)." />
+          <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
+          <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs — get the column names exactly right, since this tool does not check them until it starts comparing." />
+          <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
+          <SchemaTable
+            fileLabel="RBAC files (Environment 1 and Environment 2) — .csv or .xlsx"
+            rows={[
+              { column: 'ROLE NAME', status: 'Required', note: 'The name of the role.' },
+              { column: 'ENTITLEMENT', status: 'Required', note: 'The privilege or access granted to the role.' },
+              { column: 'INHERITED ROLE NAME', status: 'Required', note: 'A role this role picks up access from, if any.' },
+            ]}
+          />
+          <SchemaTable
+            fileLabel="DSP files (Environment 1 and Environment 2) — .csv or .xlsx"
+            rows={[
+              { column: 'ROLE NAME', status: 'Required', note: 'The name of the role.' },
+              { column: 'INHERITED ROLE NAME', status: 'Required', note: 'A role this role picks up access from, if any.' },
+              { column: 'GRANT END DATE', status: 'Required', note: 'When this access grant expires, if it does.' },
+              { column: 'OBJECT NAME', status: 'Required', note: 'The data object this policy protects.' },
+              { column: 'FUNCTION NAME', status: 'Required', note: 'The function this policy applies to.' },
+              { column: 'INSTANCE SET NAME', status: 'Required', note: 'Which specific records this policy covers.' },
+            ]}
+          />
+        </HelpAccordion>
+        <TemplateDownloads templates={[
+          ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
+          ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
+        ]} />
+      </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
