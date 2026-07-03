@@ -35,14 +35,22 @@ REQUIRED_SHEETS = ["SoD Ruleset", "SA Ruleset", "Entitlement to Privilege"]
 
 SHEET_REQUIRED_COLS: dict[str, set[str]] = {
     "SoD Ruleset": {
-        "Control Name", "Risk Ranking", "LHS Entitlement", "RHS Entitlement", "Module(s)",
+        "Control Name", "LHS Entitlement", "RHS Entitlement",
     },
     "SA Ruleset": {
-        "Control Name", "Risk Ranking", "Entitlement", "Side", "Module(s)",
+        "Control Name", "Entitlement",
     },
     "Entitlement to Privilege": {
-        "Entitlement Name", "Privilege Name", "Privilege Code", "Module",
+        "Entitlement Name", "Privilege Code", "Module",
     },
+}
+
+# Recommended-but-optional columns. Their absence does NOT block the upload; it
+# raises a non-blocking warning shown on the preview step (analysis still proceeds).
+SHEET_RECOMMENDED_COLS: dict[str, set[str]] = {
+    "SoD Ruleset": {"Risk Ranking", "Module(s)"},
+    "SA Ruleset": {"Risk Ranking", "Side", "Module(s)"},
+    "Entitlement to Privilege": {"Privilege Name"},
 }
 
 # Stores per-direction result DataFrames per job_id; purged on DELETE and on TTL
@@ -177,6 +185,7 @@ async def upload(
 
     # ── Validate sheet structure for both files (collect all errors) ───────────
     loaded: dict[str, pd.DataFrame] = {}
+    warnings: list[str] = []
     for file_bytes, filename, label in [
         (client_bytes, client_name, "Client Ruleset"),
         (ey_bytes,     ey_name,     "EY Ruleset"),
@@ -218,6 +227,14 @@ async def upload(
                         f"Missing required column '{col}'"
                     )
                 continue
+
+            recommended_cols = SHEET_RECOMMENDED_COLS.get(target_sheet, set())
+            _, missing_recommended = validate_dataframe_schema(set(df.columns), recommended_cols, label)
+            for col in missing_recommended:
+                warnings.append(
+                    f"{label} ('{filename}'), sheet '{target_sheet}': "
+                    f"Missing recommended column '{col}'"
+                )
 
             key = f"{prefix}_{target_sheet.lower().replace(' ', '_').replace('(', '').replace(')', '')}"
             loaded[key] = df
@@ -264,6 +281,7 @@ async def upload(
             "ey_e2p":     _build_preview(ey_e2p_df,     f"{ey_name} › Entitlement to Privilege"),
         },
         status=JobStatus.VALIDATING,
+        warnings=warnings,
     )
 
 

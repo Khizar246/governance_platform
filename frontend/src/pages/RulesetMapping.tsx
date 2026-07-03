@@ -316,26 +316,26 @@ export default function RulesetMapping() {
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two ruleset files — one from your Client and one from EY — and matches up their controls. Download the two blank template files below and fill them in first." />
-          <HelpStep num={2} text="Each file needs these 3 sheets, and every sheet needs its own set of columns. The tables below show exactly what is needed — every column listed is required, so the upload will fail if any of them are missing." />
+          <HelpStep num={2} text="Each file needs these 3 sheets. The table below shows every column each sheet needs — Required columns must be present or the upload will fail; Optional columns can be left out and the mapping will still run." />
           <HelpStep num={3} text="Upload both files, then click Validate & Preview. If anything is missing, the tool tells you exactly what and where — fix it and upload again." />
           <HelpStep num={4} text="Click Run Mapping once both files pass. The results page lets you flip between Client → EY and EY → Client, and shows matched controls, missing controls, and missing privileges. Download the finished Excel report from there." />
           <SchemaTable
             fileLabel="Client Ruleset (.xlsx) — and EY Ruleset (.xlsx), same 3 sheets"
             rows={[
               { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control, e.g. "SOD-001".' },
-              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Required', note: 'High, Medium, or Low.' },
               { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflicting access.' },
               { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side of the conflicting access.' },
-              { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Required', note: 'Which Oracle module this control belongs to, e.g. "Payables".' },
+              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional', note: 'High, Medium, or Low.' },
+              { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional', note: 'Which Oracle module this control belongs to, e.g. "Payables".' },
               { sheet: 'SA Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
-              { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Required', note: 'High, Medium, or Low.' },
               { sheet: 'SA Ruleset', column: 'Entitlement', status: 'Required', note: 'The single sensitive access this control watches.' },
-              { sheet: 'SA Ruleset', column: 'Side', status: 'Required', note: 'A label for which side this access sits on.' },
-              { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Required', note: 'Which Oracle module this control belongs to.' },
-              { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match the entitlement names used above.' },
-              { sheet: 'Entitlement to Privilege', column: 'Privilege Name', status: 'Required', note: 'The plain-English name of the privilege.' },
+              { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Optional', note: 'High, Medium, or Low.' },
+              { sheet: 'SA Ruleset', column: 'Side', status: 'Optional', note: 'A label for which side this access sits on.' },
+              { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Optional', note: 'Which Oracle module this control belongs to.' },
+              { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match the entitlement names used in SOD & SA Controls.' },
               { sheet: 'Entitlement to Privilege', column: 'Privilege Code', status: 'Required', note: 'The exact Oracle privilege code — this is what the tool actually matches on.' },
               { sheet: 'Entitlement to Privilege', column: 'Module', status: 'Required', note: 'Which Oracle module this privilege belongs to. Used to improve match accuracy.' },
+              { sheet: 'Entitlement to Privilege', column: 'Privilege Name', status: 'Optional', note: 'The plain-English name of the privilege.' },
             ]}
           />
         </HelpAccordion>
