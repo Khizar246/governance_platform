@@ -534,43 +534,20 @@ export default function SODSAAnalysis() {
           <SchemaTable
             fileLabel="Role Hierarchy (.csv or .xlsx) — always required"
             rows={[
-              { column: 'TOP_ROLE_CODE', status: 'Required', note: 'The top-level role code.' },
-              { column: 'TOP_ROLE_NAME', status: 'Required', note: 'The top-level role name.' },
-              { column: 'ROLE_CODE', status: 'Required', note: 'The specific role code on this row.' },
-              { column: 'ROLE_NAME', status: 'Required', note: 'The specific role name on this row.' },
-              { column: 'PRIVILEGE_CODE', status: 'Required', note: 'The Oracle privilege code this role holds.' },
-              { column: 'PRIVILEGE_NAME', status: 'Required', note: 'The plain-English name of that privilege.' },
+              { column: 'TOP_ROLE_CODE', status: 'Required', note: 'Job Role Code. Application use this to perform analysis.' },
+              { column: 'TOP_ROLE_NAME', status: 'Required', note: 'Job Role Name.' },
+              { column: 'ROLE_CODE', status: 'Required', note: 'Duty Role Code this role holds. Application use this to perform analysis.' },
+              { column: 'ROLE_NAME', status: 'Required', note: 'Duty Role Name this role holds.' },
+              { column: 'PRIVILEGE_CODE', status: 'Required', note: 'The Oracle privilege code this role holds. Application use this to perform analysis.' },
+              { column: 'PRIVILEGE_NAME', status: 'Required', note: 'The Oracle privilege name this role holds.' },
               { column: 'ROLE_TYPE_CODE', status: 'Optional', note: 'Not used by the analysis — safe to leave out.' },
-            ]}
-          />
-          <SchemaTable
-            fileLabel="SOD SA Ruleset (.xlsx) — always required, unless you use the bundled sample"
-            rows={[
-              { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
-              { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
-              { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side — every privilege must map to only ONE side, or the upload is rejected.' },
-              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
-              { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables".' },
-              { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'A sentence describing the risk.' },
-              { sheet: 'SoD Ruleset', column: 'Control Bucket', status: 'Only needed for Observation Report', note: 'Groups controls together. Must match a name in the Bucket Details sheet.' },
-              { sheet: 'SA Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
-              { sheet: 'SA Ruleset', column: 'Entitlement', status: 'Required', note: 'The sensitive access this control watches.' },
-              { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low.' },
-              { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module.' },
-              { sheet: 'SA Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'A sentence describing the risk.' },
-              { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match names used in the two sheets above.' },
-              { sheet: 'Entitlement to Privilege', column: 'Privilege Code', status: 'Required', note: 'Must match the privilege codes in the Role Hierarchy file.' },
-              { sheet: 'Bucket Details (whole sheet)', column: '—', status: 'Only needed for Observation Report', note: 'Leave this sheet out entirely if you are not using the Observation Report.' },
-              { sheet: 'Bucket Details', column: 'Bucket Name', status: 'Required, if the sheet is included', note: 'Must match the Control Bucket values used above.' },
-              { sheet: 'Bucket Details', column: 'Risk', status: 'Required, if the sheet is included', note: 'A short risk statement for this bucket.' },
-              { sheet: 'Bucket Details', column: 'EY Recommendations', status: 'Required, if the sheet is included', note: 'EY’s recommendation for this bucket.' },
             ]}
           />
           <SchemaTable
             fileLabel="User Role Membership (.csv or .xlsx) — only needed for User-level analysis"
             rows={[
-              { column: 'User Name', status: 'Required — only for User-level analysis', note: 'The person’s username.' },
-              { column: 'Assigned Role Name', status: 'Required — only for User-level analysis', note: 'A role assigned to that user. One row per user-role pair.' },
+              { column: 'User Name', status: 'Required — only for User-level analysis', note: 'The person’s username. Application use this to perform analysis.' },
+              { column: 'Assigned Role Name', status: 'Required — only for User-level analysis', note: 'A role assigned to that user. Application use this to perform analysis.' },
               { column: 'Assigned Role Display Name', status: 'Optional', note: 'A friendlier display name for the role.' },
             ]}
           />
@@ -578,9 +555,32 @@ export default function SODSAAnalysis() {
             fileLabel="FP Database (.xlsx) — only needed if False-Positive Detection is on"
             rows={[
               { sheet: 'No_action_Privileges', column: 'PRIVILEGE_NAME', status: 'Required — only if FP Detection is on', note: 'A privilege that never counts as a real violation.' },
-              { sheet: 'No_action_Privileges', column: 'False Positive Reason', status: 'Required — only if FP Detection is on', note: 'Why this privilege is safe to ignore.' },
+              { sheet: 'No_action_Privileges', column: 'False Positive Reason', status: 'Required — only if FP Detection is on', note: 'Why the privilege is marked as False Positive.' },
               { sheet: 'WorkArea_Privileges', column: 'PRIVILEGE_NAME', status: 'Required — only if FP Detection is on', note: 'A privilege that needs a gatekeeper check.' },
               { sheet: 'WorkArea_Privileges', column: 'WORK_AREA_PRIVILEGE_CODE', status: 'Required — only if FP Detection is on', note: 'The gatekeeper privilege needed to actually use that access.' },
+            ]}
+          />
+          <SchemaTable
+            fileLabel="SOD SA Ruleset (.xlsx) — always required, unless you use the bundled sample"
+            rows={[
+              { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
+              { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
+              { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side of the conflict.' },
+              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables". Filled with placeholder text in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'Risk if a user violate the control. Filled with placeholder text in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Control Bucket', status: 'Only needed for Observation Report', note: 'Groups controls together. Must match a name in the Bucket Details sheet. e.g. "Transaction vs Approval"' },
+              { sheet: 'SA Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
+              { sheet: 'SA Ruleset', column: 'Entitlement', status: 'Required', note: 'The sensitive access this control watches.' },
+              { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
+              { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables". Filled with placeholder text in the export if missing.' },
+              { sheet: 'SA Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'Risk if a user violate the control. Filled with placeholder text in the export if missing.' },
+              { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match the entitlement names used in SOD & SA Controls.' },
+              { sheet: 'Entitlement to Privilege', column: 'Privilege Code', status: 'Required', note: 'Must match the privilege codes in the Role Hierarchy Report.' },
+              { sheet: 'Bucket Details (whole sheet)', column: '—', status: 'Only needed for Observation Report', note: 'Leave this sheet out entirely if you are not using the Observation Report.' },
+              { sheet: 'Bucket Details', column: 'Bucket Name', status: 'Required, if the sheet is included', note: 'Must match the Control Bucket values used in SoD Ruleset sheet.' },
+              { sheet: 'Bucket Details', column: 'Risk', status: 'Required, if the sheet is included', note: 'A short risk statement for this bucket.' },
+              { sheet: 'Bucket Details', column: 'EY Recommendations', status: 'Required, if the sheet is included', note: 'EY’s recommendation to mitigate the risk for this bucket.' },
             ]}
           />
         </HelpAccordion>
