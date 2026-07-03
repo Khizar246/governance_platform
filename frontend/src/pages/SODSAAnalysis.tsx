@@ -549,7 +549,7 @@ export default function SODSAAnalysis() {
               { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
               { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
               { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side — every privilege must map to only ONE side, or the upload is rejected.' },
-              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Left blank in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
               { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables".' },
               { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'A sentence describing the risk.' },
               { sheet: 'SoD Ruleset', column: 'Control Bucket', status: 'Only needed for Observation Report', note: 'Groups controls together. Must match a name in the Bucket Details sheet.' },

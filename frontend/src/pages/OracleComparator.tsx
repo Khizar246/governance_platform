@@ -324,7 +324,7 @@ export default function OracleComparator() {
           <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs — get the column names exactly right, since this tool does not check them until it starts comparing." />
           <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
           <SchemaTable
-            fileLabel="RBAC files (Environment 1 and Environment 2) — .csv or .xlsx"
+            fileLabel="RBAC files (Environment 1 and Environment 2) — .csv, .xlsx, or .xls"
             rows={[
               { column: 'ROLE NAME', status: 'Required', note: 'The name of the role.' },
               { column: 'ENTITLEMENT', status: 'Required', note: 'The privilege or access granted to the role.' },
@@ -332,7 +332,7 @@ export default function OracleComparator() {
             ]}
           />
           <SchemaTable
-            fileLabel="DSP files (Environment 1 and Environment 2) — .csv or .xlsx"
+            fileLabel="DSP files (Environment 1 and Environment 2) — .csv, .xlsx, or .xls"
             rows={[
               { column: 'ROLE NAME', status: 'Required', note: 'The name of the role.' },
               { column: 'INHERITED ROLE NAME', status: 'Required', note: 'A role this role picks up access from, if any.' },

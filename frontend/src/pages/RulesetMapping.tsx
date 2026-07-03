@@ -316,7 +316,7 @@ export default function RulesetMapping() {
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two ruleset files — one from your Client and one from EY — and matches up their controls. Download the two blank template files below and fill them in first." />
-          <HelpStep num={2} text="Each file needs exactly 3 sheets, and every sheet needs its own set of columns. The tables below show exactly what is needed. 'Required' means the upload will fail without it. 'Optional' means the tool will still run, but that column helps the match be more accurate." />
+          <HelpStep num={2} text="Each file needs these 3 sheets, and every sheet needs its own set of columns. The tables below show exactly what is needed — every column listed is required, so the upload will fail if any of them are missing." />
           <HelpStep num={3} text="Upload both files, then click Validate & Preview. If anything is missing, the tool tells you exactly what and where — fix it and upload again." />
           <HelpStep num={4} text="Click Run Mapping once both files pass. The results page lets you flip between Client → EY and EY → Client, and shows matched controls, missing controls, and missing privileges. Download the finished Excel report from there." />
           <SchemaTable
