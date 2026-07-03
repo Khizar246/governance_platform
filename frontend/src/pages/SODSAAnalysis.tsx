@@ -13,6 +13,7 @@ import DataTable from '../components/common/DataTable'
 import LoadingOverlay, { type ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
+import HelpAccordion, { HelpStep, SchemaTable, TemplateDownloads } from '../components/common/HelpAccordion'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
   getSummary, getSheetResults, getFilterOptions, getSeededFileSize,
@@ -521,6 +522,75 @@ export default function SODSAAnalysis() {
         title="SOD & SA Analysis"
         subtitle="Segregation of Duties and Sensitive Access violation detection at role and user level"
       />
+
+      <div style={{ marginBottom: 20 }}>
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
+          <HelpStep num={1} text="First pick what you want to check: Role-level (fast, 2 files), User-level (attributes issues to named people, needs 3 files), or both. You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
+          <HelpStep num={2} text="Upload the Role Hierarchy file — export it from Oracle Fusion (Security Console → Roles → Export Hierarchy)." />
+          <HelpStep num={3} text="Upload the SOD SA Ruleset file, or use the bundled sample ruleset instead." />
+          <HelpStep num={4} text="If you picked User-level (or both), also upload the User Role Membership file." />
+          <HelpStep num={5} text="If False-Positive Detection is on, upload the FP Database file, or use the bundled sample." />
+          <HelpStep num={6} text="Click Run Analysis. If something required is missing, the tool stops and tells you exactly what to fix. If only 'nice to have' columns are missing, you can still proceed — just know the export will use placeholder text for those columns." />
+          <SchemaTable
+            fileLabel="Role Hierarchy (.csv or .xlsx) — always required"
+            rows={[
+              { column: 'TOP_ROLE_CODE', status: 'Required', note: 'The top-level role code.' },
+              { column: 'TOP_ROLE_NAME', status: 'Required', note: 'The top-level role name.' },
+              { column: 'ROLE_CODE', status: 'Required', note: 'The specific role code on this row.' },
+              { column: 'ROLE_NAME', status: 'Required', note: 'The specific role name on this row.' },
+              { column: 'PRIVILEGE_CODE', status: 'Required', note: 'The Oracle privilege code this role holds.' },
+              { column: 'PRIVILEGE_NAME', status: 'Required', note: 'The plain-English name of that privilege.' },
+              { column: 'ROLE_TYPE_CODE', status: 'Optional', note: 'Not used by the analysis — safe to leave out.' },
+            ]}
+          />
+          <SchemaTable
+            fileLabel="SOD SA Ruleset (.xlsx) — always required, unless you use the bundled sample"
+            rows={[
+              { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
+              { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
+              { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side — every privilege must map to only ONE side, or the upload is rejected.' },
+              { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Left blank in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables".' },
+              { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'A sentence describing the risk.' },
+              { sheet: 'SoD Ruleset', column: 'Control Bucket', status: 'Only needed for Observation Report', note: 'Groups controls together. Must match a name in the Bucket Details sheet.' },
+              { sheet: 'SA Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
+              { sheet: 'SA Ruleset', column: 'Entitlement', status: 'Required', note: 'The sensitive access this control watches.' },
+              { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low.' },
+              { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module.' },
+              { sheet: 'SA Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'A sentence describing the risk.' },
+              { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match names used in the two sheets above.' },
+              { sheet: 'Entitlement to Privilege', column: 'Privilege Code', status: 'Required', note: 'Must match the privilege codes in the Role Hierarchy file.' },
+              { sheet: 'Bucket Details (whole sheet)', column: '—', status: 'Only needed for Observation Report', note: 'Leave this sheet out entirely if you are not using the Observation Report.' },
+              { sheet: 'Bucket Details', column: 'Bucket Name', status: 'Required, if the sheet is included', note: 'Must match the Control Bucket values used above.' },
+              { sheet: 'Bucket Details', column: 'Risk', status: 'Required, if the sheet is included', note: 'A short risk statement for this bucket.' },
+              { sheet: 'Bucket Details', column: 'EY Recommendations', status: 'Required, if the sheet is included', note: 'EY’s recommendation for this bucket.' },
+            ]}
+          />
+          <SchemaTable
+            fileLabel="User Role Membership (.csv or .xlsx) — only needed for User-level analysis"
+            rows={[
+              { column: 'User Name', status: 'Required — only for User-level analysis', note: 'The person’s username.' },
+              { column: 'Assigned Role Name', status: 'Required — only for User-level analysis', note: 'A role assigned to that user. One row per user-role pair.' },
+              { column: 'Assigned Role Display Name', status: 'Optional', note: 'A friendlier display name for the role.' },
+            ]}
+          />
+          <SchemaTable
+            fileLabel="FP Database (.xlsx) — only needed if False-Positive Detection is on"
+            rows={[
+              { sheet: 'No_action_Privileges', column: 'PRIVILEGE_NAME', status: 'Required — only if FP Detection is on', note: 'A privilege that never counts as a real violation.' },
+              { sheet: 'No_action_Privileges', column: 'False Positive Reason', status: 'Required — only if FP Detection is on', note: 'Why this privilege is safe to ignore.' },
+              { sheet: 'WorkArea_Privileges', column: 'PRIVILEGE_NAME', status: 'Required — only if FP Detection is on', note: 'A privilege that needs a gatekeeper check.' },
+              { sheet: 'WorkArea_Privileges', column: 'WORK_AREA_PRIVILEGE_CODE', status: 'Required — only if FP Detection is on', note: 'The gatekeeper privilege needed to actually use that access.' },
+            ]}
+          />
+        </HelpAccordion>
+        <TemplateDownloads templates={[
+          ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
+          ['SOD SA Ruleset Template',        'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
+          ['User Role Membership Template',  'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
+          ['FP Database Template',           'XLSX', '/api/templates/sod-sa-analysis/fp_database_template.xlsx'],
+        ]} />
+      </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
