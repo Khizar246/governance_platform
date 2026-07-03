@@ -223,9 +223,12 @@ def load_ruleset_sheets(
         xls = pd.ExcelFile(io.BytesIO(file_bytes), engine="openpyxl")
         missing_sheets = required_sheets - set(xls.sheet_names)
         if missing_sheets:
+            missing_str = ", ".join(f"'{s}'" for s in sorted(missing_sheets))
+            found_str = ", ".join(f"'{s}'" for s in xls.sheet_names)
+            plural = "s" if len(missing_sheets) > 1 else ""
             return None, None, None, pl.DataFrame(), [
-                f"Ruleset is missing required sheets: {missing_sheets}. "
-                f"Found: {xls.sheet_names}"
+                f"Ruleset is missing required sheet{plural} {missing_str}. "
+                f"Sheets found in the file: {found_str}."
             ]
 
         def _load(sheet_name: str, rename_key: str) -> pl.DataFrame:
@@ -238,13 +241,34 @@ def load_ruleset_sheets(
                 keep_default_na=False,
             )
             df = pl.from_pandas(df_pd)
+
+            # A raw column that isn't one of the recognized source headers for
+            # this sheet (e.g. the file already has a column literally named
+            # PRIVILEGE_NAME instead of the expected "Privilege Code") must not
+            # be treated as if it satisfied the requirement — drop it so the
+            # required-columns check below reports it as missing by its proper
+            # template name, instead of silently colliding with a renamed column
+            # and crashing df.unique() with an opaque polars.exceptions.DuplicateError.
+            rename_map = INPUT_COLUMN_RENAME[rename_key]
+            norm_map = {k.strip().upper(): v for k, v in rename_map.items()}
+            recognized_targets = set(rename_map.values())
+            drop_cols = [
+                c for c in df.columns
+                if c.strip().upper() not in norm_map and c in recognized_targets
+            ]
+            if drop_cols:
+                df = df.drop(drop_cols)
+
             df = upper_values(df)
-            df = apply_rename(df, INPUT_COLUMN_RENAME[rename_key])
+            df = apply_rename(df, rename_map)
             return df.unique()
 
         sod_df     = _load("SoD Ruleset",            "sod")
         sa_df      = _load("SA Ruleset",             "sa")
         mapping_df = _load("Entitlement to Privilege", "mapping")
+
+        if errors:
+            return None, None, None, pl.DataFrame(), errors
 
         # Required column validation
         for df, kind, label in [
@@ -254,7 +278,12 @@ def load_ruleset_sheets(
         ]:
             missing_cols = REQUIRED_COLUMNS[kind] - set(df.columns)
             if missing_cols:
-                errors.append(f"'{label}' missing required columns: {missing_cols}")
+                original_names = sorted(
+                    RENAMED_TO_ORIGINAL[kind].get(col, col) for col in missing_cols
+                )
+                cols_str = ", ".join(f"'{name}'" for name in original_names)
+                plural = "s" if len(original_names) > 1 else ""
+                errors.append(f"Sheet '{label}' is missing required column{plural} {cols_str}.")
 
         if errors:
             return None, None, None, pl.DataFrame(), errors
