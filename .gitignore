@@ -48,6 +48,3 @@ desktop.ini
 # Local Claude Code settings
 .claude/
 .impeccable/
-
-# Backend runtime data stays local
-backend/data/
