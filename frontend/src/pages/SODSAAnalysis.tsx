@@ -29,7 +29,7 @@ type SODRow = Record<string, unknown>
 type IntegrityItem = { control: string; privileges: string[]; lhs: string; rhs: string }
 
 const STEPS = ['Configure Analysis', 'Upload Files', 'Processing', 'Results']
-const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, results: 3, error: 0 }
+const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, results: 3, error: 2 }
 
 // The four analyses the user can toggle independently. Ticking any User box
 // requires the User Role Membership file; the role/user/both "type" is derived.
@@ -147,7 +147,7 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
             <span className="text-[12.5px] text-gray-700 flex-1 truncate min-w-0" title={item.name}>
               {item.name}
             </span>
-            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, fontWeight: 700, color: '#EAB308', flexShrink: 0 }}>
+            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, fontWeight: 700, color: '#E8A900', flexShrink: 0 }}>
               {item.count}
             </span>
           </div>
@@ -463,6 +463,18 @@ export default function SODSAAnalysis() {
     }
   }, [stagedJobId, startRun])
 
+  // Cancel a running analysis: delete the job server-side and drop back to the
+  // Upload step with files intact so the user can adjust and re-run.
+  const handleCancelRun = useCallback(async () => {
+    if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
+    setJobId(null)
+    setStagedJobId(null)
+    setProgress(0)
+    setProgressMessage('')
+    setCurrentStep(0)
+    setStep('upload')
+  }, [jobId])
+
   const handleTryAgain = useCallback(async () => {
     if (!jobId || !analysisType) { setStep('upload'); return }
     try {
@@ -526,19 +538,19 @@ export default function SODSAAnalysis() {
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="First pick what level of analysis you want to do: Role-level (2 files required), User-level (3 files required), or both (3 files required). You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
-          <HelpStep num={2} text="Upload the Role Hierarchy report received from client. No need to make any changes just upload directly tool handles everything." />
-          <HelpStep num={3} text="If you picked User-level (or both), also upload the User Role Membership Report received from client. No need to make any changes just upload directly tool handles everything." />
+          <HelpStep num={2} text="Upload the Role Hierarchy report received from the client. No changes are needed — upload it as-is; the tool handles everything." />
+          <HelpStep num={3} text="If you picked User-level (or both), also upload the User Role Membership report received from the client. Again, upload it as-is — no changes needed." />
           <HelpStep num={4} text="Upload the SOD SA Ruleset file, or use the bundled sample ruleset instead." />
           <HelpStep num={5} text="If False-Positive Detection is on, upload the FP Database file, or use the bundled sample instead." />
           <HelpStep num={6} text="Click Run Analysis. If something required is missing, the tool stops and tells you exactly what to fix. If only 'nice to have' columns are missing, you can still proceed — just know the export will use placeholder text for those columns." />
           <SchemaTable
             fileLabel="Role Hierarchy (.csv or .xlsx) — always required"
             rows={[
-              { column: 'TOP_ROLE_CODE', status: 'Required', note: 'Job Role Code. Application use this to perform analysis.' },
+              { column: 'TOP_ROLE_CODE', status: 'Required', note: 'Job Role Code. The application uses this to perform the analysis.' },
               { column: 'TOP_ROLE_NAME', status: 'Required', note: 'Job Role Name.' },
-              { column: 'ROLE_CODE', status: 'Required', note: 'Duty Role Code this role holds. Application use this to perform analysis.' },
+              { column: 'ROLE_CODE', status: 'Required', note: 'Duty Role Code this role holds. The application uses this to perform the analysis.' },
               { column: 'ROLE_NAME', status: 'Required', note: 'Duty Role Name this role holds.' },
-              { column: 'PRIVILEGE_CODE', status: 'Required', note: 'The Oracle privilege code this role holds. Application use this to perform analysis.' },
+              { column: 'PRIVILEGE_CODE', status: 'Required', note: 'The Oracle privilege code this role holds. The application uses this to perform the analysis.' },
               { column: 'PRIVILEGE_NAME', status: 'Required', note: 'The Oracle privilege name this role holds.' },
               { column: 'ROLE_TYPE_CODE', status: 'Optional', note: 'Not used by the analysis — safe to leave out.' },
             ]}
@@ -546,8 +558,8 @@ export default function SODSAAnalysis() {
           <SchemaTable
             fileLabel="User Role Membership (.csv or .xlsx) — only needed for User-level analysis"
             rows={[
-              { column: 'User Name', status: 'Required — only for User-level analysis', note: 'The person’s username. Application use this to perform analysis.' },
-              { column: 'Assigned Role Name', status: 'Required — only for User-level analysis', note: 'A role assigned to that user. Application use this to perform analysis.' },
+              { column: 'User Name', status: 'Required — only for User-level analysis', note: 'The person’s username. The application uses this to perform the analysis.' },
+              { column: 'Assigned Role Name', status: 'Required — only for User-level analysis', note: 'A role assigned to that user. The application uses this to perform the analysis.' },
               { column: 'Assigned Role Display Name', status: 'Optional', note: 'A friendlier display name for the role.' },
             ]}
           />
@@ -568,13 +580,13 @@ export default function SODSAAnalysis() {
               { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side of the conflict.' },
               { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
               { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables". Filled with placeholder text in the export if missing.' },
-              { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'Risk if a user violate the control. Filled with placeholder text in the export if missing.' },
+              { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'The risk if a user violates the control. Filled with placeholder text in the export if missing.' },
               { sheet: 'SoD Ruleset', column: 'Control Bucket', status: 'Only needed for Observation Report', note: 'Groups controls together. Must match a name in the Bucket Details sheet. e.g. "Transaction vs Approval"' },
               { sheet: 'SA Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
               { sheet: 'SA Ruleset', column: 'Entitlement', status: 'Required', note: 'The sensitive access this control watches.' },
               { sheet: 'SA Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
               { sheet: 'SA Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables". Filled with placeholder text in the export if missing.' },
-              { sheet: 'SA Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'Risk if a user violate the control. Filled with placeholder text in the export if missing.' },
+              { sheet: 'SA Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'The risk if a user violates the control. Filled with placeholder text in the export if missing.' },
               { sheet: 'Entitlement to Privilege', column: 'Entitlement Name', status: 'Required', note: 'Must match the entitlement names used in SOD & SA Controls.' },
               { sheet: 'Entitlement to Privilege', column: 'Privilege Code', status: 'Required', note: 'Must match the privilege codes in the Role Hierarchy Report.' },
               { sheet: 'Bucket Details (whole sheet)', column: '—', status: 'Only needed for Observation Report', note: 'Leave this sheet out entirely if you are not using the Observation Report.' },
@@ -918,6 +930,13 @@ export default function SODSAAnalysis() {
               steps={progressSteps}
               withFp={withFp}
             />
+            {jobId && (
+              <div className="flex justify-center mt-2">
+                <button className="btn-secondary" onClick={handleCancelRun}>
+                  <X size={14} /> Cancel Analysis
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -981,14 +1000,14 @@ export default function SODSAAnalysis() {
                           className={clsx(
                             'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
                             activeTab === id
-                              ? 'border-[#EAB308] text-[#0F1E3D] font-semibold'
+                              ? 'border-[#FFD100] text-[#0F1E3D] font-semibold'
                               : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
                           )}
                         >
                           {SHEET_LABELS[id]}
                           <span className={clsx(
                             'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
-                            activeTab === id ? 'bg-[#EAB308]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
+                            activeTab === id ? 'bg-[#FFD100]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
                           )}>
                             {count.toLocaleString()}
                           </span>

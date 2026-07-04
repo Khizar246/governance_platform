@@ -47,9 +47,7 @@ desktop.ini
 
 # Local Claude Code settings
 .claude/
+.impeccable/
 
 # Local data files — only templates belong in the repo
 Data/
-
-# Local documentation
-EY_Access_Governance_Platform_Documentation.docx
