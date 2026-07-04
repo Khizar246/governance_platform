@@ -629,6 +629,7 @@ export default function SODSAAnalysis() {
         <TemplateDownloads templates={[
           ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
           ['SOD SA Ruleset Template',        'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
+          ['SOD SA Ruleset Template (3-Leg)', 'XLSX', '/api/templates/sod-sa-analysis/ruleset_template_3leg.xlsx'],
           ['User Role Membership Template',  'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
           ['FP Database Template',           'XLSX', '/api/templates/sod-sa-analysis/fp_database_template.xlsx'],
         ]} />
