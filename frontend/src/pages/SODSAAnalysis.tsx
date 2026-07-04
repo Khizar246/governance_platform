@@ -184,6 +184,8 @@ export default function SODSAAnalysis() {
   const [entitlementWarnings, setEntitlementWarnings] = useState<{ entitlement: string; controls: string[] }[]>([])
   const [recommendedWarnings, setRecommendedWarnings] = useState<string[]>([])
   const [stagedJobId, setStagedJobId] = useState<string | null>(null)
+  // Upload validation failed: Run stays disabled until a file source changes.
+  const [uploadBlocked, setUploadBlocked] = useState(false)
   const [seededSizes, setSeededSizes] = useState<{ ruleset: number; fpDb: number }>({ ruleset: 0, fpDb: 0 })
   const [confirmReset, setConfirmReset] = useState(false)
 
@@ -381,6 +383,11 @@ export default function SODSAAnalysis() {
     setStagedJobId(null)
     setRecommendedWarnings([])
     setEntitlementWarnings([])
+    // A changed file also clears the previous validation failure and unlocks Run.
+    setUploadBlocked(false)
+    setUploadError('')
+    setUploadErrorDetails([])
+    setIntegrityItems([])
   }, [])
 
   const startRun = useCallback(async (id: string) => {
@@ -400,6 +407,7 @@ export default function SODSAAnalysis() {
     setEntitlementWarnings([])
     setRecommendedWarnings([])
     setStagedJobId(null)
+    setUploadBlocked(false)
     setJobId(null)
     // Show the Processing step while uploading/validating; validation failures
     // drop the user back on the Upload step with the error rendered there.
@@ -414,6 +422,7 @@ export default function SODSAAnalysis() {
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp)
       if (resp.errors?.length) {
         setUploadError(resp.errors[0])
+        setUploadBlocked(true)
         setStep('upload')
         return
       }
@@ -433,10 +442,21 @@ export default function SODSAAnalysis() {
       }
       await startRun(id)
     } catch (err: unknown) {
-      const data = (err as { response?: { data?: { message?: string; details?: string[]; integrity_items?: IntegrityItem[] } } })?.response?.data
+      const data = (err as { response?: { data?: {
+        message?: string
+        details?: string[]
+        integrity_items?: IntegrityItem[]
+        warnings?: string[]
+        entitlement_warnings?: { entitlement: string; controls: string[] }[]
+      } } })?.response?.data
       setUploadError(data?.message || 'Upload or run failed. Please try again.')
       setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
       setIntegrityItems(Array.isArray(data?.integrity_items) ? data.integrity_items : [])
+      // Errors and warnings arrive together so the user can fix the ruleset in
+      // one pass; Run stays disabled until a file changes.
+      setRecommendedWarnings((data?.warnings ?? []).filter((w) => w.includes('Missing recommended column')))
+      setEntitlementWarnings(Array.isArray(data?.entitlement_warnings) ? data.entitlement_warnings : [])
+      setUploadBlocked(true)
       setStep('upload')
     } finally {
       setIsUploading(false)
@@ -869,7 +889,9 @@ export default function SODSAAnalysis() {
                     ))}
                   </div>
                   <div className="text-xs text-amber-700 mt-2 pt-1 border-t border-amber-200/40">
-                    You can update the mapping tab and re-upload, or continue with the analysis — these controls will be excluded.
+                    {uploadBlocked
+                      ? 'Fix these in the same pass as the error above — the corrected file must be re-uploaded anyway.'
+                      : 'You can update the mapping tab and re-upload, or continue with the analysis — these controls will be excluded.'}
                   </div>
                 </div>
                 <button
@@ -887,10 +909,9 @@ export default function SODSAAnalysis() {
                 <div className="flex-1 space-y-2">
                   <div className="font-medium">Recommended columns missing from your ruleset</div>
                   <div className="text-xs text-amber-800/80 mb-2">
-                    Your files passed validation, and the analysis is ready to run. However, the columns listed
-                    below are missing and will be populated with placeholder values in the export. You may proceed
-                    with the analysis, but for a client-ready export, we recommend adding these columns to your
-                    ruleset and re-uploading the files.
+                    {uploadBlocked
+                      ? 'The columns listed below are also missing from your ruleset. They are optional, but the export will use placeholder values without them — add them while fixing the error above so one re-upload covers everything.'
+                      : 'Your files passed validation, and the analysis is ready to run. However, the columns listed below are missing and will be populated with placeholder values in the export. You may proceed with the analysis, but for a client-ready export, we recommend adding these columns to your ruleset and re-uploading the files.'}
                   </div>
                   <ul className="list-disc pl-5 space-y-0.5 text-xs">
                     {recommendedWarnings.map((w, i) => (
@@ -910,7 +931,8 @@ export default function SODSAAnalysis() {
               ) : (
                 <button
                   className="btn-gold"
-                  disabled={!canRun}
+                  disabled={!canRun || uploadBlocked}
+                  title={uploadBlocked ? 'Fix the issues below and upload the corrected file to run again.' : undefined}
                   onClick={handleRunAnalysis}
                 >
                   {isUploading ? 'Uploading…' : 'Run Analysis →'}
@@ -932,7 +954,10 @@ export default function SODSAAnalysis() {
             />
             {jobId && (
               <div className="flex justify-center mt-2">
-                <button className="btn-secondary" onClick={handleCancelRun}>
+                <button
+                  className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-light"
+                  onClick={handleCancelRun}
+                >
                   <X size={14} /> Cancel Analysis
                 </button>
               </div>

@@ -845,6 +845,9 @@ async def upload(
         logger.error(f"SOD & SA upload rejected — {len(integrity_errors)} shared-privilege issue(s):")
         for _e in integrity_errors:
             logger.error(f"  • {_e}")
+        # Also surface the non-blocking warnings (recommended columns, unmapped
+        # entitlements) alongside the hard error, so the user can fix the ruleset
+        # in one pass instead of discovering warnings only after fixing the error.
         return JSONResponse(
             status_code=400,
             content={
@@ -856,6 +859,8 @@ async def upload(
                 "code": "DATA_INTEGRITY_ERROR",
                 "details": integrity_errors,
                 "integrity_items": integrity_items,
+                "warnings": _scan_recommended_columns(ruleset_bytes, ruleset_name),
+                "entitlement_warnings": _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df),
             },
         )
 
