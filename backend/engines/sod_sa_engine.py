@@ -661,6 +661,10 @@ def check_sod_violations_3leg(
         "ROLE_NAME", "ROLE_DISPLAY_NAME",
         "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
         "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME",
+        # Group metadata for the group-aware FP SL/TC classification (dropped
+        # by run_fp_pipeline / the router before results are cached).
+        pl.col("GROUP_ID").alias("_GROUP_ID"),
+        pl.col("_n_groups").alias("_N_GROUPS"),
     ]).unique()
 
     if entity_column:
@@ -882,6 +886,8 @@ def _fp_level3(
 
     For SOD: count unique entitlements per (CONTROL_NAME, entity_col).
       1 entitlement → SL, ≥2 → True Conflict.
+    For 3-leg SOD (frame carries _GROUP_ID): count distinct AND-groups with a
+      pending row instead — 1 surviving group → SL, ≥2 → True Conflict.
     For SA: all remaining rows → True Conflict.
     """
     pending = df.filter(pl.col("Potential FP") == "")
@@ -889,6 +895,39 @@ def _fp_level3(
         return df
 
     noun = "user" if entity_col == "USER_NAME" else "role"
+
+    if is_sod and "_GROUP_ID" in df.columns:
+        # Group-aware (3-leg): count surviving AND-groups per control & entity
+        pending_counted = pending.with_columns(
+            pl.col("_GROUP_ID").n_unique().over(["CONTROL_NAME", entity_col]).alias("_grp_count")
+        )
+
+        sl_ids = pending_counted.filter(pl.col("_grp_count") == 1).select("_row_nr")
+        tc_ids = pending_counted.filter(pl.col("_grp_count") >= 2).select("_row_nr")
+
+        sl_reasons = pending_counted.join(sl_ids, on="_row_nr", how="inner").select([
+            "_row_nr",
+            (pl.lit("Single Leg - Only one leg of the control remains after identifying the false positive for '") + pl.col(entity_col) + pl.lit("'")).alias("_reason"),
+        ])
+
+        tc_rows = pending_counted.join(tc_ids, on="_row_nr", how="inner")
+        if "_wa_code" in tc_rows.columns:
+            tc_reasons = tc_rows.select([
+                "_row_nr",
+                pl.when(pl.col("_wa_code").is_not_null())
+                  .then(pl.lit(f"True Conflict - The {noun} has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
+                  .otherwise(pl.lit("True Conflict — Entitlements from multiple conflicting legs of the control are present."))
+                  .alias("_reason"),
+            ])
+        else:
+            tc_reasons = tc_rows.select([
+                "_row_nr",
+                pl.lit("True Conflict — Entitlements from multiple conflicting legs of the control are present.").alias("_reason"),
+            ])
+
+        # Apply SL, then TC
+        df = _set_fp_where_pending(df.join(sl_reasons, on="_row_nr", how="left"), "SL")
+        return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "TC")
 
     if is_sod:
         # Count entitlements per control & entity
@@ -969,10 +1008,22 @@ def run_fp_pipeline(
           )
           .alias("_fp_keys")
     )
+    # Level 0 (3-leg only): OR-only controls have a single AND-group, so they act
+    # as Sensitive Access, not a SoD conflict — mark every row SL before levels 1–2.
+    if is_sod and "_N_GROUPS" in df.columns:
+        df = _set_fp_where_pending(
+            df.with_columns(
+                pl.when(pl.col("_N_GROUPS") == 1)
+                  .then(pl.lit("Single Leg - All conditions in this control are OR; it functions as Sensitive Access rather than a SoD conflict."))
+                  .otherwise(None)
+                  .alias("_reason")
+            ),
+            "SL",
+        )
     df = _fp_level1(df, no_action_df)
     df = _fp_level2(df, work_area_df, role_hierarchy_df, entity_col, user_role_df)
     df = _fp_level3(df, entity_col, is_sod)
-    cols_to_drop = [c for c in ["_row_nr", "_wa_code", "_fp_keys"] if c in df.columns]
+    cols_to_drop = [c for c in ["_row_nr", "_wa_code", "_fp_keys", "_GROUP_ID", "_N_GROUPS"] if c in df.columns]
     return df.drop(cols_to_drop)
 
 

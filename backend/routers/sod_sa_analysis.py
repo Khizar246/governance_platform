@@ -675,6 +675,14 @@ def _run_thread(
         # FP disabled: leave DataFrames without FP columns; engine and cache
         # populate will both omit them from output when fp_enabled=False.
 
+        # Strip internal group-metadata columns (3-leg SOD frames carry
+        # _GROUP_ID/_N_GROUPS). run_fp_pipeline already drops them after FP
+        # runs; this covers FP-disabled runs (no-op otherwise).
+        if not role_sod.is_empty():
+            role_sod = role_sod.drop([c for c in role_sod.columns if c.startswith("_")])
+        if not user_sod.is_empty():
+            user_sod = user_sod.drop([c for c in user_sod.columns if c.startswith("_")])
+
         total_roles = (
             role_hierarchy_df.select("ROLE_NAME").unique().height
             if "ROLE_NAME" in role_hierarchy_df.columns
