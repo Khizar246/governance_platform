@@ -76,6 +76,13 @@ _RULESET_SHEET_SCHEMA = {
     "SA Ruleset":  ["Control Name", "Entitlement"],
     "Entitlement to Privilege": ["Entitlement Name", "Privilege Code"],
 }
+# 3-leg SOD mode (with_3leg): SoD Ruleset uses the AND/OR layout instead.
+# Entitlement 3 / Condition 2 are optional (blank ⇒ 2-leg row).
+_RULESET_SHEET_SCHEMA_3LEG = {
+    "SoD Ruleset": ["Control Name", "Entitlement 1", "Condition 1", "Entitlement 2"],
+    "SA Ruleset":  ["Control Name", "Entitlement"],
+    "Entitlement to Privilege": ["Entitlement Name", "Privilege Code"],
+}
 
 # Recommended-but-optional columns. Their absence does NOT block analysis; it
 # raises a non-blocking warning advising the user to add them for a client-ready
@@ -160,11 +167,13 @@ def _validate_all_schemas(
     ruleset_bytes: bytes, ruleset_name: str,
     ur_bytes: Optional[bytes], ur_name: Optional[str],
     fp_bytes: Optional[bytes], fp_name: Optional[str],
+    with_3leg: bool = False,
 ) -> list[str]:
     """Scan every uploaded file, sheet and column upfront; return ALL issues together."""
     errors: list[str] = []
     errors += _validate_flat_file(rh_bytes, rh_name, "Role Hierarchy", _RH_REQUIRED_COLS)
-    errors += _validate_multisheet_file(ruleset_bytes, ruleset_name, "Ruleset", _RULESET_SHEET_SCHEMA)
+    ruleset_schema = _RULESET_SHEET_SCHEMA_3LEG if with_3leg else _RULESET_SHEET_SCHEMA
+    errors += _validate_multisheet_file(ruleset_bytes, ruleset_name, "Ruleset", ruleset_schema)
     if ur_bytes is not None and ur_name is not None:
         errors += _validate_flat_file(ur_bytes, ur_name, "User Role", _UR_REQUIRED_COLS)
     if fp_bytes is not None and fp_name is not None:
@@ -245,26 +254,74 @@ def _load_file(file_bytes: bytes, filename: str) -> pl.DataFrame:
     return load_excel_to_polars(file_bytes, filename, None, None, logger)
 
 
+def _validate_3leg_conditions(sod_df: pl.DataFrame) -> tuple[list[str], list[str]]:
+    """Validate Condition values in a 3-leg SoD Ruleset (with_3leg mode only).
+
+    Errors (blocking): a non-blank Condition cell that is not AND/OR
+    (case-insensitive), or Entitlement 3 filled with a blank Condition 2.
+    Warnings (non-blocking): all-OR rows — they evaluate as written (any single
+    entitlement match flags the control), which is usually not intended.
+    Returns (errors, warnings) with user-facing column names.
+    """
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    def _s(v) -> str:
+        return str(v).strip().upper() if v is not None else ""
+
+    for row in sod_df.select(
+        ["CONTROL_NAME", "CONDITION_1", "CONDITION_2", "ENTITLEMENT_3"]
+    ).iter_rows():
+        control, cond1, cond2, ent3 = (_s(v) for v in row)
+        label = f'Ruleset -> SoD Ruleset -> Control "{control}"'
+        if cond1 and cond1 not in ("AND", "OR"):
+            errors.append(f'{label}: Condition 1 must be AND or OR (found "{cond1}").')
+        if cond2 and cond2 not in ("AND", "OR"):
+            errors.append(f'{label}: Condition 2 must be AND or OR (found "{cond2}").')
+        if ent3 and not cond2:
+            errors.append(
+                f"{label}: Entitlement 3 is filled but Condition 2 is blank. "
+                f"Add AND or OR in Condition 2, or clear Entitlement 3."
+            )
+        # All-OR row: no AND anywhere → any single entitlement match flags it.
+        if cond1 == "OR" and (not ent3 or cond2 == "OR"):
+            warnings.append(
+                f"{label} uses only OR conditions — any ONE of its entitlements "
+                f"alone will flag a violation. Verify this is intended."
+            )
+    return errors, warnings
+
+
 def _check_missing_entitlement_mappings(
     sod_df: pl.DataFrame,
     sa_df: pl.DataFrame,
     mapping_df: pl.DataFrame,
+    three_leg: bool = False,
 ) -> list[dict]:
     """Check for entitlements in controls that have no mapping.
 
     Returns list of dicts: [{"entitlement": str, "controls": [str, ...]}, ...]
     sorted by entitlement name.
+    When three_leg=True the SoD Ruleset legs are Entitlement 1/2/3 instead of LHS/RHS.
     """
     EMPTY_PLACEHOLDER = "---"
 
+    # SoD entitlement columns depend on the ruleset layout (2-leg vs 3-leg mode)
+    if three_leg:
+        sod_ent_cols = ["ENTITLEMENT_1", "ENTITLEMENT_2", "ENTITLEMENT_3"]
+    else:
+        sod_ent_cols = ["LHS_ENTITLEMENT", "RHS_ENTITLEMENT"]
+
     # Collect all unique entitlement names from both SOD and SA controls
-    sod_lhs = sod_df["LHS_ENTITLEMENT"].to_list() if "LHS_ENTITLEMENT" in sod_df.columns else []
-    sod_rhs = sod_df["RHS_ENTITLEMENT"].to_list() if "RHS_ENTITLEMENT" in sod_df.columns else []
+    sod_ents: list = []
+    for _col in sod_ent_cols:
+        if _col in sod_df.columns:
+            sod_ents += sod_df[_col].to_list()
     sa_ents = sa_df["ENTITLEMENT"].to_list() if "ENTITLEMENT" in sa_df.columns else []
 
     # Union all entitlements, filter out nulls and empty placeholders, deduplicate
     all_entitlements_in_controls = set()
-    for ent in sod_lhs + sod_rhs + sa_ents:
+    for ent in sod_ents + sa_ents:
         if ent is not None and ent != EMPTY_PLACEHOLDER and str(ent).strip():
             all_entitlements_in_controls.add(str(ent).strip().upper())
 
@@ -289,21 +346,14 @@ def _check_missing_entitlement_mappings(
         affected_controls = set()
 
         # Check SOD controls
-        if "LHS_ENTITLEMENT" in sod_df.columns:
-            sod_lhs_matches = sod_df.filter(
-                pl.col("LHS_ENTITLEMENT").is_not_null() &
-                (pl.col("LHS_ENTITLEMENT").cast(pl.Utf8).str.to_uppercase() == missing_ent)
+        for _col in sod_ent_cols:
+            if _col not in sod_df.columns:
+                continue
+            sod_matches = sod_df.filter(
+                pl.col(_col).is_not_null() &
+                (pl.col(_col).cast(pl.Utf8).str.to_uppercase() == missing_ent)
             )
-            for control_name in sod_lhs_matches["CONTROL_NAME"].to_list():
-                if control_name is not None:
-                    affected_controls.add(str(control_name).strip())
-
-        if "RHS_ENTITLEMENT" in sod_df.columns:
-            sod_rhs_matches = sod_df.filter(
-                pl.col("RHS_ENTITLEMENT").is_not_null() &
-                (pl.col("RHS_ENTITLEMENT").cast(pl.Utf8).str.to_uppercase() == missing_ent)
-            )
-            for control_name in sod_rhs_matches["CONTROL_NAME"].to_list():
+            for control_name in sod_matches["CONTROL_NAME"].to_list():
                 if control_name is not None:
                     affected_controls.add(str(control_name).strip())
 
@@ -329,6 +379,7 @@ def _check_missing_entitlement_mappings(
 def _check_shared_privileges_in_controls(
     sod_df: pl.DataFrame,
     mapping_df: pl.DataFrame,
+    three_leg: bool = False,
 ) -> list[dict]:
     """Detect privileges mapped to BOTH entitlements of the same SoD control.
 
@@ -353,11 +404,20 @@ def _check_shared_privileges_in_controls(
     the mapping is clean. Callers treat a non-empty result as a hard upload
     rejection — analysis must not run on a control whose mapping is invalid.
 
+    In 3-leg mode (three_leg=True) the same principle generalizes to AND-groups:
+    a privilege mapped to at least one entitlement in EVERY AND-group of a
+    control means an entity holding only that privilege satisfies every group
+    at once — a guaranteed false violation. OR-alternatives within one group
+    sharing a privilege is harmless. All-OR (single-group) rows are skipped.
+
     Values in both DataFrames are already uppercased/stripped by
     load_ruleset_sheets, so comparisons are exact-match.
     """
     # Need the control legs and the entitlement→privilege mapping to do anything.
-    needed_sod = {"CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"}
+    if three_leg:
+        needed_sod = {"CONTROL_NAME", "ENTITLEMENT_1", "CONDITION_1", "ENTITLEMENT_2"}
+    else:
+        needed_sod = {"CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"}
     if not needed_sod.issubset(set(sod_df.columns)):
         return []
     if not {"ENTITLEMENT_NAME", "PRIVILEGE_NAME"}.issubset(set(mapping_df.columns)):
@@ -372,6 +432,49 @@ def _check_shared_privileges_in_controls(
         ent_s, priv_s = str(ent).strip(), str(priv).strip()
         if ent_s and priv_s:
             ent_to_privs.setdefault(ent_s, set()).add(priv_s)
+
+    if three_leg:
+        issues_3leg: list[dict] = []
+        _cond2_present = "CONDITION_2" in sod_df.columns
+        _ent3_present = "ENTITLEMENT_3" in sod_df.columns
+        for row in sod_df.select([
+            "CONTROL_NAME", "ENTITLEMENT_1", "CONDITION_1", "ENTITLEMENT_2",
+            *(["CONDITION_2"] if _cond2_present else []),
+            *(["ENTITLEMENT_3"] if _ent3_present else []),
+        ]).iter_rows(named=True):
+            def _val(key: str) -> str:
+                v = row.get(key)
+                return str(v).strip() if v is not None else ""
+
+            e1, c1, e2 = _val("ENTITLEMENT_1"), _val("CONDITION_1").upper(), _val("ENTITLEMENT_2")
+            c2, e3 = _val("CONDITION_2").upper(), _val("ENTITLEMENT_3")
+            if not e1 or not e2:
+                continue
+            # AND starts a new group; OR (or anything else) joins the current one.
+            groups: list[list[str]] = [[e1]]
+            if c1 == "AND":
+                groups.append([e2])
+            else:
+                groups[-1].append(e2)
+            if e3:
+                if c2 == "AND":
+                    groups.append([e3])
+                else:
+                    groups[-1].append(e3)
+            if len(groups) < 2:
+                continue  # all-OR row: no cross-group overlap possible
+            # A privilege is problematic when it maps into EVERY group.
+            group_privs = [
+                set().union(*(ent_to_privs.get(e, set()) for e in grp)) for grp in groups
+            ]
+            shared = set.intersection(*group_privs)
+            if shared:
+                issues_3leg.append({
+                    "control": _val("CONTROL_NAME"),
+                    "privileges": sorted(shared),
+                    "entitlements": [e for grp in groups for e in grp],
+                })
+        return issues_3leg
 
     issues: list[dict] = []
     # One iteration per control row. Each row carries its own LHS/RHS entitlements,
@@ -408,9 +511,10 @@ def _run_thread(
     selected_analyses: Optional[list[str]] = None,
     with_observation: bool = False,
     bucket_details_df: Optional[pl.DataFrame] = None,
+    with_3leg: bool = False,
 ) -> None:
     try:
-        logger.info(f"[{job_id}] Starting SOD & SA Analysis: analysis_type={analysis_type}, with_fp={with_fp}, selected_analyses={selected_analyses}")
+        logger.info(f"[{job_id}] Starting SOD & SA Analysis: analysis_type={analysis_type}, with_fp={with_fp}, selected_analyses={selected_analyses}, with_3leg={with_3leg}")
         logger.info(f"[{job_id}] Input data - Role Hierarchy: {role_hierarchy_df.height} rows, SoD Controls: {sod_controls_df.height} rows, SA Controls: {sa_controls_df.height} rows, Entitlement Mapping: {entitlement_mapping_df.height} rows")
         if user_role_df is not None:
             logger.info(f"[{job_id}] User Role file: {user_role_df.height} rows")
@@ -474,6 +578,7 @@ def _run_thread(
                 entitlement_mapping_df,
                 logger=logger,
                 progress_callback=role_callback,
+                three_leg=with_3leg,
             )
             logger.info(f"[{job_id}] Role analysis complete - Role SoD: {role_sod.height} violations, Role SA: {role_sa.height} violations")
         elif analysis_type in ("role", "both"):
@@ -490,6 +595,7 @@ def _run_thread(
                 entitlement_mapping_df,
                 logger=logger,
                 progress_callback=user_callback,
+                three_leg=with_3leg,
             )
             logger.info(f"[{job_id}] User analysis complete - User SoD: {user_sod.height} violations, User SA: {user_sa.height} violations")
         elif analysis_type in ("user", "both") and user_role_df is not None:
@@ -655,8 +761,9 @@ async def upload(
     fp_db: Optional[UploadFile] = File(None, description="FP Database XLSX"),
     use_seeded_ruleset: bool = Form(False, description="Load the bundled seeded Ruleset instead of an upload"),
     use_seeded_fp_db: bool = Form(False, description="Load the bundled seeded FP Database instead of an upload"),
+    with_3leg: bool = Form(False, description="SoD Ruleset uses the 3-leg AND/OR layout (Entitlement 1/Condition 1/Entitlement 2/Condition 2/Entitlement 3)"),
 ):
-    logger.info(f"SOD & SA upload initiated. Files: {role_hierarchy.filename}, ruleset={ruleset.filename if ruleset else None}, use_seeded_ruleset={use_seeded_ruleset}, use_seeded_fp_db={use_seeded_fp_db}")
+    logger.info(f"SOD & SA upload initiated. Files: {role_hierarchy.filename}, ruleset={ruleset.filename if ruleset else None}, use_seeded_ruleset={use_seeded_ruleset}, use_seeded_fp_db={use_seeded_fp_db}, with_3leg={with_3leg}")
     errors: list[str] = []
 
     ok, msg = await validate_upload(role_hierarchy, MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS)
@@ -724,6 +831,7 @@ async def upload(
     # fixes everything in one pass instead of one-error-at-a-time.
     schema_errors = _validate_all_schemas(
         rh_bytes, rh_name, ruleset_bytes, ruleset_name, ur_bytes, ur_name, fp_bytes, fp_name,
+        with_3leg=with_3leg,
     )
     if schema_errors:
         logger.error(f"SOD & SA schema validation failed with {len(schema_errors)} issue(s):")
@@ -761,11 +869,17 @@ async def upload(
     # Load ruleset — engine-level validation aggregates sheet/column errors
     bucket_details_df: Optional[pl.DataFrame] = None
     sod_df, sa_df, mapping_df, bucket_details_df_loaded, ruleset_errors = load_ruleset_sheets(
-        ruleset_bytes, ruleset_name, logger
+        ruleset_bytes, ruleset_name, logger, three_leg=with_3leg
     )
     bucket_details_df = bucket_details_df_loaded
     if ruleset_errors:
         all_errors.extend([f"Ruleset ({ruleset_name}): {err}" for err in ruleset_errors])
+
+    # 3-leg mode: validate Condition VALUES (AND/OR) and collect all-OR warnings.
+    _3leg_warnings: list[str] = []
+    if with_3leg and sod_df is not None:
+        _cond_errors, _3leg_warnings = _validate_3leg_conditions(sod_df)
+        all_errors.extend(_cond_errors)
 
     # Load user-role file if provided
     if ur_bytes is not None:
@@ -807,10 +921,12 @@ async def upload(
     # If any errors collected, return them all at once
     if all_errors:
         logger.error(f"SOD & SA upload failed with {len(all_errors)} error(s): {all_errors}")
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": f"Found {len(all_errors)} validation error(s). See details below.", "code": "FILE_FORMAT_ERROR", "details": all_errors},
-        )
+        _content = {"error": True, "message": f"Found {len(all_errors)} validation error(s). See details below.", "code": "FILE_FORMAT_ERROR", "details": all_errors}
+        if with_3leg and _3leg_warnings:
+            # Show non-blocking 3-leg warnings alongside the errors so the user
+            # fixes the ruleset in one pass. Flag-off responses are unchanged.
+            _content["warnings"] = _3leg_warnings
+        return JSONResponse(status_code=400, content=_content)
 
     # Verify that critical files loaded successfully
     if rh_df is None or sod_df is None or sa_df is None or mapping_df is None:
@@ -831,17 +947,26 @@ async def upload(
     # privilege would falsely satisfy both legs). Reject the whole upload so the user
     # fixes the mapping before they can reach the Run step. See
     # _check_shared_privileges_in_controls for the full rationale.
-    integrity_items = _check_shared_privileges_in_controls(sod_df, mapping_df)
+    integrity_items = _check_shared_privileges_in_controls(sod_df, mapping_df, three_leg=with_3leg)
     if integrity_items:
         integrity_errors = []
         for it in integrity_items:
             shared_list = ", ".join('"{}"'.format(p) for p in it["privileges"])
-            integrity_errors.append(
-                f'Control "{it["control"]}": privilege(s) {shared_list} mapped to both '
-                f'entitlements ({it["lhs"]}, {it["rhs"]}). An entity holding only such a privilege '
-                f'would falsely violate this control. Fix the Entitlement-to-Privilege '
-                f'mapping and re-upload.'
-            )
+            if with_3leg:
+                ents_list = ", ".join(it["entitlements"])
+                integrity_errors.append(
+                    f'Control "{it["control"]}": privilege(s) {shared_list} mapped into every '
+                    f'AND-group of its entitlements ({ents_list}). An entity holding only such a '
+                    f'privilege would falsely violate this control. Fix the Entitlement-to-Privilege '
+                    f'mapping and re-upload.'
+                )
+            else:
+                integrity_errors.append(
+                    f'Control "{it["control"]}": privilege(s) {shared_list} mapped to both '
+                    f'entitlements ({it["lhs"]}, {it["rhs"]}). An entity holding only such a privilege '
+                    f'would falsely violate this control. Fix the Entitlement-to-Privilege '
+                    f'mapping and re-upload.'
+                )
         logger.error(f"SOD & SA upload rejected — {len(integrity_errors)} shared-privilege issue(s):")
         for _e in integrity_errors:
             logger.error(f"  • {_e}")
@@ -859,8 +984,8 @@ async def upload(
                 "code": "DATA_INTEGRITY_ERROR",
                 "details": integrity_errors,
                 "integrity_items": integrity_items,
-                "warnings": _scan_recommended_columns(ruleset_bytes, ruleset_name),
-                "entitlement_warnings": _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df),
+                "warnings": _scan_recommended_columns(ruleset_bytes, ruleset_name) + _3leg_warnings,
+                "entitlement_warnings": _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df, three_leg=with_3leg),
             },
         )
 
@@ -884,6 +1009,7 @@ async def upload(
         "has_fp_db": fp_bytes is not None,
         "has_control_bucket_col": has_control_bucket_col,
         "has_bucket_details_sheet": has_bucket_details_sheet,
+        "with_3leg": with_3leg,
     })
     job_manager.set_status(job.id, JobStatus.VALIDATING, "Files validated.")
     logger.info(f"[{job.id}] Files stored and validated. Ready for analysis.")
@@ -904,8 +1030,11 @@ async def upload(
     # them for a client-ready export (analysis still proceeds).
     warnings.extend(_scan_recommended_columns(ruleset_bytes, ruleset_name))
 
+    # Non-blocking: 3-leg all-OR rows (any single entitlement flags a violation)
+    warnings.extend(_3leg_warnings)
+
     # Check for missing entitlement mappings
-    entitlement_warnings = _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df)
+    entitlement_warnings = _check_missing_entitlement_mappings(sod_df, sa_df, mapping_df, three_leg=with_3leg)
 
     return UploadResponse(
         job_id=job.id,
@@ -941,6 +1070,25 @@ async def run(job_id: str, config: SODSARunConfig):
             content={
                 "error": True,
                 "message": "User-role file was not uploaded. Cannot run user-level analysis.",
+                "code": "VALIDATION_ERROR",
+                "details": [],
+            },
+        )
+
+    # The 3-leg flag decides how the ruleset was PARSED at upload time, so the
+    # run config must agree with what was stored on the job.
+    _uploaded_3leg = bool(job.config.get("with_3leg", False))
+    if config.with_3leg != _uploaded_3leg:
+        logger.warning(f"[{job_id}] with_3leg mismatch: upload={_uploaded_3leg}, run={config.with_3leg}")
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": True,
+                "message": (
+                    f"3-leg SOD setting mismatch: files were uploaded with the 3-leg option "
+                    f"{'ON' if _uploaded_3leg else 'OFF'} but the run requested it "
+                    f"{'ON' if config.with_3leg else 'OFF'}. Re-upload with the desired setting."
+                ),
                 "code": "VALIDATION_ERROR",
                 "details": [],
             },
@@ -1027,6 +1175,7 @@ async def run(job_id: str, config: SODSARunConfig):
             config.selected_analyses,
             config.with_observation,
             job.files.get("bucket_details_df"),
+            config.with_3leg,
         ),
         daemon=True,
     ).start()

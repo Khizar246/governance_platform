@@ -12,6 +12,9 @@ class SODSARunConfig(BaseModel):
     # Allowed values: "role_sod", "role_sa", "user_sod", "user_sa"
     selected_analyses: list[str] = []
     with_observation: bool = False
+    # 3-leg SOD mode: SoD Ruleset uses Entitlement 1/Condition 1/Entitlement 2/
+    # Condition 2/Entitlement 3 layout; must match the flag sent at upload time.
+    with_3leg: bool = False
 
     @field_validator("selected_analyses")
     @classmethod

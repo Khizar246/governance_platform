@@ -164,6 +164,7 @@ export default function SODSAAnalysis() {
   useScrollToTopOnChange(step)
   const [withFp, setWithFp] = useState(false)
   const [withObservation, setWithObservation] = useState(false)
+  const [with3Leg, setWith3Leg] = useState(false)
   const [selectedAnalyses, setSelectedAnalyses] = useState<string[]>(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
   const [roleHierarchyFile, setRoleHierarchyFile] = useState<File | null>(null)
   const [rulesetFile, setRulesetFile] = useState<File | null>(null)
@@ -392,11 +393,11 @@ export default function SODSAAnalysis() {
 
   const startRun = useCallback(async (id: string) => {
     setJobId(id)
-    await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
+    await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation, with_3leg: with3Leg })
     setStep('running')
     setProgress(0)
     setProgressMessage('Starting SOD & SA analysis…')
-  }, [analysisType, withFp, selectedAnalyses, withObservation])
+  }, [analysisType, withFp, selectedAnalyses, withObservation, with3Leg])
 
   const handleRunAnalysis = useCallback(async () => {
     if (!roleHierarchyFile || !(rulesetFile || rulesetSeeded) || !analysisType) return
@@ -419,7 +420,7 @@ export default function SODSAAnalysis() {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
       const seedFp = withFp && fpDbSeeded
-      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp)
+      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp, with3Leg)
       if (resp.errors?.length) {
         setUploadError(resp.errors[0])
         setUploadBlocked(true)
@@ -461,7 +462,7 @@ export default function SODSAAnalysis() {
     } finally {
       setIsUploading(false)
     }
-  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, startRun])
+  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, with3Leg, startRun])
 
   const handleProceedAnyway = useCallback(async () => {
     if (!stagedJobId) return
@@ -498,7 +499,7 @@ export default function SODSAAnalysis() {
   const handleTryAgain = useCallback(async () => {
     if (!jobId || !analysisType) { setStep('upload'); return }
     try {
-      await runAnalysis(jobId, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation })
+      await runAnalysis(jobId, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation, with_3leg: with3Leg })
       setStep('running')
       setProgress(0)
       setProgressMessage('Restarting SOD & SA analysis…')
@@ -509,13 +510,14 @@ export default function SODSAAnalysis() {
           'Failed to restart. Please start over.',
       )
     }
-  }, [jobId, analysisType, withFp, selectedAnalyses])
+  }, [jobId, analysisType, withFp, selectedAnalyses, withObservation, with3Leg])
 
   const handleReset = useCallback(async () => {
     if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
     setStep('config')
     setWithFp(false)
     setWithObservation(false)
+    setWith3Leg(false)
     setSelectedAnalyses(['role_sod', 'role_sa', 'user_sod', 'user_sa'])
     setRoleHierarchyFile(null)
     setRulesetFile(null)
@@ -596,8 +598,16 @@ export default function SODSAAnalysis() {
             fileLabel="SOD SA Ruleset (.xlsx) — always required, unless you use the bundled sample"
             rows={[
               { sheet: 'SoD Ruleset', column: 'Control Name', status: 'Required', note: 'The name of the control.' },
-              { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
-              { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side of the conflict.' },
+              ...(with3Leg ? [
+                { sheet: 'SoD Ruleset', column: 'Entitlement 1', status: 'Required', note: 'The first leg of the conflict.' },
+                { sheet: 'SoD Ruleset', column: 'Condition 1', status: 'Required', note: 'AND or OR — how Entitlement 1 combines with the next leg.' },
+                { sheet: 'SoD Ruleset', column: 'Entitlement 2', status: 'Required', note: 'The second leg of the conflict.' },
+                { sheet: 'SoD Ruleset', column: 'Condition 2', status: 'Optional', note: 'AND or OR — required only when Entitlement 3 is filled in.' },
+                { sheet: 'SoD Ruleset', column: 'Entitlement 3', status: 'Optional', note: 'The third leg of the conflict. Leave blank for a 2-leg control.' },
+              ] : [
+                { sheet: 'SoD Ruleset', column: 'LHS Entitlement', status: 'Required', note: 'One side of the conflict.' },
+                { sheet: 'SoD Ruleset', column: 'RHS Entitlement', status: 'Required', note: 'The other side of the conflict.' },
+              ]),
               { sheet: 'SoD Ruleset', column: 'Risk Ranking', status: 'Optional — recommended', note: 'High, Medium, or Low. Filled with placeholder text in the export if missing.' },
               { sheet: 'SoD Ruleset', column: 'Module(s)', status: 'Optional — recommended', note: 'Which Oracle module, e.g. "Payables". Filled with placeholder text in the export if missing.' },
               { sheet: 'SoD Ruleset', column: 'Risk Description', status: 'Optional — recommended', note: 'The risk if a user violates the control. Filled with placeholder text in the export if missing.' },
@@ -703,6 +713,21 @@ export default function SODSAAnalysis() {
                 <span className="text-[14px] font-medium text-gray-800 leading-tight">Include Observation Tab</span>
                 <span className="text-[12px] text-gray-500 mt-1 leading-snug">
                   Adds an Observations &amp; Recommendations tab to the output, with one block per Control Bucket (SOD only). Requires the Bucket Details sheet in the ruleset.
+                </span>
+              </span>
+            </label>
+
+            <label className="flex items-start gap-3 p-4 rounded-xl border border-violet-200 bg-violet-50/60 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={with3Leg}
+                onChange={e => { setWith3Leg(e.target.checked); discardStagedJob() }}
+                className="mt-0.5 w-4 h-4 accent-violet-500 shrink-0"
+              />
+              <span className="flex flex-col">
+                <span className="text-[14px] font-medium text-gray-800 leading-tight">3-Leg SOD Controls</span>
+                <span className="text-[12px] text-gray-500 mt-1 leading-snug">
+                  The SoD Ruleset tab must use the Entitlement 1 / Condition 1 / Entitlement 2 / Condition 2 / Entitlement 3 layout, with AND/OR logic per control (Entitlement 3 optional per row).
                 </span>
               </span>
             </label>
@@ -819,6 +844,7 @@ export default function SODSAAnalysis() {
                 <span className="font-medium">Scope:</span> {analysisTypeLabel}
                 {withFp && <span className="ml-1 text-blue-600">· FP detection on</span>}
                 {withObservation && <span className="ml-1 text-amber-600">· Observation tab on</span>}
+                {with3Leg && <span className="ml-1 text-violet-600">· 3-leg SOD on</span>}
               </span>
               <button
                 className="ml-auto text-[#3B82F6] hover:underline text-[12px]"

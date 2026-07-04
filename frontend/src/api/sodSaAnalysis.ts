@@ -6,6 +6,7 @@ export interface SODSARunConfig {
   with_fp?: boolean
   selected_analyses?: string[]
   with_observation?: boolean
+  with_3leg?: boolean
 }
 
 export interface SODSASheetCount {
@@ -42,6 +43,7 @@ export async function uploadFiles(
   fpDb: File | null,
   useSeededRuleset: boolean,
   useSeededFpDb: boolean,
+  with3Leg: boolean,
   onProgress?: (p: number) => void,
 ): Promise<UploadResponse> {
   const formData = new FormData()
@@ -52,6 +54,7 @@ export async function uploadFiles(
   if (userRole) formData.append('user_role', userRole)
   if (fpDb) formData.append('fp_db', fpDb)
   else if (useSeededFpDb) formData.append('use_seeded_fp_db', 'true')
+  if (with3Leg) formData.append('with_3leg', 'true')
   const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress ?? (() => {}))
   return response.data
 }

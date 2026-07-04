@@ -51,6 +51,20 @@ INPUT_COLUMN_RENAME = {
         "Risk Description":"RISK_DESCRIPTION",
         "Control Bucket":  "CONTROL_BUCKET",
     },
+    # 3-leg SOD ruleset layout (opt-in via the with_3leg toggle). Additive only —
+    # the "sod" entry above is the default 2-leg schema and must stay untouched.
+    "sod3": {
+        "Control Name":    "CONTROL_NAME",
+        "Risk Ranking":    "RISK_RANKING",
+        "Entitlement 1":   "ENTITLEMENT_1",
+        "Condition 1":     "CONDITION_1",
+        "Entitlement 2":   "ENTITLEMENT_2",
+        "Condition 2":     "CONDITION_2",
+        "Entitlement 3":   "ENTITLEMENT_3",
+        "Module(s)":       "MODULES",
+        "Risk Description":"RISK_DESCRIPTION",
+        "Control Bucket":  "CONTROL_BUCKET",
+    },
     "bucket_details": {
         "Bucket Name":       "BUCKET_NAME",
         "Risk":              "RISK",
@@ -85,6 +99,10 @@ REQUIRED_COLUMNS = {
     "sod":  {
         "CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT",
     },
+    # Entitlement 3 / Condition 2 are optional in 3-leg mode (blank ⇒ 2-leg row)
+    "sod3": {
+        "CONTROL_NAME", "ENTITLEMENT_1", "CONDITION_1", "ENTITLEMENT_2",
+    },
     "sa":   {
         "CONTROL_NAME", "ENTITLEMENT",
     },
@@ -93,12 +111,14 @@ REQUIRED_COLUMNS = {
 
 CRITICAL_COLUMNS = {
     "sod":     {"CONTROL_NAME", "LHS_ENTITLEMENT", "RHS_ENTITLEMENT"},
+    "sod3":    {"CONTROL_NAME", "ENTITLEMENT_1", "CONDITION_1", "ENTITLEMENT_2"},
     "sa":      {"CONTROL_NAME", "ENTITLEMENT"},
     "mapping": {"ENTITLEMENT_NAME", "PRIVILEGE_NAME"},
 }
 
 SUPPLEMENTARY_COLUMNS = {
     "sod":     {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION"},
+    "sod3":    {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION"},
     "sa":      {"RISK_RANKING", "MODULES", "RISK_DESCRIPTION"},
     "mapping": set(),
 }
@@ -204,6 +224,7 @@ def load_ruleset_sheets(
     file_bytes: bytes,
     filename: str,
     logger: Any = None,
+    three_leg: bool = False,
 ) -> tuple[pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame | None, pl.DataFrame, list[str]]:
     """Load SoD Ruleset, SA Ruleset, Entitlement to Privilege, and optional Bucket Details sheets.
 
@@ -211,12 +232,18 @@ def load_ruleset_sheets(
     validates required columns, validates critical columns, fills supplementary columns.
     CONTROL_BUCKET blanks in sod_df are filled with "Uncategorized".
 
+    When three_leg=True the "SoD Ruleset" sheet is parsed with the 3-leg layout
+    ("sod3" schema: Entitlement 1/Condition 1/Entitlement 2/Condition 2/Entitlement 3);
+    the optional Condition 2 / Entitlement 3 columns are added empty when absent.
+    Default (False) keeps today's 2-leg behavior byte-for-byte.
+
     Returns (sod_df, sa_df, mapping_df, bucket_details_df, errors).
     Any None in the first three signals failure; bucket_details_df is always a DataFrame
     (empty if the sheet is absent).
     """
     _log = logger or logging.getLogger(__name__)
     errors: list[str] = []
+    sod_kind = "sod3" if three_leg else "sod"
 
     try:
         required_sheets = {"SoD Ruleset", "SA Ruleset", "Entitlement to Privilege"}
@@ -263,7 +290,7 @@ def load_ruleset_sheets(
             df = apply_rename(df, rename_map)
             return df.unique()
 
-        sod_df     = _load("SoD Ruleset",            "sod")
+        sod_df     = _load("SoD Ruleset",            sod_kind)
         sa_df      = _load("SA Ruleset",             "sa")
         mapping_df = _load("Entitlement to Privilege", "mapping")
 
@@ -272,7 +299,7 @@ def load_ruleset_sheets(
 
         # Required column validation
         for df, kind, label in [
-            (sod_df,     "sod",     "SoD Ruleset"),
+            (sod_df,     sod_kind,  "SoD Ruleset"),
             (sa_df,      "sa",      "SA Ruleset"),
             (mapping_df, "mapping", "Entitlement to Privilege"),
         ]:
@@ -288,8 +315,15 @@ def load_ruleset_sheets(
         if errors:
             return None, None, None, pl.DataFrame(), errors
 
+        # 3-leg optional columns: blank Entitlement 3 / Condition 2 ⇒ 2-leg row,
+        # so an absent column is equivalent to an all-blank one.
+        if three_leg:
+            for _opt in ("CONDITION_2", "ENTITLEMENT_3"):
+                if _opt not in sod_df.columns:
+                    sod_df = sod_df.with_columns(pl.lit("").alias(_opt))
+
         # Critical column (non-empty) validation
-        ok, crit_errors = validate_critical_columns(sod_df, sa_df, mapping_df)
+        ok, crit_errors = validate_critical_columns(sod_df, sa_df, mapping_df, sod_kind=sod_kind)
         if not ok:
             errs: list[str] = []
             for sheet_name, msgs in crit_errors.items():
@@ -297,7 +331,7 @@ def load_ruleset_sheets(
             return None, None, None, pl.DataFrame(), errs
 
         # Fill empty supplementary columns with placeholder
-        sod_df     = _fill_supplementary(sod_df,     "sod")
+        sod_df     = _fill_supplementary(sod_df,     sod_kind)
         sa_df      = _fill_supplementary(sa_df,      "sa")
         mapping_df = _fill_supplementary(mapping_df, "mapping")
 
@@ -352,6 +386,7 @@ def validate_critical_columns(
     sod_df: pl.DataFrame,
     sa_df: pl.DataFrame,
     mapping_df: pl.DataFrame,
+    sod_kind: str = "sod",
 ) -> tuple[bool, dict[str, list[str]]]:
     """Check that critical columns contain no empty or null values.
 
@@ -361,7 +396,7 @@ def validate_critical_columns(
     validation_errors: dict[str, list[str]] = {}
 
     for df, kind, label in [
-        (sod_df,     "sod",     "SoD Ruleset"),
+        (sod_df,     sod_kind,  "SoD Ruleset"),
         (sa_df,      "sa",      "SA Ruleset"),
         (mapping_df, "mapping", "Entitlement to Privilege"),
     ]:
@@ -501,6 +536,118 @@ def check_sod_violations_vectorized(
         .select(["_ctrl_id", "ENTITY_VALUE"])
     )
     matched = matched.join(both_sides, on=["_ctrl_id", "ENTITY_VALUE"], how="semi")
+    if matched.is_empty():
+        return pl.DataFrame()
+
+    _viol_extra = ["CONTROL_BUCKET"] if "CONTROL_BUCKET" in matched.columns else []
+    final_violations = matched.select([
+        "CONTROL_NAME", "RISK_RANKING", "MODULES",
+        *_viol_extra,
+        "ENTITY_VALUE",
+        pl.col("ENTITLEMENT_NAME").alias("ENTITLEMENT"),
+        "SIDE",
+        "ROLE_NAME", "ROLE_DISPLAY_NAME",
+        "INHERITED_ROLE_NAME", "INHERITED_ROLE_DISPLAY_NAME",
+        "PRIVILEGE_NAME", "PRIVILEGE_DISPLAY_NAME",
+    ]).unique()
+
+    if entity_column:
+        final_violations = final_violations.rename({"ENTITY_VALUE": entity_column})
+    else:
+        final_violations = final_violations.drop("ENTITY_VALUE")
+
+    return final_violations
+
+
+def check_sod_violations_3leg(
+    entitlements_data: pl.DataFrame,
+    sod_controls: pl.DataFrame,
+    entity_column: str | None = None,
+) -> pl.DataFrame:
+    """Set-based SOD violation detection for the 3-leg AND/OR ruleset layout.
+
+    Semantics (Oracle AAC model logic): AND splits the entitlements into groups,
+    adjacent OR-ed entitlements are alternatives within one group
+    (`E1 AND E2 OR E3` = E1 AND (E2 OR E3)). An entity violates a control row
+    when it matches at least one entitlement in EVERY group. A blank
+    Entitlement 3 (with blank Condition 2) makes the row an ordinary 2-leg row,
+    so mixed 2-leg/3-leg rulesets work in one pass.
+
+    Vectorised like check_sod_violations_vectorized: each control row is
+    unpivoted into positional legs (SIDE = LEG1/LEG2/LEG3) tagged with their
+    AND-group id, all legs are joined against the entitlements in a single
+    pass, and only (control row, entity) pairs whose matched GROUP_ID count
+    equals the row's group count are kept. Output columns are identical to the
+    2-leg function so downstream consumers need no changes.
+    """
+    entity_key = entity_column or "ROLE_NAME"
+
+    entitlements_with_entity = entitlements_data.with_columns(
+        pl.col(entity_key).alias("ENTITY_VALUE")
+    )
+
+    controls = sod_controls.with_row_index("_ctrl_id")
+
+    # Conditions are AND/OR case-insensitive; group id increments on AND, stays on OR.
+    _cond1 = pl.col("CONDITION_1").cast(pl.Utf8).str.strip_chars().str.to_uppercase()
+    _cond2 = pl.col("CONDITION_2").cast(pl.Utf8).str.strip_chars().str.to_uppercase()
+    _has_e3 = (
+        pl.col("ENTITLEMENT_3").is_not_null()
+        & (pl.col("ENTITLEMENT_3").cast(pl.Utf8).str.strip_chars() != "")
+    )
+    controls = controls.with_columns([
+        pl.lit(1).cast(pl.UInt32).alias("_g1"),
+        pl.when(_cond1 == "AND").then(2).otherwise(1).cast(pl.UInt32).alias("_g2"),
+        _has_e3.alias("_has_e3"),
+    ]).with_columns(
+        (pl.col("_g2") + pl.when(_cond2 == "AND").then(1).otherwise(0).cast(pl.UInt32)).alias("_g3")
+    ).with_columns(
+        # Group ids are contiguous from 1, so the last leg's id == number of groups.
+        pl.when(pl.col("_has_e3")).then(pl.col("_g3")).otherwise(pl.col("_g2")).alias("_n_groups")
+    )
+
+    _ctrl_extra = ["CONTROL_BUCKET"] if "CONTROL_BUCKET" in controls.columns else []
+    _base = ["_ctrl_id", "CONTROL_NAME", "RISK_RANKING", "MODULES", *_ctrl_extra, "_n_groups"]
+    legs = pl.concat([
+        controls.select([
+            *_base,
+            pl.col("ENTITLEMENT_1").alias("ENTITLEMENT_NAME"),
+            pl.lit("LEG1").alias("SIDE"),
+            pl.col("_g1").alias("GROUP_ID"),
+        ]),
+        controls.select([
+            *_base,
+            pl.col("ENTITLEMENT_2").alias("ENTITLEMENT_NAME"),
+            pl.lit("LEG2").alias("SIDE"),
+            pl.col("_g2").alias("GROUP_ID"),
+        ]),
+        controls.filter(pl.col("_has_e3")).select([
+            *_base,
+            pl.col("ENTITLEMENT_3").alias("ENTITLEMENT_NAME"),
+            pl.lit("LEG3").alias("SIDE"),
+            pl.col("_g3").alias("GROUP_ID"),
+        ]),
+    ]).filter(
+        pl.col("ENTITLEMENT_NAME").is_not_null()
+        & (pl.col("ENTITLEMENT_NAME").cast(pl.Utf8).str.strip_chars() != "")
+    )
+
+    matched = entitlements_with_entity.join(legs, on="ENTITLEMENT_NAME", how="inner")
+    if matched.is_empty():
+        return pl.DataFrame()
+
+    # Keep only (control row, entity) pairs where every AND-group matched
+    all_groups = (
+        matched
+        .group_by(["_ctrl_id", "ENTITY_VALUE"])
+        .agg([
+            pl.col("GROUP_ID").n_unique().alias("_n_matched"),
+            pl.col("_n_groups").first().alias("_n_required"),
+        ])
+        .filter(pl.col("_n_matched") == pl.col("_n_required"))
+        .select(["_ctrl_id", "ENTITY_VALUE"])
+    )
+    matched = matched.join(all_groups, on=["_ctrl_id", "ENTITY_VALUE"], how="semi")
     if matched.is_empty():
         return pl.DataFrame()
 
@@ -950,11 +1097,13 @@ def analyze_roles(
     entitlement_mapping_df: pl.DataFrame,
     logger: Any = None,
     progress_callback: Callable[[int, str], None] | None = None,
+    three_leg: bool = False,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Analyse roles for SOD and SA violations.
 
     Returns (role_sod_violations, role_sa_violations).
     Ported verbatim from SOD Tool/app.py.
+    When three_leg=True, SOD checks use the 3-leg AND/OR checker; SA unchanged.
     """
     _log = logger or logging.getLogger(__name__)
 
@@ -970,7 +1119,8 @@ def analyze_roles(
         return pl.DataFrame(), pl.DataFrame()
 
     _cb(30, f"Checking SOD violations across {sod_controls_df.height:,} controls…")
-    role_sod = check_sod_violations_vectorized(all_entitlements, sod_controls_df)
+    _sod_checker = check_sod_violations_3leg if three_leg else check_sod_violations_vectorized
+    role_sod = _sod_checker(all_entitlements, sod_controls_df)
 
     _cb(65, f"Checking SA violations across {sa_controls_df.height:,} controls…")
     role_sa = check_sa_violations(all_entitlements, sa_controls_df)
@@ -988,12 +1138,14 @@ def analyze_users(
     entitlement_mapping_df: pl.DataFrame,
     logger: Any = None,
     progress_callback: Callable[[int, str], None] | None = None,
+    three_leg: bool = False,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """Analyse users for SOD and SA violations.
 
     SOD detection is fully vectorised (single leg-join pass), so no user
     chunking is needed; SA detection is a single join.
     Returns (user_sod_violations, user_sa_violations).
+    When three_leg=True, SOD checks use the 3-leg AND/OR checker; SA unchanged.
     """
     _log = logger or logging.getLogger(__name__)
 
@@ -1025,7 +1177,8 @@ def analyze_users(
     )
 
     _cb(20, f"Checking SOD violations for {num_users:,} users…")
-    user_sod = check_sod_violations_vectorized(
+    _sod_checker = check_sod_violations_3leg if three_leg else check_sod_violations_vectorized
+    user_sod = _sod_checker(
         all_user_entitlements, sod_controls_df, "USER_NAME"
     )
 
