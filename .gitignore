@@ -49,5 +49,5 @@ desktop.ini
 .claude/
 .impeccable/
 
-# Local data files — only templates belong in the repo
-Data/
+# Backend runtime data stays local
+backend/data/
