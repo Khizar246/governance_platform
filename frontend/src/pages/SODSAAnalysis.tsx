@@ -13,7 +13,7 @@ import DataTable from '../components/common/DataTable'
 import LoadingOverlay, { type ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import HelpAccordion, { HelpStep, SchemaTable, TemplateDownloads } from '../components/common/HelpAccordion'
+import HelpAccordion, { HelpStep, SchemaTable } from '../components/common/HelpAccordion'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
   getSummary, getSheetResults, getFilterOptions, getSeededFileSize,
@@ -34,10 +34,10 @@ const STEP_INDEX: Record<Step, number> = { config: 0, upload: 1, running: 2, res
 // The four analyses the user can toggle independently. Ticking any User box
 // requires the User Role Membership file; the role/user/both "type" is derived.
 const ANALYSIS_OPTIONS: { id: string; group: 'Role-level' | 'User-level'; label: string; sublabel: string }[] = [
-  { id: 'role_sod', group: 'Role-level', label: 'Role · Segregation of Duties', sublabel: 'SoD conflicts resolved within each role' },
-  { id: 'role_sa',  group: 'Role-level', label: 'Role · Sensitive Access',      sublabel: 'Sensitive access granted at role level' },
-  { id: 'user_sod', group: 'User-level', label: 'User · Segregation of Duties', sublabel: 'SoD conflicts attributed to named users' },
-  { id: 'user_sa',  group: 'User-level', label: 'User · Sensitive Access',      sublabel: 'Sensitive access attributed to named users' },
+  { id: 'role_sod', group: 'Role-level', label: 'Role SOD', sublabel: 'SoD conflicts resolved within each role' },
+  { id: 'role_sa',  group: 'Role-level', label: 'Role SA',  sublabel: 'Sensitive access granted at role level' },
+  { id: 'user_sod', group: 'User-level', label: 'User SOD', sublabel: 'SoD conflicts attributed to named users' },
+  { id: 'user_sa',  group: 'User-level', label: 'User SA',  sublabel: 'Sensitive access attributed to named users' },
 ]
 
 const ALL_SHEET_IDS = ['ROLE_SOD', 'ROLE_SA', 'USER_SOD', 'USER_SA']
@@ -154,6 +154,34 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
         ))}
       </div>
     </div>
+  )
+}
+
+// ── Option toggle row (switch) ─────────────────────────────────────────────────
+
+function OptionToggle({ checked, onChange, title, description }: {
+  checked: boolean
+  onChange: (v: boolean) => void
+  title: string
+  description: string
+}) {
+  return (
+    <label className="flex items-start justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-gray-50/70 transition-colors duration-150">
+      <span className="flex flex-col min-w-0">
+        <span className="text-[13px] font-semibold text-gray-800 leading-tight">{title}</span>
+        <span className="text-[12px] text-gray-500 mt-1 leading-snug">{description}</span>
+      </span>
+      <span className="relative inline-flex shrink-0 mt-0.5">
+        <input
+          type="checkbox"
+          className="peer sr-only"
+          checked={checked}
+          onChange={e => onChange(e.target.checked)}
+        />
+        <span className="w-9 h-5 rounded-full bg-gray-300 transition-colors duration-150 peer-checked:bg-[#0F1E3D] peer-focus-visible:ring-2 peer-focus-visible:ring-[#FFD100] peer-focus-visible:ring-offset-1" />
+        <span className="pointer-events-none absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-150 peer-checked:translate-x-4" />
+      </span>
+    </label>
   )
 }
 
@@ -365,8 +393,10 @@ export default function SODSAAnalysis() {
       toast.error('Select at least one analysis to run.')
       return
     }
-    // Drop the user-role file if no user-level analysis is selected
-    if (!selectedAnalyses.some(a => a.startsWith('user_'))) setUserRoleFile(null)
+    // Drop the user-role file if no user-level analysis is selected; the
+    // Procurement Agent file goes with it (procurement FP applies to user
+    // SOD/SA only).
+    if (!selectedAnalyses.some(a => a.startsWith('user_'))) { setUserRoleFile(null); setProcurementFile(null) }
     if (!withFp) { setFpDbFile(null); setFpDbSeeded(false); setProcurementFile(null) }
     setStep('upload')
   }, [selectedAnalyses, withFp])
@@ -420,7 +450,8 @@ export default function SODSAAnalysis() {
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
-      const paFile = withFp ? procurementFile : null
+      // Procurement-agent FP testing only exists for user-level SOD/SA.
+      const paFile = withFp && needsUserRole ? procurementFile : null
       const seedFp = withFp && fpDbSeeded
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, paFile, rulesetSeeded, seedFp, with3Leg)
       if (resp.errors?.length) {
@@ -628,13 +659,6 @@ export default function SODSAAnalysis() {
             ]}
           />
         </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['Role Hierarchy Template',        'XLSX', '/api/templates/sod-sa-analysis/role_hierarchy_template.xlsx'],
-          ['SOD SA Ruleset Template',        'XLSX', '/api/templates/sod-sa-analysis/ruleset_template.xlsx'],
-          ['SOD SA Ruleset Template (3-Leg)', 'XLSX', '/api/templates/sod-sa-analysis/ruleset_template_3leg.xlsx'],
-          ['User Role Membership Template',  'XLSX', '/api/templates/sod-sa-analysis/user_roles_template.xlsx'],
-          ['FP Database Template',           'XLSX', '/api/templates/sod-sa-analysis/fp_database_template.xlsx'],
-        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
@@ -666,10 +690,10 @@ export default function SODSAAnalysis() {
                         <label
                           key={opt.id}
                           className={clsx(
-                            'flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-shadow duration-150',
+                            'flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-150',
                             checked
                               ? 'bg-ey-yellow/5 border-ey-yellow/60 shadow-sm'
-                              : 'bg-white border-gray-200 hover:shadow-sm',
+                              : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm',
                           )}
                         >
                           <input
@@ -678,8 +702,8 @@ export default function SODSAAnalysis() {
                             onChange={e => toggleAnalysis(opt.id, e.target.checked)}
                             className="mt-0.5 w-4 h-4 accent-ey-yellow shrink-0"
                           />
-                          <span className="flex flex-col">
-                            <span className="text-[14px] font-medium text-gray-800 leading-tight">{opt.label}</span>
+                          <span className="flex flex-col min-w-0">
+                            <span className="text-[13.5px] font-semibold text-gray-800 leading-tight">{opt.label}</span>
                             <span className="text-[12px] text-gray-500 mt-1 leading-snug">{opt.sublabel}</span>
                           </span>
                         </label>
@@ -690,58 +714,37 @@ export default function SODSAAnalysis() {
               )
             })}
 
-            <label className="flex items-start gap-3 p-4 rounded-xl border border-blue-200 bg-blue-50/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={withFp}
-                onChange={e => setWithFp(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-blue-600 shrink-0"
-              />
-              <span className="flex flex-col">
-                <span className="text-[14px] font-medium text-gray-800 leading-tight">False-Positive Detection</span>
-                <span className="text-[12px] text-gray-500 mt-1 leading-snug">
-                  Apply 3-level false-positive filtering and user grouping. Requires the FP Database file.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 p-4 rounded-xl border border-amber-200 bg-amber-50/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={withObservation}
-                onChange={e => setWithObservation(e.target.checked)}
-                className="mt-0.5 w-4 h-4 accent-amber-500 shrink-0"
-              />
-              <span className="flex flex-col">
-                <span className="text-[14px] font-medium text-gray-800 leading-tight">Include Observation Tab</span>
-                <span className="text-[12px] text-gray-500 mt-1 leading-snug">
-                  Adds an Observations &amp; Recommendations tab to the output, with one block per Control Bucket (SOD only). Requires the Bucket Details sheet in the ruleset.
-                </span>
-              </span>
-            </label>
-
-            <label className="flex items-start gap-3 p-4 rounded-xl border border-violet-200 bg-violet-50/60 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={with3Leg}
-                onChange={e => { setWith3Leg(e.target.checked); discardStagedJob() }}
-                className="mt-0.5 w-4 h-4 accent-violet-500 shrink-0"
-              />
-              <span className="flex flex-col">
-                <span className="text-[14px] font-medium text-gray-800 leading-tight">3-Leg SOD Controls</span>
-                <span className="text-[12px] text-gray-500 mt-1 leading-snug">
-                  The SoD Ruleset tab must use the Entitlement 1 / Condition 1 / Entitlement 2 / Condition 2 / Entitlement 3 layout, with AND/OR logic per control (Entitlement 3 optional per row).
-                </span>
-              </span>
-            </label>
+            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-gray-100 bg-white">
+                <h4 className="text-[13px] font-semibold text-gray-800">Analysis options</h4>
+              </div>
+              <div className="divide-y divide-gray-100 bg-white">
+                <OptionToggle
+                  checked={withFp}
+                  onChange={setWithFp}
+                  title="False-Positive Detection"
+                  description="Apply 3-level false-positive filtering and user grouping. Requires the FP Database file."
+                />
+                <OptionToggle
+                  checked={withObservation}
+                  onChange={setWithObservation}
+                  title="Include Observation Tab"
+                  description="Adds an Observations & Recommendations tab to the output, with one block per Control Bucket (SOD only). Requires the Bucket Details sheet in the ruleset."
+                />
+                <OptionToggle
+                  checked={with3Leg}
+                  onChange={v => { setWith3Leg(v); discardStagedJob() }}
+                  title="3-Leg SOD Controls"
+                  description="The SoD Ruleset tab must use the Entitlement 1 / Condition 1 / Entitlement 2 / Condition 2 / Entitlement 3 layout, with AND/OR logic per control (Entitlement 3 optional per row)."
+                />
+              </div>
+            </div>
 
             <div className="flex items-center justify-between pt-1">
-              <div className="flex items-center gap-4">
-                <span className="text-[12px] text-gray-500">
-                  Scope: <span className="font-medium text-gray-700">{analysisTypeLabel}</span>
-                  {selectedAnalyses.length === 0 && <span className="text-error ml-1">· select at least one</span>}
-                </span>
-              </div>
+              <span className="text-[12px] text-gray-500">
+                Scope: <span className="font-medium text-gray-700">{analysisTypeLabel}</span>
+                {selectedAnalyses.length === 0 && <span className="text-error ml-1">· select at least one</span>}
+              </span>
               <button
                 className="btn-gold"
                 disabled={selectedAnalyses.length === 0}
@@ -756,18 +759,40 @@ export default function SODSAAnalysis() {
         {/* ── Step 2: Upload Files ───────────────────────────────────────── */}
         {step === 'upload' && analysisType && (
           <div className="slide-in space-y-5">
-            <div className={clsx('grid gap-4', withFp ? 'grid-cols-3' : 'grid-cols-2')}>
+            {/* Scenario-driven card grid, fixed order: Role Hierarchy → User Role
+                Membership → Ruleset → FP Database → Procurement Agent.
+                2 cards (role-only) → 2-up; 3 cards (role+FP, or user without FP)
+                → 3-up; 5 cards (user + FP) → 2+2 with a full-width optional
+                Procurement Agent row. Procurement FP applies to user-level
+                SOD/SA only, so its card never shows on role-only runs. */}
+            <div className={clsx(
+              'grid gap-4',
+              withFp && needsUserRole ? 'grid-cols-2' : withFp || needsUserRole ? 'grid-cols-3' : 'grid-cols-2',
+            )}>
               <div>
                 <p className="label-uppercase mb-2">Role Hierarchy Report</p>
                 <FileUpload
                   label="Role Hierarchy CSV / XLSX"
-                  hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE, etc."
+                  hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE"
                   status={roleHierarchyFile ? 'success' : 'idle'}
                   fileInfo={roleHierarchyFile ? { name: roleHierarchyFile.name, size: roleHierarchyFile.size } : null}
                   onUpload={(f) => { setRoleHierarchyFile(f); discardStagedJob() }}
                   onRemove={() => { setRoleHierarchyFile(null); discardStagedJob() }}
                 />
               </div>
+              {needsUserRole && (
+                <div>
+                  <p className="label-uppercase mb-2">User Role Membership</p>
+                  <FileUpload
+                    label="User Role CSV / XLSX"
+                    hint="Columns: User Name, Assigned Role Name"
+                    status={userRoleFile ? 'success' : 'idle'}
+                    fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
+                    onUpload={(f) => { setUserRoleFile(f); discardStagedJob() }}
+                    onRemove={() => { setUserRoleFile(null); discardStagedJob() }}
+                  />
+                </div>
+              )}
               <div>
                 <p className="label-uppercase mb-2">SOD SA Ruleset</p>
                 <FileUpload
@@ -820,8 +845,8 @@ export default function SODSAAnalysis() {
                   )}
                 </div>
               )}
-              {withFp && (
-                <div>
+              {withFp && needsUserRole && (
+                <div className="col-span-2">
                   <p className="label-uppercase mb-2">
                     Procurement Agent
                     <span className="ml-2 text-[11px] text-gray-500 normal-case font-normal">(optional)</span>
@@ -838,23 +863,6 @@ export default function SODSAAnalysis() {
                 </div>
               )}
             </div>
-
-            {needsUserRole && (
-              <div>
-                <p className="label-uppercase mb-2">
-                  User Role Membership
-                  <span className="ml-2 text-[11px] text-error normal-case font-normal">(required for user analysis)</span>
-                </p>
-                <FileUpload
-                  label="User Role CSV / XLSX"
-                  hint="Columns: User Name, Assigned Role Name"
-                  status={userRoleFile ? 'success' : 'idle'}
-                  fileInfo={userRoleFile ? { name: userRoleFile.name, size: userRoleFile.size } : null}
-                  onUpload={(f) => { setUserRoleFile(f); discardStagedJob() }}
-                  onRemove={() => { setUserRoleFile(null); discardStagedJob() }}
-                />
-              </div>
-            )}
 
             <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
               <span>
