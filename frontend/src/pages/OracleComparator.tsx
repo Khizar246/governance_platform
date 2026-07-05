@@ -14,7 +14,7 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import HelpAccordion, { HelpStep, SchemaTable, TemplateDownloads } from '../components/common/HelpAccordion'
+import HelpAccordion, { HelpStep, SchemaTable } from '../components/common/HelpAccordion'
 import Badge from '../components/common/Badge'
 import { uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob, getResults, getFilterOptions } from '../api/oracleComparator'
 import type { OracleComparatorSummary } from '../types'
@@ -349,13 +349,6 @@ export default function OracleComparator() {
             ]}
           />
         </HelpAccordion>
-        <TemplateDownloads
-          templates={[
-            ['RBAC Export Template', 'XLSX', '/api/templates/oracle-comparator/rbac_template.xlsx'],
-            ['DSP Export Template',  'XLSX', '/api/templates/oracle-comparator/dsp_template.xlsx'],
-          ]}
-          note="These templates are for reference only. If you already have RBAC or DSP extracts from Oracle Fusion, you can upload them directly — no need to reformat them to match the template."
-        />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />

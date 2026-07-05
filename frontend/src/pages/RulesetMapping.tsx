@@ -12,7 +12,7 @@ import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
 import ConfirmDialog from '../components/common/ConfirmDialog'
-import HelpAccordion, { HelpStep, SchemaTable, TemplateDownloads } from '../components/common/HelpAccordion'
+import HelpAccordion, { HelpStep, SchemaTable } from '../components/common/HelpAccordion'
 import {
   uploadFiles, runAnalysis, getStatus, downloadResults, cancelJob,
   getResults, getFilterOptions,
@@ -315,7 +315,7 @@ export default function RulesetMapping() {
 
       <div style={{ marginBottom: 20 }}>
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
-          <HelpStep num={1} text="This tool compares two ruleset files — one from your Client and one from EY — and matches up their controls. Download the two blank template files below and fill them in first." />
+          <HelpStep num={1} text="This tool compares two ruleset files — one from your Client and one from EY — and matches up their controls. Download the two blank template files from the Downloads page (sidebar → Resources) and fill them in first." />
           <HelpStep num={2} text="Each file needs these 3 sheets. The table below shows every column each sheet needs — Required columns must be present or the upload will fail; Optional columns can be left out and the mapping will still run." />
           <HelpStep num={3} text="Upload both files, then click Validate & Preview. If anything is missing, the tool tells you exactly what and where — fix it and upload again." />
           <HelpStep num={4} text="Click Run Mapping once both files pass. The results page lets you flip between Client → EY and EY → Client, and shows matched controls, missing controls, and missing privileges. Download the finished Excel report from there." />
@@ -339,10 +339,6 @@ export default function RulesetMapping() {
             ]}
           />
         </HelpAccordion>
-        <TemplateDownloads templates={[
-          ['Client Ruleset Template', 'XLSX', '/api/templates/ruleset-mapping/client_ruleset_template.xlsx'],
-          ['EY Ruleset Template',     'XLSX', '/api/templates/ruleset-mapping/ey_ruleset_template.xlsx'],
-        ]} />
       </div>
 
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
