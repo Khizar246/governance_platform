@@ -170,6 +170,7 @@ export default function SODSAAnalysis() {
   const [rulesetFile, setRulesetFile] = useState<File | null>(null)
   const [userRoleFile, setUserRoleFile] = useState<File | null>(null)
   const [fpDbFile, setFpDbFile] = useState<File | null>(null)
+  const [procurementFile, setProcurementFile] = useState<File | null>(null)
   const [rulesetSeeded, setRulesetSeeded] = useState(false)
   const [fpDbSeeded, setFpDbSeeded] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
@@ -366,7 +367,7 @@ export default function SODSAAnalysis() {
     }
     // Drop the user-role file if no user-level analysis is selected
     if (!selectedAnalyses.some(a => a.startsWith('user_'))) setUserRoleFile(null)
-    if (!withFp) { setFpDbFile(null); setFpDbSeeded(false) }
+    if (!withFp) { setFpDbFile(null); setFpDbSeeded(false); setProcurementFile(null) }
     setStep('upload')
   }, [selectedAnalyses, withFp])
 
@@ -419,8 +420,9 @@ export default function SODSAAnalysis() {
     try {
       const urFile = needsUserRole ? userRoleFile : null
       const fpFile = withFp ? fpDbFile : null
+      const paFile = withFp ? procurementFile : null
       const seedFp = withFp && fpDbSeeded
-      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, rulesetSeeded, seedFp, with3Leg)
+      const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, paFile, rulesetSeeded, seedFp, with3Leg)
       if (resp.errors?.length) {
         setUploadError(resp.errors[0])
         setUploadBlocked(true)
@@ -462,7 +464,7 @@ export default function SODSAAnalysis() {
     } finally {
       setIsUploading(false)
     }
-  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, analysisType, needsUserRole, withFp, with3Leg, startRun])
+  }, [roleHierarchyFile, rulesetFile, rulesetSeeded, userRoleFile, fpDbFile, fpDbSeeded, procurementFile, analysisType, needsUserRole, withFp, with3Leg, startRun])
 
   const handleProceedAnyway = useCallback(async () => {
     if (!stagedJobId) return
@@ -816,6 +818,23 @@ export default function SODSAAnalysis() {
                       {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
                     </button>
                   )}
+                </div>
+              )}
+              {withFp && (
+                <div>
+                  <p className="label-uppercase mb-2">
+                    Procurement Agent
+                    <span className="ml-2 text-[11px] text-gray-500 normal-case font-normal">(optional)</span>
+                  </p>
+                  <FileUpload
+                    label="Procurement Agent XLSX"
+                    accept=".xlsx,.xls"
+                    hint="Single sheet with USERNAME and ACTIVE_FLAG columns"
+                    status={procurementFile ? 'success' : 'idle'}
+                    fileInfo={procurementFile ? { name: procurementFile.name, size: procurementFile.size } : null}
+                    onUpload={(f) => { setProcurementFile(f); discardStagedJob() }}
+                    onRemove={() => { setProcurementFile(null); discardStagedJob() }}
+                  />
                 </div>
               )}
             </div>

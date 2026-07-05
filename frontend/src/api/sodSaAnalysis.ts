@@ -41,6 +41,7 @@ export async function uploadFiles(
   ruleset: File | null,
   userRole: File | null,
   fpDb: File | null,
+  procurementAgent: File | null,
   useSeededRuleset: boolean,
   useSeededFpDb: boolean,
   with3Leg: boolean,
@@ -54,6 +55,7 @@ export async function uploadFiles(
   if (userRole) formData.append('user_role', userRole)
   if (fpDb) formData.append('fp_db', fpDb)
   else if (useSeededFpDb) formData.append('use_seeded_fp_db', 'true')
+  if (procurementAgent) formData.append('procurement_agent', procurementAgent)
   if (with3Leg) formData.append('with_3leg', 'true')
   const response = await uploadWithProgress('/api/sod-sa/upload', formData, onProgress ?? (() => {}))
   return response.data

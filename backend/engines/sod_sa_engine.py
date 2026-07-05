@@ -735,6 +735,45 @@ def _set_fp_where_pending(df: pl.DataFrame, tag: str) -> pl.DataFrame:
     ]).drop("_reason")
 
 
+def _fp_level_procurement(
+    df: pl.DataFrame,
+    procurement_df: pl.DataFrame,
+) -> pl.DataFrame:
+    """Procurement-agent gate (user frames only): runs before every other level.
+
+    A user cannot violate a Procurement-module control unless they are an active
+    procurement agent. Rows whose MODULES contains "procurement" are FP when the
+    user is absent from the agent file or listed with ACTIVE_FLAG = 'N'.
+    """
+    active_users = (
+        procurement_df
+        .filter(
+            pl.col("ACTIVE_FLAG").cast(pl.Utf8).str.strip_chars().str.to_uppercase() != "N"
+        )
+        .select(pl.col("USERNAME").cast(pl.Utf8).str.strip_chars().str.to_uppercase())
+        .unique()
+        .to_series()
+    )
+    is_procurement = (
+        pl.col("MODULES").fill_null("").str.to_lowercase().str.contains("procurement", literal=True)
+    )
+    is_active_agent = (
+        pl.col("USER_NAME").cast(pl.Utf8).str.strip_chars().str.to_uppercase().is_in(active_users)
+    )
+    return _set_fp_where_pending(
+        df.with_columns(
+            pl.when(is_procurement & ~is_active_agent)
+              .then(pl.lit(
+                  "False Positive: User is not an active procurement agent, "
+                  "which is required to violate this control."
+              ))
+              .otherwise(None)
+              .alias("_reason")
+        ),
+        "FP",
+    )
+
+
 def _fp_level1(
     df: pl.DataFrame,
     no_action_df: pl.DataFrame,
@@ -985,6 +1024,7 @@ def run_fp_pipeline(
     entity_col: str,
     is_sod: bool,
     user_role_df: pl.DataFrame | None = None,
+    procurement_df: pl.DataFrame | None = None,
 ) -> pl.DataFrame:
     """Run all 3 FP levels sequentially.
 
@@ -1008,6 +1048,10 @@ def run_fp_pipeline(
           )
           .alias("_fp_keys")
     )
+    # Procurement-agent gate (passed only for USER frames): runs first so its
+    # FP classification outranks every other level.
+    if procurement_df is not None:
+        df = _fp_level_procurement(df, procurement_df)
     # Level 0 (3-leg only): OR-only controls have a single AND-group, so they act
     # as Sensitive Access, not a SoD conflict — mark every row SL before levels 1–2.
     if is_sod and "_N_GROUPS" in df.columns:

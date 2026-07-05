@@ -71,6 +71,7 @@ _RH_REQUIRED_COLS = [
     "PRIVILEGE_CODE", "PRIVILEGE_NAME",
 ]
 _UR_REQUIRED_COLS = ["User Name", "Assigned Role Name"]
+_PA_REQUIRED_COLS = ["USERNAME", "ACTIVE_FLAG"]
 _RULESET_SHEET_SCHEMA = {
     "SoD Ruleset": ["Control Name", "LHS Entitlement", "RHS Entitlement"],
     "SA Ruleset":  ["Control Name", "Entitlement"],
@@ -162,11 +163,36 @@ def _validate_multisheet_file(file_bytes: bytes, filename: str, file_label: str,
     return errors
 
 
+def _validate_module_required(ruleset_bytes: bytes, ruleset_name: str) -> list[str]:
+    """A Procurement Agent upload makes Module(s) mandatory in both ruleset sheets."""
+    try:
+        sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
+    except Exception:
+        return []  # unreadable ruleset already reported by the hard validation
+    norm_to_actual = {_norm(s): s for s in sheet_names}
+    errors: list[str] = []
+    for sheet in ("SoD Ruleset", "SA Ruleset"):
+        actual = norm_to_actual.get(_norm(sheet))
+        if actual is None:
+            continue  # missing sheet already reported by the hard validation
+        try:
+            cols = _read_header_columns(ruleset_bytes, ruleset_name, actual)
+        except Exception:
+            continue
+        if _norm("Module(s)") not in {_norm(c) for c in cols}:
+            errors.append(
+                f"Ruleset -> {sheet} -> Missing Column: Module(s) "
+                f"(required when a Procurement Agent file is uploaded)"
+            )
+    return errors
+
+
 def _validate_all_schemas(
     rh_bytes: bytes, rh_name: str,
     ruleset_bytes: bytes, ruleset_name: str,
     ur_bytes: Optional[bytes], ur_name: Optional[str],
     fp_bytes: Optional[bytes], fp_name: Optional[str],
+    pa_bytes: Optional[bytes] = None, pa_name: Optional[str] = None,
     with_3leg: bool = False,
 ) -> list[str]:
     """Scan every uploaded file, sheet and column upfront; return ALL issues together."""
@@ -178,6 +204,9 @@ def _validate_all_schemas(
         errors += _validate_flat_file(ur_bytes, ur_name, "User Role", _UR_REQUIRED_COLS)
     if fp_bytes is not None and fp_name is not None:
         errors += _validate_multisheet_file(fp_bytes, fp_name, "FP Database", _FP_SHEET_SCHEMA)
+    if pa_bytes is not None and pa_name is not None:
+        errors += _validate_flat_file(pa_bytes, pa_name, "Procurement Agent", _PA_REQUIRED_COLS)
+        errors += _validate_module_required(ruleset_bytes, ruleset_name)
     return errors
 
 
@@ -512,6 +541,7 @@ def _run_thread(
     with_observation: bool = False,
     bucket_details_df: Optional[pl.DataFrame] = None,
     with_3leg: bool = False,
+    procurement_df: Optional[pl.DataFrame] = None,
 ) -> None:
     try:
         logger.info(f"[{job_id}] Starting SOD & SA Analysis: analysis_type={analysis_type}, with_fp={with_fp}, selected_analyses={selected_analyses}, with_3leg={with_3leg}")
@@ -659,6 +689,7 @@ def _run_thread(
                     "USER_NAME",
                     is_sod=True,
                     user_role_df=user_role_df,
+                    procurement_df=procurement_df,
                 )
 
             _step(12, 70, "FP analysis on user SA…")
@@ -671,6 +702,7 @@ def _run_thread(
                     "USER_NAME",
                     is_sod=False,
                     user_role_df=user_role_df,
+                    procurement_df=procurement_df,
                 )
         # FP disabled: leave DataFrames without FP columns; engine and cache
         # populate will both omit them from output when fp_enabled=False.
@@ -767,6 +799,7 @@ async def upload(
     ruleset: Optional[UploadFile] = File(None, description="SOD SA Ruleset XLSX (3 sheets)"),
     user_role: Optional[UploadFile] = File(None, description="User Role Membership XLSX/CSV"),
     fp_db: Optional[UploadFile] = File(None, description="FP Database XLSX"),
+    procurement_agent: Optional[UploadFile] = File(None, description="Procurement Agent XLSX (single sheet with USERNAME and ACTIVE_FLAG)"),
     use_seeded_ruleset: bool = Form(False, description="Load the bundled seeded Ruleset instead of an upload"),
     use_seeded_fp_db: bool = Form(False, description="Load the bundled seeded FP Database instead of an upload"),
     with_3leg: bool = Form(False, description="SoD Ruleset uses the 3-leg AND/OR layout (Entitlement 1/Condition 1/Entitlement 2/Condition 2/Entitlement 3)"),
@@ -801,6 +834,11 @@ async def upload(
         if not ok:
             errors.append(f"FP Database: {msg}")
 
+    if procurement_agent is not None:
+        ok, msg = await validate_upload(procurement_agent, MAX_UPLOAD_SIZE_BYTES, {".xlsx", ".xls"})
+        if not ok:
+            errors.append(f"Procurement Agent: {msg}")
+
     if errors:
         logger.error(f"SOD & SA upload validation failed: {errors}")
         return JSONResponse(
@@ -831,6 +869,13 @@ async def upload(
         fp_bytes = None
         fp_name = None
 
+    if procurement_agent is not None:
+        pa_bytes = await procurement_agent.read()
+        pa_name = procurement_agent.filename or "procurement_agent.xlsx"
+    else:
+        pa_bytes = None
+        pa_name = None
+
     rh_name = role_hierarchy.filename or "role_hierarchy.xlsx"
     ur_name = (user_role.filename or "user_role.xlsx") if user_role is not None else None
 
@@ -839,6 +884,7 @@ async def upload(
     # fixes everything in one pass instead of one-error-at-a-time.
     schema_errors = _validate_all_schemas(
         rh_bytes, rh_name, ruleset_bytes, ruleset_name, ur_bytes, ur_name, fp_bytes, fp_name,
+        pa_bytes, pa_name,
         with_3leg=with_3leg,
     )
     if schema_errors:
@@ -864,6 +910,7 @@ async def upload(
     ur_df: Optional[pl.DataFrame] = None
     no_action_df: Optional[pl.DataFrame] = None
     work_area_df: Optional[pl.DataFrame] = None
+    procurement_df: Optional[pl.DataFrame] = None
 
     # Load and normalise role hierarchy
     try:
@@ -914,6 +961,17 @@ async def upload(
             logger.error(f"Failed to load FP Database: {exc}", exc_info=True)
             all_errors.append(f"FP Database ({fp_name or 'fp_db.xlsx'}): {exc}")
 
+    # Load Procurement Agent file if provided (single sheet; only two columns used)
+    if pa_bytes is not None:
+        try:
+            procurement_df = _load_file(pa_bytes, pa_name or "procurement_agent.xlsx")
+            procurement_df = procurement_df.rename({c: c.strip().upper() for c in procurement_df.columns})
+            procurement_df = procurement_df.select(["USERNAME", "ACTIVE_FLAG"])
+            logger.info(f"Loaded Procurement Agent: {procurement_df.height} rows")
+        except Exception as exc:
+            logger.error(f"Failed to load Procurement Agent: {exc}", exc_info=True)
+            all_errors.append(f"Procurement Agent ({pa_name or 'procurement_agent.xlsx'}): {exc}")
+
     # Reject files that validated but contain zero data rows — otherwise the run
     # "succeeds" with silently empty results.
     for _df, _label in [
@@ -922,6 +980,7 @@ async def upload(
         (sa_df, "Ruleset -> SA Ruleset"),
         (mapping_df, "Ruleset -> Entitlement to Privilege"),
         (ur_df, "User Role"),
+        (procurement_df, "Procurement Agent"),
     ]:
         if _df is not None and _df.height == 0:
             all_errors.append(f"{_label}: contains no data rows after loading.")
@@ -1007,6 +1066,7 @@ async def upload(
         "user_role_df": ur_df,
         "no_action_df": no_action_df,
         "work_area_df": work_area_df,
+        "procurement_df": procurement_df,
         "bucket_details_df": bucket_details_df,
     })
     has_control_bucket_col, has_bucket_details_sheet = _inspect_observation_inputs(
@@ -1015,6 +1075,7 @@ async def upload(
     job_manager.set_config(job.id, {
         "has_user_role": ur_df is not None,
         "has_fp_db": fp_bytes is not None,
+        "has_procurement": pa_bytes is not None,
         "has_control_bucket_col": has_control_bucket_col,
         "has_bucket_details_sheet": has_bucket_details_sheet,
         "with_3leg": with_3leg,
@@ -1184,6 +1245,7 @@ async def run(job_id: str, config: SODSARunConfig):
             config.with_observation,
             job.files.get("bucket_details_df"),
             config.with_3leg,
+            job.files.get("procurement_df") if (has_fp_db and job.config.get("has_procurement", False)) else None,
         ),
         daemon=True,
     ).start()
