@@ -32,6 +32,7 @@ export interface UploadResponse {
   status: JobStatus
   errors: string[]
   warnings: string[]
+  entitlement_warnings?: { entitlement: string; controls: string[] }[]
 }
 
 export interface AnalysisResponse {
@@ -40,13 +41,6 @@ export interface AnalysisResponse {
   summary: Record<string, unknown>
   errors: string[]
   warnings: string[]
-}
-
-export interface ErrorResponse {
-  error: boolean
-  message: string
-  code: string
-  details: string[]
 }
 
 // ── Tool-specific summary types ───────────────────────────────────────────────

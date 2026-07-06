@@ -121,7 +121,7 @@ export default function DataTable<T>({
     if (serverSideFilters) return {}
     const map: Record<string, string[]> = {}
     for (const col of columns) {
-      const def = col as Record<string, unknown>
+      const def = col as unknown as Record<string, unknown>
       const colId = String(def.id ?? def.accessorKey ?? '')
       const key = String(def.accessorKey ?? colId)
       if (!colId) continue

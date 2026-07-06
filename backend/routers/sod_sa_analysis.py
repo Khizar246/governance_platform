@@ -31,7 +31,6 @@ from engines.sod_sa_engine import (
     load_ruleset_sheets, analyze_roles, analyze_users, export_results,
     run_fp_pipeline, compute_user_groups,
     INPUT_COLUMN_RENAME, apply_rename, upper_values,
-    BUCKET_DETAILS_REQUIRED_COLS,
 )
 
 router = APIRouter(prefix="/api/sod-sa", tags=["SOD & SA Analysis"])

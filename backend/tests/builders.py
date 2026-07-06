@@ -16,7 +16,6 @@ The baseline data is intentionally tiny and self-consistent:
 
 from __future__ import annotations
 
-import copy
 import io
 
 import pandas as pd
@@ -48,7 +47,6 @@ MAPPING_ROWS = [("ENT_A", "PRIV1"), ("ENT_B", "PRIV2")]
 MAPPING_COLS = ["Entitlement Name", "Privilege Code"]
 
 # Optional Bucket Details sheet (used by Observation tests).
-BUCKET_DETAILS_ROWS = [("BUCKET1", "High", "Review access")]
 BUCKET_DETAILS_COLS = ["Bucket Name", "Risk", "EY Recommendations"]
 
 FP_NOACTION_ROWS = [("PRIV1", "Known safe")]
@@ -69,10 +67,6 @@ def _xlsx_bytes(sheets: dict[str, pd.DataFrame]) -> bytes:
         for name, df in sheets.items():
             df.to_excel(xw, sheet_name=name, index=False)
     return buf.getvalue()
-
-
-def _csv_bytes(df: pd.DataFrame) -> bytes:
-    return df.to_csv(index=False).encode("utf-8")
 
 
 # ── Baseline builders (return raw bytes) ────────────────────────────────────
@@ -107,23 +101,3 @@ def fp_sheets() -> dict[str, pd.DataFrame]:
 
 def fp_db_xlsx(sheets: dict[str, pd.DataFrame] | None = None) -> bytes:
     return _xlsx_bytes(sheets if sheets is not None else fp_sheets())
-
-
-# ── Mutators (each breaks exactly one thing) ────────────────────────────────
-
-def drop_column(df: pd.DataFrame, col: str) -> pd.DataFrame:
-    return df.drop(columns=[col])
-
-
-def with_sheets(base: dict[str, pd.DataFrame], **edits) -> dict[str, pd.DataFrame]:
-    out = {k: v.copy() for k, v in base.items()}
-    for k, v in edits.items():
-        if v is None:
-            out.pop(k.replace("__", " "), None)
-        else:
-            out[k.replace("__", " ")] = v
-    return out
-
-
-def deep_copy_sheets(sheets: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame]:
-    return {k: v.copy() for k, v in sheets.items()}

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { clsx } from 'clsx'
-import { GitMerge, AlertCircle, CheckCircle2, RefreshCw, X, Info, Layers } from 'lucide-react'
+import { GitMerge, AlertCircle, CheckCircle2, RefreshCw, X, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'

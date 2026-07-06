@@ -423,6 +423,7 @@ export default function SODSAAnalysis() {
   }, [])
 
   const startRun = useCallback(async (id: string) => {
+    if (!analysisType) return
     setJobId(id)
     await runAnalysis(id, { analysis_type: analysisType, with_fp: withFp, selected_analyses: selectedAnalyses, with_observation: withObservation, with_3leg: with3Leg })
     setStep('running')

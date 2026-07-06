@@ -8,12 +8,6 @@ MAX_UPLOAD_SIZE_BYTES = 200 * 1024 * 1024  # 200 MB
 
 ALLOWED_EXTENSIONS = {".csv", ".xlsx", ".xls"}
 
-ALLOWED_MIME_TYPES = {
-    "text/csv",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    "application/vnd.ms-excel",
-}
-
 TEMP_DIR = Path("temp")
 LOG_DIR = Path("logs")
 
@@ -27,10 +21,6 @@ CLEANUP_INTERVAL_SECONDS = 300  # 5 minutes
 # ── Role Testing Bot (Tool 4) ─────────────────────────────────────────────────
 # Per-job screenshot folders live under TEMP_DIR/role-testing/{job_id}.
 ROLE_TESTING_SHOTS_DIR = TEMP_DIR / "role-testing"
-# Safety knobs for the Oracle screenshot walk (a full run can hit 100+ areas).
-# None = no cap; these are defaults the frontend can override per run.
-MAX_NAV_ELEMENTS_DEFAULT = None
-RUN_TIMEOUT_SECONDS_DEFAULT = None
 
 
 def output_filename(tool_name: str, context: str = "") -> str:

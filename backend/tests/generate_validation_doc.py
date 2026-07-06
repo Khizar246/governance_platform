@@ -28,8 +28,6 @@ from tests.inventory import SCENARIOS, by_category  # noqa: E402
 
 _HEADERS = ["#", "Scenario", "File to corrupt", "How to make it wrong",
             "Expected message (must appear)", "HTTP"]
-_EY_YELLOW = RGBColor(0xFF, 0xE6, 0x00)
-_DARK = RGBColor(0x2E, 0x2E, 0x38)
 
 
 def _shade(cell, hex_fill: str) -> None:

@@ -28,6 +28,6 @@ class JobNotFoundError(GovernanceError):
 
     def __init__(self, job_id: str):
         super().__init__(
-            f"Analysis session not found or expired. Please start a new analysis.",
+            "Analysis session not found or expired. Please start a new analysis.",
             "JOB_NOT_FOUND",
         )

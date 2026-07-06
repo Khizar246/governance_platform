@@ -14,15 +14,6 @@ export function HelpStep({ num, text }: { num: number; text: string }) {
   )
 }
 
-export function HelpPill({ label, note }: { label: string; note: string }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'baseline', gap: 9, padding: '8px 12px', borderRadius: 7, background: '#F7F6F3', border: '1px solid #F1F0EA', marginBottom: 7 }}>
-      <code style={{ fontSize: 11, background: '#F0EFE9', padding: '2px 7px', borderRadius: 4, fontFamily: 'monospace', color: '#0F1E3D', flexShrink: 0 }}>{label}</code>
-      <span style={{ fontSize: 12.5, color: '#64748B', lineHeight: 1.5 }}>{note}</span>
-    </div>
-  )
-}
-
 export function SchemaTable({
   fileLabel,
   rows,

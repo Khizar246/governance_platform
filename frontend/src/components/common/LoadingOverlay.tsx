@@ -98,7 +98,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
 
           {/* Phase strip */}
           <div className="flex rounded-lg overflow-hidden border border-gray-200">
-            {([1, 2, 3, 4] as const).map((phase, idx) => {
+            {([1, 2, 3, 4] as const).map((phase) => {
               const status = phaseStatus(phase)
               return (
                 <div

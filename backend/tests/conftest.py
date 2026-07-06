@@ -19,9 +19,6 @@ _BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _BACKEND_DIR not in sys.path:
     sys.path.insert(0, _BACKEND_DIR)
 
-_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-
-
 @pytest.fixture(scope="session")
 def client():
     from fastapi.testclient import TestClient
@@ -44,10 +41,6 @@ def _reset_jobs():
         for cache in job_manager._result_caches:
             cache.clear()
     yield
-
-
-def _part(name: str, data: bytes, content_type: str = _XLSX):
-    return (name, io.BytesIO(data), content_type)
 
 
 @pytest.fixture

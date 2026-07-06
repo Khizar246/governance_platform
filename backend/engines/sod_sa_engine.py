@@ -684,8 +684,6 @@ def check_sa_violations(
 
     Ported verbatim from SOD Tool/app.py.
     """
-    entity_key = entity_column or "ROLE_NAME"
-
     violations_result = entitlements_data.join(
         sa_controls,
         left_on="ENTITLEMENT_NAME",
@@ -1135,52 +1133,6 @@ def compute_user_groups(
     if user_role_df is None or user_role_df.is_empty():
         return pl.DataFrame(), pl.DataFrame()
     return _generate_user_groups(user_role_df, prefix)
-
-
-def apply_grouping_to_violations(
-    user_violations_df: pl.DataFrame,
-    full_user_role_df: pl.DataFrame,
-    prefix: str = "Group",
-) -> tuple[pl.DataFrame, pl.DataFrame]:
-    """Apply user grouping to violation DataFrame.
-
-    Filters full_user_role_df to only violating users, generates groups,
-    joins GROUP_NAME and NO_OF_USERS_IN_GROUP back onto violations.
-    Returns (augmented_violations, group_mapping_export).
-    """
-    if user_violations_df.is_empty():
-        return pl.DataFrame(), pl.DataFrame()
-
-    violating_users = user_violations_df.select("USER_NAME").unique()
-    violating_user_roles = full_user_role_df.join(
-        violating_users,
-        on="USER_NAME",
-        how="inner",
-    )
-
-    user_to_group_map, group_export = _generate_user_groups(violating_user_roles, prefix)
-    if user_to_group_map.is_empty():
-        return user_violations_df, pl.DataFrame()
-
-    group_counts = group_export.select(["GROUP_NAME", "NO_OF_USERS_IN_GROUP"]).unique()
-    map_with_counts = user_to_group_map.join(group_counts, on="GROUP_NAME", how="left")
-    grouped_violations = user_violations_df.join(map_with_counts, on="USER_NAME", how="left")
-
-    # Reorder columns: GROUP_NAME and NO_OF_USERS_IN_GROUP after first 3 columns, USER_NAME at end
-    cols = list(grouped_violations.columns)
-    if "GROUP_NAME" in cols:
-        cols.remove("GROUP_NAME")
-    if "NO_OF_USERS_IN_GROUP" in cols:
-        cols.remove("NO_OF_USERS_IN_GROUP")
-    if "USER_NAME" in cols:
-        cols.remove("USER_NAME")
-
-    insert_idx = min(3, len(cols))
-    cols.insert(insert_idx, "GROUP_NAME")
-    cols.insert(insert_idx + 1, "NO_OF_USERS_IN_GROUP")
-    cols.append("USER_NAME")
-
-    return grouped_violations.select(cols), group_export
 
 
 # ── Analysis orchestrators ────────────────────────────────────────────────────

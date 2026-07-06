@@ -114,59 +114,6 @@ def _normalize_module(value: object) -> str:
     return s.lower()
 
 
-COLUMN_DESCRIPTIONS: dict[str, str] = {
-    "Client Entitlement": (
-        "The entitlement name as defined in the client's access control system."
-    ),
-    "EY Entitlement Match": (
-        "The best-matching EY standard entitlement, selected by the composite "
-        "confidence score (0.65·Jaccard + 0.20·module match + 0.10·coverage + 0.05·name). "
-        "'Not Mapped' means the best candidate scored below the match threshold; "
-        "'—' means no EY entitlement shares any privilege with this client entitlement."
-    ),
-    "Privilege Match Count": (
-        "Number of client privileges found in the matched EY entitlement, expressed "
-        "as matched/total (e.g. '3/5' means 3 of the client's 5 privileges were found "
-        "in the EY entitlement)."
-    ),
-    "Jaccard Similarity (%)": (
-        "Overlap ÷ union of the two privilege sets. High Jaccard means the EY "
-        "entitlement closely mirrors the client's scope. Low Jaccard means the EY "
-        "entitlement contains many privileges beyond what the client holds."
-    ),
-    "Confidence Score (%)": (
-        "Weighted composite match score: 0.65·Jaccard + 0.20·module match + "
-        "0.10·coverage + 0.05·name (module match = 1 when the client and EY entitlement "
-        "share the same Module, else 0; coverage = matched ÷ client privilege count; "
-        "name = abbreviation-aware entitlement-name similarity). This is the score the "
-        "match is selected and the confidence tier is derived from."
-    ),
-    "Client Privilege Count": (
-        "Number of distinct privileges held by the client entitlement."
-    ),
-    "EY Privilege Count": (
-        "Number of distinct privileges held by the matched EY entitlement."
-    ),
-    "EY Privileges Missing in Client": (
-        "Privileges in the matched EY entitlement that the client entitlement lacks — "
-        "the EY-side gap (privileges the client would gain by adopting the EY standard)."
-    ),
-    "Client Privileges Missing in EY": (
-        "Privileges in the client entitlement absent from the matched EY entitlement — "
-        "the client-side gap (privileges not covered by the EY standard)."
-    ),
-    "Match Confidence": (
-        "Tier for mapped entitlements (composite score ≥ 30%): High = 70%+, "
-        "Medium = 50–69%, Low = 30–49%. Below 30% the entitlement is 'Not Mapped'."
-    ),
-    "Runner-Up EY Entitlements": (
-        "The 2nd and 3rd best EY entitlement candidates, with their match counts and "
-        "composite confidence scores. Useful when the best match is imperfect — a "
-        "runner-up may cover privileges the best match misses."
-    ),
-}
-
-
 @dataclass
 class EngineResult:
     """Structured return type for all engine functions."""
