@@ -126,6 +126,8 @@ async def lifespan(app: FastAPI):
             await cleanup_task
         except asyncio.CancelledError:
             pass
+        from services.analysis_pool import analysis_pool  # deferred to avoid circular import
+        analysis_pool.shutdown()
         logger.info("EY Access Governance Platform shutdown complete")
 
 

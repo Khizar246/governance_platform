@@ -11,21 +11,22 @@ Endpoints:
 """
 
 import io
-import threading
 from typing import Optional
 
 import polars as pl
 from fastapi import APIRouter, Request, UploadFile, File, Form, Query
 from fastapi.responses import JSONResponse, StreamingResponse
 
-from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS, output_filename
+from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS
 from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStatus, FilePreview
-from models.oracle_comparator import OracleRunConfig, ComparisonTypeSummary, OracleComparatorSummary
+from models.oracle_comparator import OracleRunConfig
 from services.job_manager import job_manager
+from services.analysis_pool import analysis_pool, make_done_callback
+from services.analysis_workers import run_oracle_comparator_job
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
 from shared.validators import validate_upload, validate_dataframe_schema
 from shared.logger import get_logger
-from engines.oracle_comparator_engine import run_analysis, generate_report, FILE_CONFIGS
+from engines.oracle_comparator_engine import FILE_CONFIGS
 
 router = APIRouter(prefix="/api/oracle-comparator", tags=["Oracle Comparator"])
 logger = get_logger("oracle_comparator")
@@ -51,76 +52,6 @@ def _load_file(file_bytes: bytes, filename: str) -> pl.DataFrame:
     if ext == ".csv":
         return load_csv_to_polars(file_bytes, filename, logger)
     return load_excel_to_polars(file_bytes, filename, None, None, logger)
-
-
-def _run_thread(
-    job_id: str,
-    files: dict,
-    analysis_type: str,
-    env1_name: str,
-    env2_name: str,
-) -> None:
-    try:
-        logger.info(f"[{job_id}] Starting Oracle Comparator: analysis_type={analysis_type}, env1={env1_name}, env2={env2_name}")
-        logger.info(f"[{job_id}] Input files: {list(files.keys())}")
-        callback = job_manager.make_progress_callback(job_id)
-        result = run_analysis(files, analysis_type, env1_name, env2_name, progress_callback=callback)
-
-        if not result.success:
-            logger.error(f"[{job_id}] Oracle Comparator analysis failed: {result.errors}")
-            job_manager.fail_job(job_id, result.errors)
-            return
-
-        results_1to2, results_2to1 = result.data
-
-        _result_data[job_id] = {
-            "1to2": {ct: df for ct, df in results_1to2.items() if df is not None},
-            "2to1": {ct: df for ct, df in results_2to1.items() if df is not None},
-        }
-        logger.info(f"[{job_id}] Analysis results cached: {list(_result_data[job_id].keys())}")
-
-        report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
-        if not report_result.success:
-            logger.error(f"[{job_id}] Report generation failed: {report_result.errors}")
-            job_manager.fail_job(job_id, report_result.errors)
-            return
-
-        comparisons = []
-        for direction, results in [
-            (f"{env1_name} → {env2_name}", results_1to2),
-            (f"{env2_name} → {env1_name}", results_2to1),
-        ]:
-            for ctype, df in results.items():
-                if df is None:
-                    continue
-                total = df.height
-                matches = df.filter(pl.col("Status").str.contains("Exists")).height
-                comparisons.append(
-                    ComparisonTypeSummary(
-                        comp_type=ctype,
-                        direction=direction,
-                        total=total,
-                        matches=matches,
-                        missing=total - matches,
-                        match_rate=round(matches / total * 100, 1) if total else 0.0,
-                    ).model_dump()
-                )
-
-        summary = OracleComparatorSummary(
-            analysis_type=analysis_type,
-            env1_name=env1_name,
-            env2_name=env2_name,
-            comparisons=comparisons,
-        ).model_dump()
-
-        buf = io.BytesIO(report_result.data)
-        fname = output_filename("Oracle_Comparison", f"{env1_name}_vs_{env2_name}")
-        logger.info(f"[{job_id}] Oracle Comparator complete. Output file: {fname}")
-        job_manager.complete_job(job_id, summary, buf, fname)
-
-    except Exception as exc:
-        logger.error(f"[{job_id}] Oracle Comparator failed with exception", exc_info=True)
-        job_manager.fail_job(job_id, [str(exc)])
 
 
 @router.post("/upload", response_model=UploadResponse)
@@ -253,12 +184,16 @@ async def run(job_id: str, config: OracleRunConfig):
             content={"error": True, "message": "Files not found. Please upload again.", "code": "FILES_NOT_FOUND", "details": []},
         )
 
-    logger.info(f"[{job_id}] Starting analysis thread: analysis_type={config.analysis_type}")
-    threading.Thread(
-        target=_run_thread,
-        args=(job_id, dict(job.files), config.analysis_type, config.env1_name, config.env2_name),
-        daemon=True,
-    ).start()
+    logger.info(f"[{job_id}] Queueing analysis: analysis_type={config.analysis_type}")
+    analysis_pool.submit(
+        job_id,
+        run_oracle_comparator_job,
+        dict(job.files),
+        config.analysis_type,
+        config.env1_name,
+        config.env2_name,
+        on_done=make_done_callback(job_id, _result_data, logger),
+    )
 
     return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING, summary={})
 

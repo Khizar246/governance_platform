@@ -129,10 +129,15 @@ class JobManager:
     # ── Progress tracking (called by engines via callback) ─────────────────────
 
     def update_progress(self, job_id: str, progress: int, message: str) -> None:
-        """Update job progress percent and message. Called by engine progress callbacks."""
+        """Update job progress percent and message. Called by engine progress callbacks.
+
+        Terminal states are never overwritten: pool workers report progress over
+        a queue, so a stale message can arrive after complete_job/fail_job and
+        must not flip the job back to RUNNING.
+        """
         with self._lock:
             job = self._jobs.get(job_id)
-            if job:
+            if job and job.status not in (JobStatus.COMPLETE, JobStatus.FAILED):
                 job.progress = min(max(progress, 0), 100)
                 job.progress_message = message
                 job.status = JobStatus.RUNNING
