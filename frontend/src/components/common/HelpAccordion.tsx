@@ -5,11 +5,11 @@ import { ChevronDown } from 'lucide-react'
 
 export function HelpStep({ num, text }: { num: number; text: string }) {
   return (
-    <div style={{ display: 'flex', gap: 10, marginBottom: 10 }}>
-      <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#F0EFE9', border: '1px solid #E2E8F0', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, marginTop: 1 }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: '#334155' }}>{num}</span>
+    <div className="flex gap-2.5 mb-2.5">
+      <div className="w-[22px] h-[22px] rounded-full bg-[#F0EFE9] border border-[#E2E8F0] flex items-center justify-center shrink-0 mt-px">
+        <span className="text-[11px] font-semibold text-[#334155]">{num}</span>
       </div>
-      <p style={{ fontSize: 13, color: '#334155', lineHeight: 1.6, paddingTop: 2 }}>{text}</p>
+      <p className="text-[13px] text-[#334155] leading-[1.6] pt-0.5">{text}</p>
     </div>
   )
 }
@@ -22,47 +22,41 @@ export function SchemaTable({
   rows: { sheet?: string; column: string; status: string; note?: string }[]
 }) {
   return (
-    <div style={{ marginBottom: 14 }}>
-      <p style={{ fontSize: 12.5, fontWeight: 600, color: '#0F1E3D', marginBottom: 6 }}>{fileLabel}</p>
-      <div style={{ border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+    <div className="mb-3.5">
+      <p className="text-[12.5px] font-semibold text-[#0F1E3D] mb-1.5">{fileLabel}</p>
+      <div className="border border-[#E2E8F0] rounded-[8px] overflow-hidden">
+        <table className="w-full border-collapse text-[12px]">
           <thead>
-            <tr style={{ background: '#F7F6F3' }}>
+            <tr className="bg-[#F7F6F3]">
               {rows.some(r => r.sheet) && (
-                <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Sheet</th>
+                <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Sheet</th>
               )}
-              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Column</th>
-              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>Status</th>
-              <th style={{ textAlign: 'left', padding: '7px 10px', fontWeight: 600, color: '#64748B', fontSize: 10.5, textTransform: 'uppercase', letterSpacing: '0.04em' }}>What it means</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Column</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Status</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">What it means</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} style={{ borderTop: '1px solid #F1F0EA', background: i % 2 === 1 ? '#FAFAF8' : '#FFFFFF' }}>
+              <tr key={i} className={`border-t border-t-[#F1F0EA] ${i % 2 === 1 ? 'bg-[#FAFAF8]' : 'bg-[#FFFFFF]'}`}>
                 {rows.some(row => row.sheet) && (
-                  <td style={{ padding: '7px 10px', color: '#64748B' }}>{r.sheet ?? ''}</td>
+                  <td className="px-2.5 py-[7px] text-[#64748B]">{r.sheet ?? ''}</td>
                 )}
-                <td style={{ padding: '7px 10px', color: '#334155', fontWeight: 500 }}>{r.column}</td>
-                <td style={{ padding: '7px 10px' }}>
+                <td className="px-2.5 py-[7px] text-[#334155] font-medium">{r.column}</td>
+                <td className="px-2.5 py-[7px]">
                   {(r.status === 'Required' || r.status === 'Optional') ? (
                     <span
-                      style={{
-                        display: 'inline-block',
-                        padding: '2px 8px',
-                        borderRadius: 999,
-                        fontSize: 10.5,
-                        fontWeight: 600,
-                        background: r.status === 'Required' ? '#FEE2E2' : '#DCFCE7',
-                        color: r.status === 'Required' ? '#B91C1C' : '#166534',
-                      }}
+                      className={`inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
+                        r.status === 'Required' ? 'bg-[#FEE2E2] text-[#B91C1C]' : 'bg-[#DCFCE7] text-[#166534]'
+                      }`}
                     >
                       {r.status}
                     </span>
                   ) : (
-                    <span style={{ fontSize: 11.5, color: '#B45309', fontWeight: 500 }}>{r.status}</span>
+                    <span className="text-[11.5px] text-[#B45309] font-medium">{r.status}</span>
                   )}
                 </td>
-                <td style={{ padding: '7px 10px', color: '#64748B' }}>{r.note ?? ''}</td>
+                <td className="px-2.5 py-[7px] text-[#64748B]">{r.note ?? ''}</td>
               </tr>
             ))}
           </tbody>
@@ -81,34 +75,34 @@ interface HelpAccordionProps {
   children: React.ReactNode
 }
 
+// Tailwind needs statically analyzable class literals, so the accentColor + '18'
+// tint is precomputed per accent hex actually passed by call sites.
+const ACCENT_TINT: Record<string, string> = {
+  '#2563EB': 'bg-[#2563EB18]',
+  '#0EA5E9': 'bg-[#0EA5E918]',
+}
+
 export default function HelpAccordion({ title, icon, accentColor, children }: HelpAccordionProps) {
   const [open, setOpen] = useState(false)
   return (
-    <div style={{ border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', marginBottom: 10, background: '#FFFFFF' }}>
+    <div className="border border-[#E2E8F0] rounded-[10px] overflow-hidden mb-2.5 bg-[#FFFFFF]">
       <button
         onClick={() => setOpen(o => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 10,
-          padding: '11px 16px',
-          background: open ? '#F7F6F3' : 'transparent',
-          border: 'none', cursor: 'pointer',
-          fontFamily: "'DM Sans', sans-serif",
-          transition: 'background 0.15s',
-        }}
+        className={`w-full flex items-center gap-2.5 px-4 py-[11px] border-none cursor-pointer font-['DM_Sans',sans-serif] transition-[background] duration-150 ${open ? 'bg-[#F7F6F3]' : 'bg-transparent'}`}
       >
-        <div style={{ width: 28, height: 28, borderRadius: 7, background: accentColor + '18', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div className={`w-7 h-7 rounded-[7px] flex items-center justify-center shrink-0 ${ACCENT_TINT[accentColor] ?? ''}`}>
           {icon}
         </div>
-        <span style={{ fontSize: 13, fontWeight: 600, color: '#0F1E3D', flex: 1, textAlign: 'left' as const }}>{title}</span>
+        <span className="text-[13px] font-semibold text-[#0F1E3D] flex-1 text-left">{title}</span>
         <ChevronDown
           size={16}
           color="#64748B"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.22s', flexShrink: 0 }}
+          className={`shrink-0 transition-transform duration-[220ms] ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (
-        <div style={{ padding: '4px 16px 16px', borderTop: '1px solid #F1F0EA' }}>
-          <div style={{ paddingTop: 14 }}>{children}</div>
+        <div className="px-4 pt-1 pb-4 border-t border-t-[#F1F0EA]">
+          <div className="pt-3.5">{children}</div>
         </div>
       )}
     </div>
