@@ -19,24 +19,22 @@ export default function StepIndicator({ steps, currentStep }: StepIndicatorProps
             <div className="flex flex-col items-center shrink-0">
               {/* Circle */}
               <div
-                style={{
-                  width: 32, height: 32,
-                  borderRadius: '50%',
-                  background: isComplete ? '#16A34A' : isActive ? '#0F1E3D' : '#F0EFE9',
-                  border: isActive ? '2px solid #0F1E3D' : isComplete ? 'none' : '1.5px solid #E2E8F0',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease',
-                }}
+                className={clsx(
+                  'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-[ease]',
+                  isComplete
+                    ? 'bg-[#16A34A] border-none'
+                    : isActive
+                      ? 'bg-[#0F1E3D] border-2 border-solid border-[#0F1E3D]'
+                      : 'bg-[#F0EFE9] border-[1.5px] border-solid border-[#E2E8F0]',
+                )}
               >
                 {isComplete ? (
-                  <Check size={14} strokeWidth={2.5} style={{ color: '#FFFFFF' }} />
+                  <Check size={14} strokeWidth={2.5} className="text-white" />
                 ) : (
-                  <span style={{
-                    fontSize: 12, fontWeight: 600,
-                    color: isActive ? '#FFFFFF' : '#94A3B8',
-                  }}>
+                  <span className={clsx(
+                    'text-[12px] font-semibold',
+                    isActive ? 'text-white' : 'text-[#94A3B8]',
+                  )}>
                     {index + 1}
                   </span>
                 )}
@@ -60,8 +58,10 @@ export default function StepIndicator({ steps, currentStep }: StepIndicatorProps
             {/* Connector line */}
             {!isLast && (
               <div
-                className="flex-1 mb-5 mx-2.5 transition-colors duration-200"
-                style={{ height: 1.5, background: isComplete ? '#16A34A' : '#E2E8F0' }}
+                className={clsx(
+                  'flex-1 mb-5 mx-2.5 transition-colors duration-200 h-[1.5px]',
+                  isComplete ? 'bg-[#16A34A]' : 'bg-[#E2E8F0]',
+                )}
               />
             )}
           </div>
