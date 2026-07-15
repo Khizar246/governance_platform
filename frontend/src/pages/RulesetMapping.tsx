@@ -389,7 +389,7 @@ export default function RulesetMapping() {
             )}
 
             {uploadError && (
-              <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
+              <div className="flex items-start gap-2 p-3 bg-error-bg rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-1.5">
                   <span>{uploadError}</span>
@@ -435,7 +435,7 @@ export default function RulesetMapping() {
                       <CheckCircle2 size={14} className="text-success shrink-0" />
                       <span className="text-xs font-semibold text-gray-700 truncate">{label}</span>
                       {info.duplicates > 0 && (
-                        <span className="ml-auto text-[10px] font-medium text-warning bg-warning-light border border-warning/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
+                        <span className="ml-auto text-[10px] font-medium text-warning bg-warning-bg border border-warning/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
                           {info.duplicates} dupes
                         </span>
                       )}
@@ -455,7 +455,7 @@ export default function RulesetMapping() {
             </div>
 
             {uploadResponse.warnings?.length > 0 && (
-              <div className="flex gap-2 p-3 bg-warning-light rounded border border-warning/30 text-sm text-warning">
+              <div className="flex gap-2 p-3 bg-warning-bg rounded border border-warning/30 text-sm text-warning">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <div>{uploadResponse.warnings.join(' · ')}</div>
               </div>
@@ -610,7 +610,7 @@ export default function RulesetMapping() {
         {/* ── Error ──────────────────────────────────────────────────────── */}
         {step === 'error' && (
           <div className="slide-in">
-            <div className="card border-error/30 bg-error-light/20">
+            <div className="card border-error/30 bg-error-bg/20">
               <div className="flex gap-3">
                 <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
                 <div>

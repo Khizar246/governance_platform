@@ -883,7 +883,7 @@ export default function SODSAAnalysis() {
             </div>
 
             {uploadError && (
-              <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
+              <div className="flex items-start gap-2 p-3 bg-error-bg rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <div className="flex-1 space-y-1.5">
                   <span>{uploadError}</span>
@@ -1009,7 +1009,7 @@ export default function SODSAAnalysis() {
             {jobId && (
               <div className="flex justify-center mt-2">
                 <button
-                  className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-light"
+                  className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-bg"
                   onClick={handleCancelRun}
                 >
                   <X size={14} /> Cancel Analysis
@@ -1167,7 +1167,7 @@ export default function SODSAAnalysis() {
         {/* ── Error ──────────────────────────────────────────────────────── */}
         {step === 'error' && (
           <div className="slide-in">
-            <div className="card border-error/30 bg-error-light/20">
+            <div className="card border-error/30 bg-error-bg/20">
               <div className="flex gap-3">
                 <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
                 <div>

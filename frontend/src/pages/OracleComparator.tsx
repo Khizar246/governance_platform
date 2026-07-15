@@ -97,9 +97,9 @@ function statusCell({ getValue }: { getValue: () => unknown }) {
 
 function matchRatePill(rate: number) {
   const cls =
-    rate >= 90 ? 'bg-[rgba(34,197,94,0.1)] text-green-500'
-    : rate >= 60 ? 'bg-[rgba(234,179,8,0.1)] text-yellow-500'
-    : 'bg-[rgba(239,68,68,0.1)] text-red-500'
+    rate >= 90 ? 'bg-green-500/10 text-green-500'
+    : rate >= 60 ? 'bg-yellow-500/10 text-yellow-500'
+    : 'bg-red-500/10 text-red-500'
   return (
     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${cls}`}>
       {rate}%
@@ -503,7 +503,7 @@ export default function OracleComparator() {
             )}
 
             {uploadError && (
-              <div className="flex items-start gap-2 p-3 bg-error-light rounded border border-error/30 text-sm text-error">
+              <div className="flex items-start gap-2 p-3 bg-error-bg rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
                 <span className="flex-1">{uploadError}</span>
                 <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
@@ -722,7 +722,7 @@ export default function OracleComparator() {
         {/* ── Error ─────────────────────────────────────────────────── */}
         {step === 'error' && (
           <div className="slide-in">
-            <div className="card border-error/30 bg-error-light/20">
+            <div className="card border-error/30 bg-error-bg/20">
               <div className="flex gap-3">
                 <AlertCircle size={20} className="text-error shrink-0 mt-0.5" />
                 <div>

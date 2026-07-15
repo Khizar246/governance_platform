@@ -414,7 +414,7 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
   return (
     <div
       onClick={onClose}
-      className="fixed inset-0 z-[1000] bg-[rgba(15,30,61,0.82)] flex flex-col items-center justify-center p-8"
+      className="fixed inset-0 z-[1000] bg-navy/[0.82] flex flex-col items-center justify-center p-8"
     >
       <button
         onClick={onClose}
