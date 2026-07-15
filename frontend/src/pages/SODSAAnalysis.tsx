@@ -139,15 +139,14 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
         {items.map((item, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-2.5">
             <span
-              className="flex items-center justify-center shrink-0 rounded text-[10px] font-bold text-white"
-              style={{ width: 18, height: 18, minWidth: 18, background: '#0F1E3D' }}
+              className="flex items-center justify-center shrink-0 rounded text-[10px] font-bold text-white w-[18px] h-[18px] min-w-[18px] bg-[#0F1E3D]"
             >
               {i + 1}
             </span>
             <span className="text-[12.5px] text-gray-700 flex-1 truncate min-w-0" title={item.name}>
               {item.name}
             </span>
-            <span style={{ fontFamily: "'Lora', Georgia, serif", fontSize: 14, fontWeight: 700, color: '#E8A900', flexShrink: 0 }}>
+            <span className="font-serif text-[14px] font-bold text-[#E8A900] shrink-0">
               {item.count}
             </span>
           </div>
@@ -591,7 +590,7 @@ export default function SODSAAnalysis() {
         subtitle="Segregation of Duties and Sensitive Access violation detection at role and user level"
       />
 
-      <div style={{ marginBottom: 20 }}>
+      <div className="mb-5">
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="First pick what level of analysis you want to do: Role-level (2 files required), User-level (3 files required), or both (3 files required). You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
           <HelpStep num={2} text="Upload the Role Hierarchy report received from the client. No changes are needed — upload it as-is; the tool handles everything." />
