@@ -67,9 +67,9 @@ const ROLE_COLUMNS: ColumnDef<SODRow>[] = [
         'FP': 'bg-green-100 text-green-800',
         'SL': 'bg-yellow-100 text-yellow-800',
         'TC': 'bg-red-100 text-red-800',
-        'NOT ANALYSED': 'bg-gray-100 text-gray-800',
+        'NOT ANALYSED': 'bg-slate-100 text-slate-800',
       }
-      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
+      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-slate-100 text-slate-700'}`}>{val}</span> : null
     },
   },
   { id: 'Reason',                     accessorKey: 'Reason',                     header: 'FP Reason' },
@@ -93,9 +93,9 @@ const USER_COLUMNS: ColumnDef<SODRow>[] = [
         'FP': 'bg-green-100 text-green-800',
         'SL': 'bg-yellow-100 text-yellow-800',
         'TC': 'bg-red-100 text-red-800',
-        'NOT ANALYSED': 'bg-gray-100 text-gray-800',
+        'NOT ANALYSED': 'bg-slate-100 text-slate-800',
       }
-      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-gray-100 text-gray-700'}`}>{val}</span> : null
+      return val ? <span className={`px-2.5 py-1 rounded text-xs font-medium ${bgColors[val] || 'bg-slate-100 text-slate-700'}`}>{val}</span> : null
     },
   },
   { id: 'Reason',                     accessorKey: 'Reason',                     header: 'FP Reason' },
@@ -131,11 +131,11 @@ const USER_DEFAULT_SORT = [
 
 function InsightCard({ title, items }: { title: string; items: SODSATopItem[] }) {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-      <div className="px-4 py-2.5 bg-gray-50 border-b border-gray-100">
-        <span className="text-[10.5px] font-semibold text-gray-500 uppercase tracking-[0.08em]">{title}</span>
+    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+      <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+        <span className="text-[10.5px] font-semibold text-slate-500 uppercase tracking-[0.08em]">{title}</span>
       </div>
-      <div className="divide-y divide-gray-50">
+      <div className="divide-y divide-slate-50">
         {items.map((item, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-2.5">
             <span
@@ -143,7 +143,7 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
             >
               {i + 1}
             </span>
-            <span className="text-[12.5px] text-gray-700 flex-1 truncate min-w-0" title={item.name}>
+            <span className="text-[12.5px] text-slate-700 flex-1 truncate min-w-0" title={item.name}>
               {item.name}
             </span>
             <span className="font-serif text-[14px] font-bold text-ey-yellow-hover shrink-0">
@@ -165,10 +165,10 @@ function OptionToggle({ checked, onChange, title, description }: {
   description: string
 }) {
   return (
-    <label className="flex items-start justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-gray-50/70 transition-colors duration-150">
+    <label className="flex items-start justify-between gap-4 px-4 py-3.5 cursor-pointer hover:bg-slate-50/70 transition-colors duration-150">
       <span className="flex flex-col min-w-0">
-        <span className="text-[13px] font-semibold text-gray-800 leading-tight">{title}</span>
-        <span className="text-[12px] text-gray-500 mt-1 leading-snug">{description}</span>
+        <span className="text-[13px] font-semibold text-slate-800 leading-tight">{title}</span>
+        <span className="text-[12px] text-slate-500 mt-1 leading-snug">{description}</span>
       </span>
       <span className="relative inline-flex shrink-0 mt-0.5">
         <input
@@ -177,7 +177,7 @@ function OptionToggle({ checked, onChange, title, description }: {
           checked={checked}
           onChange={e => onChange(e.target.checked)}
         />
-        <span className="w-9 h-5 rounded-full bg-gray-300 transition-colors duration-150 peer-checked:bg-navy peer-focus-visible:ring-2 peer-focus-visible:ring-ey-yellow peer-focus-visible:ring-offset-1" />
+        <span className="w-9 h-5 rounded-full bg-slate-300 transition-colors duration-150 peer-checked:bg-navy peer-focus-visible:ring-2 peer-focus-visible:ring-ey-yellow peer-focus-visible:ring-offset-1" />
         <span className="pointer-events-none absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-150 peer-checked:translate-x-4" />
       </span>
     </label>
@@ -669,8 +669,8 @@ export default function SODSAAnalysis() {
         {step === 'config' && (
           <div className="slide-in max-w-3xl mx-auto space-y-5">
             <div>
-              <h3 className="text-[15px] font-semibold text-gray-800">Select the analyses to run</h3>
-              <p className="text-[13px] text-gray-500 mt-1">
+              <h3 className="text-[15px] font-semibold text-slate-800">Select the analyses to run</h3>
+              <p className="text-[13px] text-slate-500 mt-1">
                 Tick any combination. Choosing a User-level analysis requires the User Role Membership file.
               </p>
             </div>
@@ -680,8 +680,8 @@ export default function SODSAAnalysis() {
               return (
                 <div key={group}>
                   <div className="flex items-center gap-2 mb-2.5">
-                    <GroupIcon size={15} className="text-gray-400" strokeWidth={1.7} />
-                    <span className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em]">{group}</span>
+                    <GroupIcon size={15} className="text-slate-400" strokeWidth={1.7} />
+                    <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.08em]">{group}</span>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     {ANALYSIS_OPTIONS.filter(o => o.group === group).map(opt => {
@@ -693,7 +693,7 @@ export default function SODSAAnalysis() {
                             'flex items-start gap-3 p-4 rounded-xl border cursor-pointer transition-all duration-150',
                             checked
                               ? 'bg-ey-yellow/5 border-ey-yellow/60 shadow-sm'
-                              : 'bg-white border-gray-200 hover:border-gray-300 hover:shadow-sm',
+                              : 'bg-white border-slate-200 hover:border-slate-300 hover:shadow-sm',
                           )}
                         >
                           <input
@@ -703,8 +703,8 @@ export default function SODSAAnalysis() {
                             className="mt-0.5 w-4 h-4 accent-ey-yellow shrink-0"
                           />
                           <span className="flex flex-col min-w-0">
-                            <span className="text-[13.5px] font-semibold text-gray-800 leading-tight">{opt.label}</span>
-                            <span className="text-[12px] text-gray-500 mt-1 leading-snug">{opt.sublabel}</span>
+                            <span className="text-[13.5px] font-semibold text-slate-800 leading-tight">{opt.label}</span>
+                            <span className="text-[12px] text-slate-500 mt-1 leading-snug">{opt.sublabel}</span>
                           </span>
                         </label>
                       )
@@ -714,11 +714,11 @@ export default function SODSAAnalysis() {
               )
             })}
 
-            <div className="bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
-              <div className="px-4 py-3 border-b border-gray-100 bg-white">
-                <h4 className="text-[13px] font-semibold text-gray-800">Analysis options</h4>
+            <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+              <div className="px-4 py-3 border-b border-slate-100 bg-white">
+                <h4 className="text-[13px] font-semibold text-slate-800">Analysis options</h4>
               </div>
-              <div className="divide-y divide-gray-100 bg-white">
+              <div className="divide-y divide-slate-100 bg-white">
                 <OptionToggle
                   checked={withFp}
                   onChange={setWithFp}
@@ -741,8 +741,8 @@ export default function SODSAAnalysis() {
             </div>
 
             <div className="flex items-center justify-between pt-1">
-              <span className="text-[12px] text-gray-500">
-                Scope: <span className="font-medium text-gray-700">{analysisTypeLabel}</span>
+              <span className="text-[12px] text-slate-500">
+                Scope: <span className="font-medium text-slate-700">{analysisTypeLabel}</span>
                 {selectedAnalyses.length === 0 && <span className="text-error ml-1">· select at least one</span>}
               </span>
               <button
@@ -849,7 +849,7 @@ export default function SODSAAnalysis() {
                 <div className="col-span-2">
                   <p className="label-uppercase mb-2">
                     Procurement Agent
-                    <span className="ml-2 text-[11px] text-gray-500 normal-case font-normal">(optional)</span>
+                    <span className="ml-2 text-[11px] text-slate-500 normal-case font-normal">(optional)</span>
                   </p>
                   <FileUpload
                     label="Procurement Agent XLSX"
@@ -864,7 +864,7 @@ export default function SODSAAnalysis() {
               )}
             </div>
 
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[13px] text-slate-600">
               <span>
                 <span className="font-medium">Selected:</span>{' '}
                 {selectedAnalyses.length} {selectedAnalyses.length === 1 ? 'analysis' : 'analyses'}
@@ -1024,7 +1024,7 @@ export default function SODSAAnalysis() {
           <div className="slide-in space-y-5">
 
             {/* Scope bar */}
-            <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+            <div className="flex items-center gap-3 flex-wrap px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[13px] text-slate-600">
               <CheckCircle2 size={14} className="text-success shrink-0" />
               <span className="font-medium">
                 {summary.analysis_type === 'role'
@@ -1034,10 +1034,10 @@ export default function SODSAAnalysis() {
                   : 'Role + User (Full)'}
               </span>
               {summary.total_roles_analyzed > 0 && (
-                <span className="text-gray-400">· {summary.total_roles_analyzed.toLocaleString()} roles analyzed</span>
+                <span className="text-slate-400">· {summary.total_roles_analyzed.toLocaleString()} roles analyzed</span>
               )}
               {summary.total_users_analyzed > 0 && (
-                <span className="text-gray-400">· {summary.total_users_analyzed.toLocaleString()} users analyzed</span>
+                <span className="text-slate-400">· {summary.total_users_analyzed.toLocaleString()} users analyzed</span>
               )}
             </div>
 
@@ -1054,7 +1054,7 @@ export default function SODSAAnalysis() {
               if (insightItems.length === 0) return null
               return (
                 <div>
-                  <div className="text-[11px] font-semibold text-gray-400 uppercase tracking-[0.08em] mb-3">Top Insights</div>
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-[0.08em] mb-3">Top Insights</div>
                   <div className="grid grid-cols-2 gap-4">
                     {insightItems.map(({ title, items }) => (
                       <InsightCard key={title} title={title} items={items} />
@@ -1068,7 +1068,7 @@ export default function SODSAAnalysis() {
             {sodSaSummaryData && analyzedSheetIds.length > 0 && (
               <div className="card p-0 overflow-hidden">
                 {/* Tab bar */}
-                <div className="flex items-center border-b border-gray-200 bg-white">
+                <div className="flex items-center border-b border-slate-200 bg-white">
                   <div className="flex flex-1">
                     {analyzedSheetIds.map(id => {
                       const count = sodSaSummaryData.sheet_counts[id]?.total_violations ?? 0
@@ -1080,13 +1080,13 @@ export default function SODSAAnalysis() {
                             'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
                             activeTab === id
                               ? 'border-ey-yellow text-navy font-semibold'
-                              : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
+                              : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50',
                           )}
                         >
                           {SHEET_LABELS[id]}
                           <span className={clsx(
                             'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
-                            activeTab === id ? 'bg-ey-yellow/15 text-amber-700' : 'bg-gray-100 text-gray-400',
+                            activeTab === id ? 'bg-ey-yellow/15 text-amber-700' : 'bg-slate-100 text-slate-400',
                           )}>
                             {count.toLocaleString()}
                           </span>
@@ -1097,7 +1097,7 @@ export default function SODSAAnalysis() {
                   <button
                     onClick={() => { setActiveFilters({}); setPage(1) }}
                     disabled={!hasActiveFilters}
-                    className="flex items-center gap-1 mr-4 text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
+                    className="flex items-center gap-1 mr-4 text-[11px] text-slate-500 hover:text-slate-700 transition-colors disabled:text-slate-300 disabled:cursor-default"
                   >
                     <X size={11} /> Clear All Filters
                   </button>

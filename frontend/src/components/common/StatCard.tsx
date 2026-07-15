@@ -8,7 +8,7 @@ type TrendDirection = 'up' | 'down' | 'neutral'
 const TREND_COLOR: Record<TrendDirection, string> = {
   up:      'text-success',
   down:    'text-error',
-  neutral: 'text-gray-400',
+  neutral: 'text-slate-400',
 }
 
 const TREND_ICON = {
@@ -35,7 +35,7 @@ export default function StatCard({ value, label, icon, trend, badge, className }
         <span className="label-caps">{label}</span>
         {icon && (
           <div className="w-8 h-8 rounded bg-surface-panel flex items-center justify-center">
-            <span className="text-gray-400 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
+            <span className="text-slate-400 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
           </div>
         )}
       </div>

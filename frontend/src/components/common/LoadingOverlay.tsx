@@ -63,7 +63,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
 
   return (
     <div className="flex items-center justify-center min-h-[320px] p-6">
-      <div className="w-full max-w-xl bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
+      <div className="w-full max-w-xl bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
         {/* EY gold accent rail */}
         <div className="h-1 bg-ey-yellow" />
 
@@ -73,7 +73,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
           <div className="flex items-end justify-between gap-4">
             <div className="min-w-0">
               <h3 className="font-serif text-[15px] font-semibold leading-tight text-navy truncate">{message}</h3>
-              <p className="text-[11px] text-gray-400 mt-0.5">
+              <p className="text-[11px] text-slate-400 mt-0.5">
                 {currentStep > 0 ? `Step ${currentOrdinal} of ${steps.length}` : 'Starting…'}
               </p>
             </div>
@@ -83,7 +83,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
           </div>
 
           {/* Progress bar */}
-          <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
+          <div className="relative w-full h-2 bg-slate-200 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full bg-ey-yellow transition-[width] duration-300 ease-out w-[var(--w)]"
               style={{ '--w': `${pct}%` } as CSSProperties}
@@ -95,25 +95,25 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
           </div>
 
           {/* Phase strip */}
-          <div className="flex rounded-lg overflow-hidden border border-gray-200">
+          <div className="flex rounded-lg overflow-hidden border border-slate-200">
             {([1, 2, 3, 4] as const).map((phase) => {
               const status = phaseStatus(phase)
               return (
                 <div
                   key={phase}
                   className={clsx(
-                    'flex-1 flex flex-col items-center justify-center py-2 px-1 text-center border-r border-gray-200 last:border-r-0 transition-colors',
+                    'flex-1 flex flex-col items-center justify-center py-2 px-1 text-center border-r border-slate-200 last:border-r-0 transition-colors',
                     status === 'done'     && 'bg-green-50',
                     status === 'active'   && 'bg-navy',
-                    status === 'pending'  && 'bg-gray-50',
-                    status === 'disabled' && 'bg-gray-50 opacity-45',
+                    status === 'pending'  && 'bg-slate-50',
+                    status === 'disabled' && 'bg-slate-50 opacity-45',
                   )}
                 >
                   <span className={clsx(
                     'text-[10px] font-semibold mb-0.5',
                     status === 'done'    && 'text-green-600',
                     status === 'active'  && 'text-ey-yellow',
-                    status === 'pending' || status === 'disabled' ? 'text-gray-400' : '',
+                    status === 'pending' || status === 'disabled' ? 'text-slate-400' : '',
                   )}>
                     {status === 'done' ? '✓' : `Phase ${phase}`}
                   </span>
@@ -121,7 +121,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                     'text-[11px] font-medium leading-tight',
                     status === 'done'    && 'text-green-700',
                     status === 'active'  && 'text-white',
-                    status === 'pending' || status === 'disabled' ? 'text-gray-400' : '',
+                    status === 'pending' || status === 'disabled' ? 'text-slate-400' : '',
                   )}>
                     {phase === 3 && !withFp ? 'FP disabled' : PHASE_LABELS[phase]}
                   </span>
@@ -135,10 +135,10 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
             <div className="flex flex-col">
               {/* Phase header */}
               <div className="flex items-center gap-2 mb-2">
-                <span className="text-[10px] font-bold text-gray-400 uppercase tracking-[.07em]">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-[.07em]">
                   Phase {activePhase} — {PHASE_LABELS[activePhase]}
                 </span>
-                <span className="flex-1 h-px bg-gray-100" />
+                <span className="flex-1 h-px bg-slate-100" />
               </div>
 
               {/* Steps */}
@@ -147,14 +147,14 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                   const status = stepStatus(s.step)
                   return (
                     <div key={s.step} className={clsx(
-                      'flex items-start gap-3 py-2 border-b border-gray-50 last:border-b-0',
+                      'flex items-start gap-3 py-2 border-b border-slate-50 last:border-b-0',
                     )}>
                       {/* Number badge */}
                       <div className={clsx(
                         'w-[22px] h-[22px] rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-px',
                         status === 'done'    && 'bg-green-500 text-white',
                         status === 'active'  && 'bg-ey-yellow text-navy',
-                        status === 'pending' && 'bg-gray-100 text-gray-400',
+                        status === 'pending' && 'bg-slate-100 text-slate-400',
                       )}>
                         {status === 'done'
                           ? <Check size={11} strokeWidth={3} />
@@ -165,9 +165,9 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                       {/* Label */}
                       <span className={clsx(
                         'text-[13px] leading-snug pt-px',
-                        status === 'done'    && 'text-gray-400 line-through decoration-gray-300',
+                        status === 'done'    && 'text-slate-400 line-through decoration-slate-300',
                         status === 'active'  && 'text-navy font-semibold',
-                        status === 'pending' && 'text-gray-300',
+                        status === 'pending' && 'text-slate-300',
                       )}>
                         {s.label}
                       </span>
@@ -186,19 +186,19 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                   if (afterPhase > 4) return null
                   return (
                     <div className="flex items-center gap-2 mt-3">
-                      <span className="text-[10px] text-gray-300 uppercase tracking-[.07em]">
+                      <span className="text-[10px] text-slate-300 uppercase tracking-[.07em]">
                         Next: Phase {afterPhase} — {PHASE_LABELS[afterPhase]}
                       </span>
-                      <span className="flex-1 h-px bg-gray-100" />
+                      <span className="flex-1 h-px bg-slate-100" />
                     </div>
                   )
                 }
                 return (
                   <div className="flex items-center gap-2 mt-3">
-                    <span className="text-[10px] text-gray-300 uppercase tracking-[.07em]">
+                    <span className="text-[10px] text-slate-300 uppercase tracking-[.07em]">
                       Next: Phase {nextPhase} — {PHASE_LABELS[nextPhase]}
                     </span>
-                    <span className="flex-1 h-px bg-gray-100" />
+                    <span className="flex-1 h-px bg-slate-100" />
                   </div>
                 )
               })()}

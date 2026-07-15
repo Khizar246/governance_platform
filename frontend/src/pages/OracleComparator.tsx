@@ -364,24 +364,24 @@ export default function OracleComparator() {
                 onClick={() => handleSelectType(id)}
                 className={clsx(
                   'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
-                  'bg-white border border-gray-200 border-l-[3px] shadow-sm',
+                  'bg-white border border-slate-200 border-l-[3px] shadow-sm',
                   'focus:outline-none hover:shadow-md transition-shadow duration-150',
                   accentClass,
                 )}
               >
                 {recommended && (
-                  <span className="absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-ey-yellow text-gray-900 leading-none">
+                  <span className="absolute top-3 right-3 text-[10px] font-semibold px-2 py-0.5 rounded-full bg-ey-yellow text-slate-900 leading-none">
                     Recommended
                   </span>
                 )}
                 <div className={clsx('w-10 h-10 rounded-lg flex items-center justify-center mb-4', iconBg)}>
                   <Icon size={20} className={iconColor} strokeWidth={1.5} />
                 </div>
-                <h3 className="text-[15px] font-semibold text-gray-800 mb-2">{title}</h3>
-                <p className="text-[13px] text-gray-500 leading-relaxed flex-1">{description}</p>
+                <h3 className="text-[15px] font-semibold text-slate-800 mb-2">{title}</h3>
+                <p className="text-[13px] text-slate-500 leading-relaxed flex-1">{description}</p>
                 <div className="flex items-center justify-between mt-4">
-                  <span className="text-[11px] font-medium text-gray-400 uppercase tracking-wide">{meta}</span>
-                  <span className="text-[13px] text-gray-400">Select →</span>
+                  <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wide">{meta}</span>
+                  <span className="text-[13px] text-slate-400">Select →</span>
                 </div>
               </button>
             ))}
@@ -399,7 +399,7 @@ export default function OracleComparator() {
                   <label className="label-uppercase block mb-1.5">Environment 1</label>
                   <input
                     type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
                     placeholder="e.g. Production"
                     value={env1Name}
                     onChange={e => setEnv1Name(e.target.value)}
@@ -409,7 +409,7 @@ export default function OracleComparator() {
                   <label className="label-uppercase block mb-1.5">Environment 2</label>
                   <input
                     type="text"
-                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
                     placeholder="e.g. Development"
                     value={env2Name}
                     onChange={e => setEnv2Name(e.target.value)}
@@ -474,7 +474,7 @@ export default function OracleComparator() {
             )}
 
             {/* Config summary bar */}
-            <div className="flex items-center gap-3 px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-[13px] text-gray-600">
+            <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-[13px] text-slate-600">
               <span>
                 <span className="font-medium">Type:</span>{' '}
                 {TYPE_CARDS.find(c => c.id === analysisType)?.title}
@@ -489,11 +489,11 @@ export default function OracleComparator() {
 
             {isUploading && (
               <div>
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
                   <span>Uploading files…</span>
                   <span>{uploadProgress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-[width] duration-300 ease-out bg-green-500 w-[var(--w)]"
                     style={{ '--w': `${uploadProgress}%` } as React.CSSProperties}
@@ -545,9 +545,9 @@ export default function OracleComparator() {
             {/* Header */}
             <div className="flex items-center gap-3">
               <CheckCircle2 size={16} className="text-success" />
-              <span className="text-[15px] font-semibold text-gray-800">{summary.env1_name}</span>
-              <span className="text-sm text-gray-400">vs</span>
-              <span className="text-[15px] font-semibold text-gray-800">{summary.env2_name}</span>
+              <span className="text-[15px] font-semibold text-slate-800">{summary.env1_name}</span>
+              <span className="text-sm text-slate-400">vs</span>
+              <span className="text-[15px] font-semibold text-slate-800">{summary.env2_name}</span>
               <Badge
                 text={summary.analysis_type === 'both' ? 'Complete' : summary.analysis_type.toUpperCase()}
                 variant="info"
@@ -557,15 +557,15 @@ export default function OracleComparator() {
             {/* Summary table */}
             <div className="card">
               <p className="text-card-title mb-3">Summary</p>
-              <div className="overflow-hidden rounded-lg border border-gray-200">
+              <div className="overflow-hidden rounded-lg border border-slate-200">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
+                    <tr className="bg-slate-50 border-b border-slate-200">
                       {(['Analysis Type', 'Direction', 'Total Records', 'Matches', 'Missing', 'Match Rate %'] as const).map(h => (
                         <th
                           key={h}
                           className={clsx(
-                            'px-4 py-2.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wide',
+                            'px-4 py-2.5 text-[11px] font-semibold text-slate-500 uppercase tracking-wide',
                             h === 'Analysis Type' || h === 'Direction' ? 'text-left' : 'text-right',
                           )}
                         >
@@ -578,22 +578,22 @@ export default function OracleComparator() {
                     {summary.comparisons.map((row, i) => (
                       <tr
                         key={`${row.comp_type}-${row.direction}`}
-                        className={clsx('border-b border-gray-100 last:border-0', i % 2 === 0 ? 'bg-white' : 'bg-gray-50/60')}
+                        className={clsx('border-b border-slate-100 last:border-0', i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60')}
                       >
-                        <td className="px-4 py-3 text-[13px] font-medium text-gray-700">
+                        <td className="px-4 py-3 text-[13px] font-medium text-slate-700">
                           {COMP_TYPE_LABELS[row.comp_type] ?? row.comp_type}
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-gray-600 whitespace-nowrap">
+                        <td className="px-4 py-3 text-[13px] text-slate-600 whitespace-nowrap">
                           {row.direction}
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-gray-700 text-right font-mono tabular-nums">
+                        <td className="px-4 py-3 text-[13px] text-slate-700 text-right font-mono tabular-nums">
                           {row.total.toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-[13px] text-right font-mono tabular-nums text-green-500">
                           {row.matches.toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-[13px] text-right font-mono tabular-nums">
-                          <span className={row.missing > 0 ? 'text-red-500' : 'text-gray-400'}>
+                          <span className={row.missing > 0 ? 'text-red-500' : 'text-slate-400'}>
                             {row.missing.toLocaleString()}
                           </span>
                         </td>
@@ -611,19 +611,19 @@ export default function OracleComparator() {
             <div className="card p-0 overflow-hidden">
 
               {/* Control bar */}
-              <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-b border-gray-200 bg-white">
+              <div className="flex flex-wrap items-center gap-4 px-4 py-3 border-b border-slate-200 bg-white">
 
                 {/* Direction selector */}
                 <div className="flex items-center gap-2">
-                  <span className="label-uppercase text-gray-500 shrink-0">Direction:</span>
-                  <div className="inline-flex rounded-lg border border-gray-200 overflow-hidden text-[13px]">
+                  <span className="label-uppercase text-slate-500 shrink-0">Direction:</span>
+                  <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-[13px]">
                     <button
                       onClick={() => { setSelectedDir('1to2'); setPage(1); setActiveFilters({}) }}
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
                         selectedDir === '1to2'
                           ? 'bg-navy text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-50',
+                          : 'bg-white text-slate-600 hover:bg-slate-50',
                       )}
                     >
                       {summary.env1_name} → {summary.env2_name}
@@ -631,10 +631,10 @@ export default function OracleComparator() {
                     <button
                       onClick={() => { setSelectedDir('2to1'); setPage(1); setActiveFilters({}) }}
                       className={clsx(
-                        'px-3 py-1.5 font-medium transition-colors whitespace-nowrap border-l border-gray-200',
+                        'px-3 py-1.5 font-medium transition-colors whitespace-nowrap border-l border-slate-200',
                         selectedDir === '2to1'
                           ? 'bg-navy text-white'
-                          : 'bg-white text-gray-600 hover:bg-gray-50',
+                          : 'bg-white text-slate-600 hover:bg-slate-50',
                       )}
                     >
                       {summary.env2_name} → {summary.env1_name}
@@ -644,7 +644,7 @@ export default function OracleComparator() {
 
                 {/* Type selector */}
                 <div className="flex items-center gap-2">
-                  <span className="label-uppercase text-gray-500 shrink-0">Type:</span>
+                  <span className="label-uppercase text-slate-500 shrink-0">Type:</span>
                   <div className="flex gap-1.5">
                     {availableCompTypes.map(ct => (
                       <button
@@ -653,8 +653,8 @@ export default function OracleComparator() {
                         className={clsx(
                           'px-3 py-1.5 rounded-lg text-[13px] font-medium border transition-colors whitespace-nowrap',
                           selectedType === ct
-                            ? 'bg-ey-yellow border-ey-yellow text-gray-900'
-                            : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50',
+                            ? 'bg-ey-yellow border-ey-yellow text-slate-900'
+                            : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-50',
                         )}
                       >
                         {COMP_TYPE_LABELS[ct] ?? ct}
@@ -667,7 +667,7 @@ export default function OracleComparator() {
                 <button
                   onClick={() => { setActiveFilters({}); setPage(1) }}
                   disabled={!hasActiveFilters}
-                  className="flex items-center gap-1 ml-auto text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
+                  className="flex items-center gap-1 ml-auto text-[11px] text-slate-500 hover:text-slate-700 transition-colors disabled:text-slate-300 disabled:cursor-default"
                 >
                   <X size={11} /> Clear All Filters
                 </button>

@@ -263,7 +263,7 @@ export default function DataTable<T>({
 
         {/* ── Scrollable table ── */}
         <div
-          className="overflow-auto rounded-lg border border-gray-200 max-h-[var(--max-h)]"
+          className="overflow-auto rounded-lg border border-slate-200 max-h-[var(--max-h)]"
           style={{ '--max-h': maxHeight } as CSSProperties}
         >
           <table className="w-full text-sm">
@@ -282,21 +282,21 @@ export default function DataTable<T>({
                     return (
                       <TableHead
                         key={header.id}
-                        className="sticky top-0 z-10 h-auto min-w-[120px] bg-gray-50 border-b border-gray-200 px-3 pt-2.5 pb-1.5 align-top"
+                        className="sticky top-0 z-10 h-auto min-w-[120px] bg-slate-50 border-b border-slate-200 px-3 pt-2.5 pb-1.5 align-top"
                       >
                         {/* Column label + sort */}
                         <div
                           className={clsx(
                             'flex items-center gap-1 select-none whitespace-nowrap',
-                            'text-[11px] font-semibold text-gray-500 uppercase tracking-[0.05em]',
-                            header.column.getCanSort() && 'cursor-pointer hover:text-gray-700',
+                            'text-[11px] font-semibold text-slate-500 uppercase tracking-[0.05em]',
+                            header.column.getCanSort() && 'cursor-pointer hover:text-slate-700',
                             (isClientFilterCol || !!serverSideFilters) ? 'mb-1.5' : '',
                           )}
                           onClick={header.column.getToggleSortingHandler()}
                         >
                           {flexRender(header.column.columnDef.header, header.getContext())}
                           {header.column.getCanSort() && (
-                            <span className="text-gray-400 shrink-0">
+                            <span className="text-slate-400 shrink-0">
                               {header.column.getIsSorted() === 'asc' ? (
                                 <ChevronUp size={11} />
                               ) : header.column.getIsSorted() === 'desc' ? (
@@ -315,8 +315,8 @@ export default function DataTable<T>({
                             className={clsx(
                               'flex items-center justify-between gap-1 w-full h-6 px-1.5 rounded border text-[11px] transition-colors',
                               clientActive
-                                ? 'border-ey-yellow bg-yellow-50 text-gray-700'
-                                : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300',
+                                ? 'border-ey-yellow bg-yellow-50 text-slate-700'
+                                : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-300',
                             )}
                           >
                             <span className="truncate flex-1 text-left">
@@ -356,8 +356,8 @@ export default function DataTable<T>({
                   <TableRow
                     key={`sk-${ri}`}
                     className={clsx(
-                      'border-b border-gray-100 hover:bg-transparent',
-                      ri % 2 === 0 ? 'bg-white' : 'bg-gray-50',
+                      'border-b border-slate-100 hover:bg-transparent',
+                      ri % 2 === 0 ? 'bg-white' : 'bg-slate-50',
                     )}
                   >
                     {columns.map((_, ci) => (
@@ -376,10 +376,10 @@ export default function DataTable<T>({
                 <TableRow className="hover:bg-transparent">
                   <TableCell colSpan={columns.length} className="py-16 text-center">
                     <div className="flex flex-col items-center gap-3">
-                      <Database size={36} strokeWidth={1.5} className="text-gray-300" />
+                      <Database size={36} strokeWidth={1.5} className="text-slate-300" />
                       <div className="space-y-1">
-                        <p className="text-[13px] font-medium text-gray-500">{emptyMessage}</p>
-                        <p className="text-xs text-gray-400">Try adjusting the column filters above</p>
+                        <p className="text-[13px] font-medium text-slate-500">{emptyMessage}</p>
+                        <p className="text-xs text-slate-400">Try adjusting the column filters above</p>
                       </div>
                     </div>
                   </TableCell>
@@ -392,8 +392,8 @@ export default function DataTable<T>({
                   <TableRow
                     key={row.id}
                     className={clsx(
-                      'border-b border-gray-100 transition-colors duration-75',
-                      i % 2 === 0 ? 'bg-white hover:bg-gray-100' : 'bg-gray-50 hover:bg-gray-100',
+                      'border-b border-slate-100 transition-colors duration-75',
+                      i % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100',
                     )}
                   >
                     {row.getVisibleCells().map((cell) => {
@@ -401,7 +401,7 @@ export default function DataTable<T>({
                       return (
                         <TableCell
                           key={cell.id}
-                          className="px-3 py-2 text-[13px] text-gray-700 max-w-[240px]"
+                          className="px-3 py-2 text-[13px] text-slate-700 max-w-[240px]"
                         >
                           {raw.length > 30 ? (
                             <Tooltip>
@@ -430,7 +430,7 @@ export default function DataTable<T>({
         </div>
 
         {/* ── Pagination bar ── */}
-        <div className="flex items-center justify-between text-[13px] text-gray-500">
+        <div className="flex items-center justify-between text-[13px] text-slate-500">
           <span>
             {isLoading
               ? 'Loading…'
@@ -446,7 +446,7 @@ export default function DataTable<T>({
                 serverSide ? serverSide.onPageSizeChange(sz) : table.setPageSize(sz)
               }}
               disabled={isLoading}
-              className="border border-gray-200 rounded px-2 py-1 text-[13px] text-gray-600 bg-white focus:outline-none focus:border-ey-yellow disabled:opacity-50"
+              className="border border-slate-200 rounded px-2 py-1 text-[13px] text-slate-600 bg-white focus:outline-none focus:border-ey-yellow disabled:opacity-50"
             >
               {[50, 100, 200].map((sz) => (
                 <option key={sz} value={sz}>{sz} / page</option>
@@ -455,7 +455,7 @@ export default function DataTable<T>({
             <button
               onClick={() => serverSide ? serverSide.onPageChange(serverSide.page - 1) : table.previousPage()}
               disabled={!canPrev || isLoading}
-              className="px-2.5 py-1 border border-gray-200 rounded text-gray-600 disabled:opacity-40 hover:bg-gray-100 transition-colors"
+              className="px-2.5 py-1 border border-slate-200 rounded text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors"
             >
               ←
             </button>
@@ -465,7 +465,7 @@ export default function DataTable<T>({
             <button
               onClick={() => serverSide ? serverSide.onPageChange(serverSide.page + 1) : table.nextPage()}
               disabled={!canNext || isLoading}
-              className="px-2.5 py-1 border border-gray-200 rounded text-gray-600 disabled:opacity-40 hover:bg-gray-100 transition-colors"
+              className="px-2.5 py-1 border border-slate-200 rounded text-slate-600 disabled:opacity-40 hover:bg-slate-100 transition-colors"
             >
               →
             </button>
@@ -480,20 +480,20 @@ export default function DataTable<T>({
           <div
             ref={dropdownRef}
             style={{ '--dd-top': `${dropTop}px`, '--dd-left': `${dropLeft}px` } as CSSProperties}
-            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
+            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-slate-200 shadow-xl overflow-hidden"
           >
             {/* Search box */}
-            <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-100">
-              <Filter size={11} className="text-gray-400 shrink-0" />
+            <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-slate-100">
+              <Filter size={11} className="text-slate-400 shrink-0" />
               <input
                 autoFocus
                 value={filterSearch}
                 onChange={(e) => setFilterSearch(e.target.value)}
                 placeholder="Search values…"
-                className="flex-1 text-[12px] outline-none placeholder-gray-400 bg-transparent"
+                className="flex-1 text-[12px] outline-none placeholder-slate-400 bg-transparent"
               />
               {filterSearch && (
-                <button onClick={() => setFilterSearch('')} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setFilterSearch('')} className="text-slate-400 hover:text-slate-600">
                   <X size={11} />
                 </button>
               )}
@@ -518,7 +518,7 @@ export default function DataTable<T>({
 
                 if (visible.length === 0) {
                   return (
-                    <p className="py-6 text-center text-[12px] text-gray-400">No matching values</p>
+                    <p className="py-6 text-center text-[12px] text-slate-400">No matching values</p>
                   )
                 }
 
@@ -526,20 +526,20 @@ export default function DataTable<T>({
                   <>
                     {/* (Select All) — only when not searching */}
                     {!filterSearch && (
-                      <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100">
+                      <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100">
                         <input
                           type="checkbox"
                           checked={allChecked}
                           onChange={() => table.getColumn(openFilterCol)?.setFilterValue(allChecked ? [] : undefined)}
                           className="h-3.5 w-3.5 rounded accent-ey-yellow"
                         />
-                        <span className="text-[12px] text-gray-500 italic">(Select All)</span>
+                        <span className="text-[12px] text-slate-500 italic">(Select All)</span>
                       </label>
                     )}
                     {visible.map((val) => (
                       <label
                         key={val === '' ? '__empty__' : val}
-                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50"
+                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-slate-50"
                       >
                         <input
                           type="checkbox"
@@ -547,8 +547,8 @@ export default function DataTable<T>({
                           onChange={() => toggleClientValue(openFilterCol, val)}
                           className="h-3.5 w-3.5 rounded accent-ey-yellow"
                         />
-                        <span className="text-[12px] text-gray-700 truncate" title={val || '[Empty]'}>
-                          {val === '' ? <em className="text-gray-400">[Empty]</em> : val}
+                        <span className="text-[12px] text-slate-700 truncate" title={val || '[Empty]'}>
+                          {val === '' ? <em className="text-slate-400">[Empty]</em> : val}
                         </span>
                       </label>
                     ))}
@@ -561,12 +561,12 @@ export default function DataTable<T>({
 
             {/* Footer (client-side only — clear + done) */}
             {!serverSide && (
-              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 bg-slate-50">
                 <button
                   onClick={() => {
                     table.getColumn(openFilterCol)?.setFilterValue(undefined)
                   }}
-                  className="text-[11px] text-gray-500 hover:text-gray-700 transition-colors"
+                  className="text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
                 >
                   Clear
                 </button>

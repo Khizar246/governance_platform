@@ -62,7 +62,7 @@ function matchTypeCell(info: { getValue: () => unknown }) {
     val === 'Direct'          ? 'bg-green-100 text-green-700 border border-green-200' :
     val === 'Derived Control' ? 'bg-yellow-100 text-yellow-700 border border-yellow-200' :
     val === 'Unmatched'       ? 'bg-red-100 text-red-600 border border-red-200' :
-    'bg-gray-100 text-gray-600'
+    'bg-slate-100 text-slate-600'
   return (
     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${cls}`}>
       {val}
@@ -82,7 +82,7 @@ function buildColumns(rows: Record<string, unknown>[]): ColumnDef<Record<string,
         <TooltipTrigger asChild>
           <span className="flex items-center gap-1 cursor-help">
             {key}
-            <Info size={10} className="text-gray-400 shrink-0" />
+            <Info size={10} className="text-slate-400 shrink-0" />
           </span>
         </TooltipTrigger>
         <TooltipContent side="bottom" className="max-w-xs text-xs">{describeColumn(key)}</TooltipContent>
@@ -375,11 +375,11 @@ export default function RulesetMapping() {
 
             {isUploading && (
               <div className="mt-2">
-                <div className="flex justify-between text-xs text-gray-500 mb-1">
+                <div className="flex justify-between text-xs text-slate-500 mb-1">
                   <span>Uploading…</span>
                   <span>{uploadProgress}%</span>
                 </div>
-                <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
                   <div
                     className="h-full rounded-full transition-[width] duration-300 ease-out w-[var(--w)] bg-ey-yellow"
                     style={{ '--w': `${uploadProgress}%` } as React.CSSProperties}
@@ -433,19 +433,19 @@ export default function RulesetMapping() {
                   <div key={key} className="card">
                     <div className="flex items-center gap-2 mb-2">
                       <CheckCircle2 size={14} className="text-success shrink-0" />
-                      <span className="text-xs font-semibold text-gray-700 truncate">{label}</span>
+                      <span className="text-xs font-semibold text-slate-700 truncate">{label}</span>
                       {info.duplicates > 0 && (
                         <span className="ml-auto text-[10px] font-medium text-warning bg-warning-bg border border-warning/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
                           {info.duplicates} dupes
                         </span>
                       )}
                     </div>
-                    <div className="text-[12px] text-gray-500 mb-2">
-                      <span className="font-medium text-gray-700">{info.rows.toLocaleString()}</span> rows ·{' '}
+                    <div className="text-[12px] text-slate-500 mb-2">
+                      <span className="font-medium text-slate-700">{info.rows.toLocaleString()}</span> rows ·{' '}
                       <span>{info.columns.length}</span> cols
                     </div>
-                    <div className="pt-2 border-t border-gray-100">
-                      <p className="text-[10px] text-gray-400 font-mono break-words line-clamp-2">
+                    <div className="pt-2 border-t border-slate-100">
+                      <p className="text-[10px] text-slate-400 font-mono break-words line-clamp-2">
                         {info.columns.join(', ')}
                       </p>
                     </div>
@@ -487,7 +487,7 @@ export default function RulesetMapping() {
             {/* Direction toggle — recomputes every report relative to the source ruleset */}
             <div className="flex items-center gap-3">
               <span className="label-uppercase">Mapping Direction</span>
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+              <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                 {DIRECTIONS.map(({ id, label }) => (
                   <button
                     key={id}
@@ -501,8 +501,8 @@ export default function RulesetMapping() {
                     className={clsx(
                       'px-3.5 py-1.5 text-[13px] font-medium rounded-md transition-colors duration-150',
                       direction === id
-                        ? 'bg-white text-gray-800 shadow-sm border border-gray-200'
-                        : 'text-gray-500 hover:text-gray-700',
+                        ? 'bg-white text-slate-800 shadow-sm border border-slate-200'
+                        : 'text-slate-500 hover:text-slate-700',
                     )}
                   >
                     {label}
@@ -525,7 +525,7 @@ export default function RulesetMapping() {
             })()}
 
             {/* Tab bar + Clear All Filters */}
-            <div className="flex items-center border-b border-gray-200">
+            <div className="flex items-center border-b border-slate-200">
               <nav className="-mb-px flex flex-1 gap-0">
                 {TABS.map(({ id, label }) => (
                   <button
@@ -534,15 +534,15 @@ export default function RulesetMapping() {
                     className={clsx(
                       'px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors duration-150',
                       activeTab === id
-                        ? 'border-ey-yellow text-gray-800'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300',
+                        ? 'border-ey-yellow text-slate-800'
+                        : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300',
                     )}
                   >
                     {tabLabel(id, label, direction)}
                     <span
                       className={clsx(
                         'ml-2 text-[11px] px-1.5 py-0.5 rounded-full font-medium',
-                        activeTab === id ? 'bg-ey-yellow/20 text-gray-700' : 'bg-gray-100 text-gray-500',
+                        activeTab === id ? 'bg-ey-yellow/20 text-slate-700' : 'bg-slate-100 text-slate-500',
                       )}
                     >
                       {tabCounts[id]}
@@ -553,7 +553,7 @@ export default function RulesetMapping() {
               <button
                 onClick={() => { setActiveFilters({}); setPage(1) }}
                 disabled={!hasActiveFilters}
-                className="flex items-center gap-1 mr-4 text-[11px] text-gray-500 hover:text-gray-700 transition-colors disabled:text-gray-300 disabled:cursor-default"
+                className="flex items-center gap-1 mr-4 text-[11px] text-slate-500 hover:text-slate-700 transition-colors disabled:text-slate-300 disabled:cursor-default"
               >
                 <X size={11} /> Clear All Filters
               </button>

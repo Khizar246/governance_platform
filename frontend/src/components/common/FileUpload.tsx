@@ -66,8 +66,8 @@ export default function FileUpload({
         <div className="flex items-start gap-3">
           <CheckCircle2 size={18} className="text-green-600 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-800 truncate">{fileInfo.name}</p>
-            <p className="text-[13px] text-gray-500 mt-0.5">
+            <p className="text-sm font-semibold text-slate-800 truncate">{fileInfo.name}</p>
+            <p className="text-[13px] text-slate-500 mt-0.5">
               {fileInfo.rows != null && `${fileInfo.rows.toLocaleString()} rows · `}
               {fileInfo.columns != null && `${fileInfo.columns} cols · `}
               {formatFileSize(fileInfo.size)}
@@ -75,7 +75,7 @@ export default function FileUpload({
           </div>
           <button
             onClick={onRemove}
-            className="text-gray-400 hover:text-red-500 transition-colors duration-150 p-0.5 rounded shrink-0"
+            className="text-slate-400 hover:text-red-500 transition-colors duration-150 p-0.5 rounded shrink-0"
             title="Remove"
           >
             <X size={15} />
@@ -97,7 +97,7 @@ export default function FileUpload({
           </div>
           <button
             onClick={() => retryRef.current?.click()}
-            className="text-xs font-medium text-gray-600 hover:text-gray-900 border border-gray-300 hover:border-gray-400 bg-white px-2.5 py-1 rounded transition-colors duration-150 shrink-0"
+            className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-300 hover:border-slate-400 bg-white px-2.5 py-1 rounded transition-colors duration-150 shrink-0"
           >
             Retry
           </button>
@@ -116,22 +116,22 @@ export default function FileUpload({
   /* ── UPLOADING ───────────────────────────────────── */
   if (status === 'uploading') {
     return (
-      <div className="fade-in border border-gray-200 bg-white rounded-lg p-4">
+      <div className="fade-in border border-slate-200 bg-white rounded-lg p-4">
         <div className="flex items-center gap-2.5 mb-2.5">
-          <FileText size={15} className="text-gray-400 shrink-0" />
-          <span className="text-sm text-gray-700 truncate flex-1">
+          <FileText size={15} className="text-slate-400 shrink-0" />
+          <span className="text-sm text-slate-700 truncate flex-1">
             {fileInfo?.name ?? `Uploading ${label}…`}
           </span>
-          <span className="text-[12px] text-gray-400 tabular-nums shrink-0">{progress}%</span>
+          <span className="text-[12px] text-slate-400 tabular-nums shrink-0">{progress}%</span>
         </div>
-        <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
+        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
           <div
             className="h-full rounded-full transition-[width] duration-300 ease-out bg-ey-yellow w-[var(--w)]"
             style={{ '--w': `${progress}%` } as CSSProperties}
           />
         </div>
         {fileInfo && (
-          <p className="text-[12px] text-gray-400 mt-1.5">{formatFileSize(fileInfo.size)}</p>
+          <p className="text-[12px] text-slate-400 mt-1.5">{formatFileSize(fileInfo.size)}</p>
         )}
       </div>
     )
@@ -145,7 +145,7 @@ export default function FileUpload({
         'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-150 outline-none',
         isDragActive
           ? 'border-ey-yellow-hover bg-gold-light'
-          : 'border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50',
+          : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50',
       )}
     >
       <input {...getInputProps()} />
@@ -157,22 +157,22 @@ export default function FileUpload({
           size={18}
           className={clsx(
             'transition-colors duration-150',
-            isDragActive ? 'text-ey-yellow-hover' : 'text-gray-400',
+            isDragActive ? 'text-ey-yellow-hover' : 'text-slate-400',
           )}
         />
       </div>
 
       <p className={clsx(
         'text-sm font-medium transition-colors duration-150',
-        isDragActive ? 'text-gray-800' : 'text-gray-600',
+        isDragActive ? 'text-slate-800' : 'text-slate-600',
       )}>
         {isDragActive ? 'Drop to upload' : `Upload ${label}`}
       </p>
 
       {!isDragActive && (
         <>
-          <p className="text-[13px] text-gray-400 mt-0.5">Drag &amp; drop or click to browse</p>
-          {hint && <p className="text-[12px] text-gray-400 mt-1">{hint}</p>}
+          <p className="text-[13px] text-slate-400 mt-0.5">Drag &amp; drop or click to browse</p>
+          {hint && <p className="text-[12px] text-slate-400 mt-1">{hint}</p>}
         </>
       )}
     </div>

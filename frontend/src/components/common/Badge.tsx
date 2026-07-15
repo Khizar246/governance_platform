@@ -12,7 +12,7 @@ const VARIANT_CLASSES: Record<BadgeVariant, string> = {
   warning: 'bg-warning-bg text-warning',
   error:   'bg-error-bg text-error',
   info:    'bg-info-bg text-info',
-  neutral: 'bg-gray-100 text-gray-500',
+  neutral: 'bg-slate-100 text-slate-500',
 }
 
 /** Small semantic pill badge. */

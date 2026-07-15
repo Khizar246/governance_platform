@@ -29,9 +29,9 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center h-64 text-center p-8">
-          <AlertTriangle size={48} className="text-gray-300 mb-4" />
-          <h2 className="text-base font-semibold text-gray-600 mb-1">Something went wrong</h2>
-          <p className="text-sm text-gray-400 mb-5 max-w-sm">{this.state.error?.message}</p>
+          <AlertTriangle size={48} className="text-slate-300 mb-4" />
+          <h2 className="text-base font-semibold text-slate-600 mb-1">Something went wrong</h2>
+          <p className="text-sm text-slate-400 mb-5 max-w-sm">{this.state.error?.message}</p>
           <button
             className="btn-secondary"
             onClick={() => window.location.reload()}

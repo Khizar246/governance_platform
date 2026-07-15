@@ -45,10 +45,10 @@ export default function StepIndicator({ steps, currentStep }: StepIndicatorProps
                 className={clsx(
                   'text-[10.5px] mt-1.5 whitespace-nowrap uppercase tracking-[0.04em]',
                   isComplete
-                    ? 'text-gray-500 font-medium'
+                    ? 'text-slate-500 font-medium'
                     : isActive
-                      ? 'text-gray-800 font-semibold'
-                      : 'text-gray-400 font-medium',
+                      ? 'text-slate-800 font-semibold'
+                      : 'text-slate-400 font-medium',
                 )}
               >
                 {label}

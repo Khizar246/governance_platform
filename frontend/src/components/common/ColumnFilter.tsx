@@ -121,8 +121,8 @@ export function ColumnFilter({
         className={clsx(
           'flex items-center justify-between gap-1 w-full h-6 px-1.5 rounded border text-[11px] transition-colors',
           isActive
-            ? 'border-ey-yellow bg-yellow-50 text-gray-700'
-            : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300',
+            ? 'border-ey-yellow bg-yellow-50 text-slate-700'
+            : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-300',
         )}
       >
         <span className="truncate flex-1 text-left">
@@ -136,20 +136,20 @@ export function ColumnFilter({
           <div
             ref={dropRef}
             style={{ '--dd-top': `${dropTop}px`, '--dd-left': `${dropLeft}px` } as CSSProperties}
-            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
+            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-slate-200 shadow-xl overflow-hidden"
           >
             {/* Search */}
-            <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-100">
-              <Filter size={11} className="text-gray-400 shrink-0" />
+            <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-slate-100">
+              <Filter size={11} className="text-slate-400 shrink-0" />
               <input
                 autoFocus
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search values…"
-                className="flex-1 text-[12px] outline-none placeholder-gray-400 bg-transparent"
+                className="flex-1 text-[12px] outline-none placeholder-slate-400 bg-transparent"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="text-gray-400 hover:text-gray-600">
+                <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600">
                   <X size={11} />
                 </button>
               )}
@@ -158,26 +158,26 @@ export function ColumnFilter({
             {/* Options */}
             <div className="max-h-52 overflow-y-auto">
               {optionsLoading ? (
-                <p className="py-6 text-center text-[12px] text-gray-400">Loading…</p>
+                <p className="py-6 text-center text-[12px] text-slate-400">Loading…</p>
               ) : visibleOptions.length === 0 ? (
-                <p className="py-6 text-center text-[12px] text-gray-400">No matching values</p>
+                <p className="py-6 text-center text-[12px] text-slate-400">No matching values</p>
               ) : (
                 <>
                   {!search && (
-                    <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-gray-50 border-b border-gray-100">
+                    <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100">
                       <input
                         type="checkbox"
                         checked={allVisibleChecked}
                         onChange={toggleSelectAll}
                         className="h-3.5 w-3.5 rounded accent-ey-yellow"
                       />
-                      <span className="text-[12px] text-gray-500 italic">(Select All)</span>
+                      <span className="text-[12px] text-slate-500 italic">(Select All)</span>
                     </label>
                   )}
                   {visibleOptions.map(val => (
                     <label
                       key={val === '' ? '__empty__' : val}
-                      className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-gray-50"
+                      className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-slate-50"
                     >
                       <input
                         type="checkbox"
@@ -186,10 +186,10 @@ export function ColumnFilter({
                         className="h-3.5 w-3.5 rounded accent-ey-yellow"
                       />
                       <span
-                        className="text-[12px] text-gray-700 truncate"
+                        className="text-[12px] text-slate-700 truncate"
                         title={val || '[Empty]'}
                       >
-                        {val === '' ? <em className="text-gray-400">[Empty]</em> : val}
+                        {val === '' ? <em className="text-slate-400">[Empty]</em> : val}
                       </span>
                     </label>
                   ))}
@@ -198,10 +198,10 @@ export function ColumnFilter({
             </div>
 
             {/* Footer */}
-            <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
+            <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 bg-slate-50">
               <button
                 onClick={() => { onClear(); onClose() }}
-                className="text-[11px] text-gray-500 hover:text-gray-700 transition-colors"
+                className="text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
               >
                 Clear Filter
               </button>
