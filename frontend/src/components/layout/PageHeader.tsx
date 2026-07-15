@@ -8,41 +8,15 @@ interface PageHeaderProps {
 
 export default function PageHeader({ icon, title, subtitle }: PageHeaderProps) {
   return (
-    <div
-      style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: 12,
-        marginBottom: 28,
-      }}
-    >
-      <div
-        style={{
-          width: 40, height: 40,
-          borderRadius: 10,
-          background: '#0F1E3D',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          flexShrink: 0,
-          color: '#FFD100',
-        }}
-      >
+    <div className="flex items-center gap-3 mb-7">
+      <div className="w-10 h-10 rounded-[10px] bg-[#0F1E3D] flex items-center justify-center shrink-0 text-[#FFD100]">
         {icon}
       </div>
       <div>
-        <h2
-          style={{
-            fontFamily: "'Lora', serif",
-            fontSize: 22,
-            fontWeight: 600,
-            color: '#0F1E3D',
-            lineHeight: 1.2,
-          }}
-        >
+        <h2 className="font-serif text-[22px] font-semibold text-[#0F1E3D] leading-[1.2]">
           {title}
         </h2>
-        <p style={{ fontSize: 12.5, color: '#64748B', marginTop: 2 }}>{subtitle}</p>
+        <p className="text-[12.5px] text-[#64748B] mt-0.5">{subtitle}</p>
       </div>
     </div>
   )
