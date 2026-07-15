@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { Filter, X } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -135,14 +135,8 @@ export function ColumnFilter({
         createPortal(
           <div
             ref={dropRef}
-            style={{
-              position: 'fixed',
-              top: dropTop,
-              left: dropLeft,
-              width: DROPDOWN_WIDTH,
-              zIndex: 9999,
-            }}
-            className="bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
+            style={{ '--dd-top': `${dropTop}px`, '--dd-left': `${dropLeft}px` } as CSSProperties}
+            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
           >
             {/* Search */}
             <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-100">
