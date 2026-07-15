@@ -50,7 +50,7 @@ const TOOLS = [
     hoursPerRun: 8, lastRun: 'Yesterday', status: 'operational' as const,
   },
   {
-    route: ROUTES.ROLE_TESTING, name: 'Role Testing Bot', color: '#0284C7',
+    route: ROUTES.ROLE_TESTING, name: 'Role Testing Bot', color: '#2563EB',
     bgCls: 'bg-blue-600', textCls: 'text-blue-600', tintCls: 'bg-blue-600/10',
     icon: IconBot, runs: [0, 0, 0, 2, 4, 3, 5, 6, 4, 5, 6, 5],
     hoursPerRun: 4, lastRun: 'Yesterday', status: 'beta' as const,
