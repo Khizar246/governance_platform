@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { Download, Check, Loader2 } from 'lucide-react'
+import { cn } from '@/lib/utils'
 
 interface DownloadButtonProps {
   onClick: () => Promise<void>
@@ -39,24 +40,15 @@ export default function DownloadButton({
     <button
       onClick={handleClick}
       disabled={disabled || isLoading}
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 6,
-        padding: '9px 18px',
-        borderRadius: 8,
-        fontSize: 13,
-        fontWeight: 600,
-        cursor: disabled || isLoading ? 'not-allowed' : 'pointer',
-        transition: 'all 0.15s ease',
-        border: 'none',
-        background: isSuccess ? '#16A34A' : disabled ? '#E5E7EB' : '#0F1E3D',
-        color: isSuccess ? '#FFFFFF' : disabled ? '#9CA3AF' : '#FFD100',
-        opacity: disabled && !isLoading ? 0.6 : 1,
-      }}
+      className={cn(
+        'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded text-[13px] font-semibold border-none transition-all duration-150 ease-[ease]',
+        disabled || isLoading ? 'cursor-not-allowed' : 'cursor-pointer',
+        isSuccess ? 'bg-[#16A34A] text-white' : disabled ? 'bg-[#E5E7EB] text-[#9CA3AF]' : 'bg-[#0F1E3D] text-[#FFD100]',
+        disabled && !isLoading ? 'opacity-60' : 'opacity-100',
+      )}
     >
       {isLoading ? (
-        <Loader2 size={16} style={{ animation: 'spin 1s linear infinite' }} />
+        <Loader2 size={16} className="animate-spin" />
       ) : isSuccess ? (
         <Check size={16} />
       ) : (
