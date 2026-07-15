@@ -129,7 +129,7 @@ export default function RoleTestingBot() {
         subtitle="Drive Oracle Fusion Cloud and capture a screenshot of every Navigator work area."
       />
 
-      <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-500" />} accentColor="#0EA5E9">
+      <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />}>
         <HelpStep num={1} text="Type in the Oracle Cloud web address, your username, and your password." />
         <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
         <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />

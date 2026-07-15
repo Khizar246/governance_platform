@@ -71,18 +71,10 @@ export function SchemaTable({
 interface HelpAccordionProps {
   title: string
   icon: React.ReactNode
-  accentColor: string
   children: React.ReactNode
 }
 
-// Tailwind needs statically analyzable class literals, so the ~9% tint is
-// precomputed per accent hex actually passed by call sites.
-const ACCENT_TINT: Record<string, string> = {
-  '#2563EB': 'bg-blue-600/10',
-  '#0EA5E9': 'bg-blue-500/10',
-}
-
-export default function HelpAccordion({ title, icon, accentColor, children }: HelpAccordionProps) {
+export default function HelpAccordion({ title, icon, children }: HelpAccordionProps) {
   const [open, setOpen] = useState(false)
   return (
     <div className="border border-slate-200 rounded-[10px] overflow-hidden mb-2.5 bg-white">
@@ -90,7 +82,7 @@ export default function HelpAccordion({ title, icon, accentColor, children }: He
         onClick={() => setOpen(o => !o)}
         className={`w-full flex items-center gap-2.5 px-4 py-[11px] border-none cursor-pointer font-['DM_Sans',sans-serif] transition-[background] duration-150 ${open ? 'bg-surface-page' : 'bg-transparent'}`}
       >
-        <div className={`w-7 h-7 rounded-[7px] flex items-center justify-center shrink-0 ${ACCENT_TINT[accentColor] ?? ''}`}>
+        <div className="w-7 h-7 rounded-[7px] flex items-center justify-center shrink-0 bg-blue-600/10">
           {icon}
         </div>
         <span className="text-[13px] font-semibold text-navy flex-1 text-left">{title}</span>

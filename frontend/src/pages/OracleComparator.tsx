@@ -318,7 +318,7 @@ export default function OracleComparator() {
       />
 
       <div className="mb-5">
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />} accentColor="#2563EB">
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />}>
           <HelpStep num={1} text="This tool compares two Oracle environments — like Production and a test environment — and shows what's different between them. Pick RBAC (roles and privileges), DSP (data security policies), or Complete (both)." />
           <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
           <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs. The tool checks for these columns as soon as you upload and will tell you right away if any are missing." />

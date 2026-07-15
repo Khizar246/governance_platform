@@ -591,7 +591,7 @@ export default function SODSAAnalysis() {
       />
 
       <div className="mb-5">
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />} accentColor="#2563EB">
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />}>
           <HelpStep num={1} text="First pick what level of analysis you want to do: Role-level (2 files required), User-level (3 files required), or both (3 files required). You can also turn on False-Positive Detection and an Observation Report — each adds its own file or column requirements, listed below." />
           <HelpStep num={2} text="Upload the Role Hierarchy report received from the client. No changes are needed — upload it as-is; the tool handles everything." />
           <HelpStep num={3} text="If you picked User-level (or both), also upload the User Role Membership report received from the client. Again, upload it as-is — no changes needed." />
