@@ -49,7 +49,7 @@ const TYPE_CARDS = [
     icon: Users,
     title: 'RBAC Analysis',
     description: 'Compare duty roles, inherited role assignments, and privilege-to-role mappings between two Oracle environments.',
-    accentColor: '#22C55E',
+    accentClass: 'border-l-[#22C55E]',
     iconBg: 'bg-green-50',
     iconColor: 'text-[#22C55E]',
     meta: '2 RBAC files',
@@ -60,7 +60,7 @@ const TYPE_CARDS = [
     icon: Database,
     title: 'DSP Analysis',
     description: 'Compare data security policies, condition statements, and column-level access controls across environments.',
-    accentColor: '#3B82F6',
+    accentClass: 'border-l-[#3B82F6]',
     iconBg: 'bg-blue-50',
     iconColor: 'text-[#3B82F6]',
     meta: '2 DSP files',
@@ -71,7 +71,7 @@ const TYPE_CARDS = [
     icon: Layers,
     title: 'Complete Analysis',
     description: 'Full bi-directional comparison covering both RBAC and DSP. Requires two pairs of files plus environment names.',
-    accentColor: '#EAB308',
+    accentClass: 'border-l-[#EAB308]',
     iconBg: 'bg-yellow-50',
     iconColor: 'text-[#EAB308]',
     meta: '4 files total',
@@ -317,15 +317,15 @@ export default function OracleComparator() {
         subtitle="Compare duty roles, privileges, and DSP across two Oracle environments"
       />
 
-      <div style={{ marginBottom: 20 }}>
+      <div className="mb-5">
         <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two Oracle environments — like Production and a test environment — and shows what's different between them. Pick RBAC (roles and privileges), DSP (data security policies), or Complete (both)." />
           <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
           <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs. The tool checks for these columns as soon as you upload and will tell you right away if any are missing." />
           <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
-          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 14, padding: '9px 12px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
-            <Info size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
-            <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>
+          <div className="flex items-start gap-2 mb-[14px] px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+            <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+            <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">
               In most cases, the files you export directly from Oracle Fusion already match the format below — you can upload them as-is without any changes.
             </span>
           </div>
@@ -358,15 +358,15 @@ export default function OracleComparator() {
         {/* ── Step 0: Analysis Type ──────────────────────────────────── */}
         {step === 'type' && (
           <div className="slide-in grid grid-cols-3 gap-4">
-            {TYPE_CARDS.map(({ id, icon: Icon, title, description, accentColor, iconBg, iconColor, meta, recommended }) => (
+            {TYPE_CARDS.map(({ id, icon: Icon, title, description, accentClass, iconBg, iconColor, meta, recommended }) => (
               <button
                 key={id}
                 onClick={() => handleSelectType(id)}
-                style={{ borderLeftColor: accentColor }}
                 className={clsx(
                   'relative flex flex-col text-left p-6 rounded-xl cursor-pointer',
                   'bg-white border border-gray-200 border-l-[3px] shadow-sm',
                   'focus:outline-none hover:shadow-md transition-shadow duration-150',
+                  accentClass,
                 )}
               >
                 {recommended && (
@@ -495,8 +495,8 @@ export default function OracleComparator() {
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-[width] duration-300 ease-out"
-                    style={{ width: `${uploadProgress}%`, background: '#22C55E' }}
+                    className="h-full rounded-full transition-[width] duration-300 ease-out bg-[#22C55E] w-[var(--w)]"
+                    style={{ '--w': `${uploadProgress}%` } as React.CSSProperties}
                   />
                 </div>
               </div>
