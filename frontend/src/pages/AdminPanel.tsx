@@ -43,9 +43,9 @@ function fmtDate(iso: string) {
   return new Date(iso + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
 }
 
-const STATUS_STYLE: Record<RunRecord['status'], { dot: string; bg: string; color: string }> = {
-  Billed:         { dot: '#16A34A', bg: '#DCFCE7', color: '#15803D' },
-  'Non-billable': { dot: '#D97706', bg: '#FEF3C7', color: '#B45309' },
+const STATUS_STYLE: Record<RunRecord['status'], { dotCls: string; pillCls: string }> = {
+  Billed:         { dotCls: 'bg-[#16A34A]', pillCls: 'bg-[#DCFCE7] text-[#15803D]' },
+  'Non-billable': { dotCls: 'bg-[#D97706]', pillCls: 'bg-[#FEF3C7] text-[#B45309]' },
 }
 
 type SortKey = 'date' | 'revenue' | 'tool' | 'project' | 'status'
@@ -54,23 +54,15 @@ type SortKey = 'date' | 'revenue' | 'tool' | 'project' | 'status'
 function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: boolean }) {
   return (
     <div
-      style={{
-        flex: 1,
-        minWidth: 200,
-        background: '#FFFFFF',
-        border: accent ? '1px solid #E8C84D' : '1px solid #E2E8F0',
-        borderRadius: 12,
-        padding: '18px 20px',
-        boxShadow: accent ? '0 1px 0 #FFF3CC inset' : 'none',
-      }}
+      className={`flex-1 min-w-[200px] bg-white border rounded-lg px-5 py-[18px] ${accent ? 'border-[#E8C84D] shadow-[0_1px_0_#FFF3CC_inset]' : 'border-[#E2E8F0] shadow-none'}`}
     >
-      <div style={{ fontSize: 10, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+      <div className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-[0.1em]">
         {label}
       </div>
-      <div style={{ fontFamily: "'Lora', serif", fontSize: 28, fontWeight: 600, color: '#0F1E3D', marginTop: 8, lineHeight: 1 }}>
+      <div className="font-serif text-[28px] font-semibold text-[#0F1E3D] mt-2 leading-none">
         {value}
       </div>
-      <div style={{ fontSize: 11.5, color: '#94A3B8', marginTop: 8 }}>{sub}</div>
+      <div className="text-[11.5px] text-[#94A3B8] mt-2">{sub}</div>
     </div>
   )
 }
@@ -103,8 +95,8 @@ function IconSearch({ c, s }: { c: string; s: number }) {
   )
 }
 function SortArrow({ dir }: { dir: 'asc' | 'desc' | null }) {
-  if (!dir) return <span style={{ color: '#CBD5E1', fontSize: 9, marginLeft: 4 }}>▲▼</span>
-  return <span style={{ color: '#0F1E3D', fontSize: 9, marginLeft: 4 }}>{dir === 'asc' ? '▲' : '▼'}</span>
+  if (!dir) return <span className="text-[#CBD5E1] text-[9px] ml-1">▲▼</span>
+  return <span className="text-[#0F1E3D] text-[9px] ml-1">{dir === 'asc' ? '▲' : '▼'}</span>
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -162,26 +154,14 @@ export default function AdminPanel() {
   const TH = ({ label, k, align = 'left' }: { label: string; k?: SortKey; align?: 'left' | 'right' }) => (
     <th
       onClick={k ? () => toggleSort(k) : undefined}
-      style={{
-        position: 'sticky', top: 0, zIndex: 1,
-        background: '#0F1E3D', color: '#FFFFFF',
-        textAlign: align, padding: '11px 16px',
-        fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase',
-        whiteSpace: 'nowrap', cursor: k ? 'pointer' : 'default', userSelect: 'none',
-      }}
+      className={`sticky top-0 z-[1] bg-[#0F1E3D] text-white px-4 py-[11px] text-[10.5px] font-bold tracking-[0.06em] uppercase whitespace-nowrap select-none ${align === 'right' ? 'text-right' : 'text-left'} ${k ? 'cursor-pointer' : 'cursor-default'}`}
     >
       {label}{k && <SortArrow dir={sortKey === k ? sortDir : null} />}
     </th>
   )
 
-  const selectStyle: React.CSSProperties = {
-    appearance: 'none',
-    padding: '8px 30px 8px 12px',
-    borderRadius: 8, border: '1px solid #E2E8F0', background: '#FFFFFF',
-    fontSize: 12.5, color: '#334155', cursor: 'pointer',
-    backgroundImage: 'url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'12\' height=\'12\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%2364748B\' stroke-width=\'2\'><path d=\'M6 9l6 6 6-6\'/></svg>")',
-    backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center',
-  }
+  const selectClass =
+    'select-caret py-2 pr-[30px] pl-3 rounded border border-[#E2E8F0] bg-white text-[12.5px] text-[#334155] cursor-pointer'
 
   return (
     <div>
@@ -192,7 +172,7 @@ export default function AdminPanel() {
       />
 
       {/* ── KPI cards ── */}
-      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', marginBottom: 22 }}>
+      <div className="flex gap-[14px] flex-wrap mb-[22px]">
         <KpiCard accent label="Total SOD Revenue" value={kpis.revenue} sub={kpis.revenueSub} />
         <KpiCard label="Analyst Hours Saved" value={`${kpis.hoursSaved} hrs`} sub="vs. manual analysis" />
         <KpiCard label="Total Tool Runs" value={String(kpis.totalRuns)} sub="Across all tools" />
@@ -201,41 +181,35 @@ export default function AdminPanel() {
       </div>
 
       {/* ── Toolbar ── */}
-      <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center', marginBottom: 14 }}>
-        <div style={{ position: 'relative', flex: 1, minWidth: 240, maxWidth: 360 }}>
-          <span style={{ position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)' }}>
+      <div className="flex gap-2.5 flex-wrap items-center mb-[14px]">
+        <div className="relative flex-1 min-w-[240px] max-w-[360px]">
+          <span className="absolute left-[11px] top-1/2 -translate-y-1/2">
             <IconSearch c="#94A3B8" s={15} />
           </span>
           <input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search project, employee, approver…"
-            style={{
-              width: '100%', padding: '9px 12px 9px 34px',
-              borderRadius: 8, border: '1px solid #E2E8F0', background: '#FFFFFF',
-              fontSize: 12.5, color: '#334155', outline: 'none',
-            }}
+            className="w-full py-[9px] pr-3 pl-[34px] rounded border border-[#E2E8F0] bg-white text-[12.5px] text-[#334155] outline-none"
           />
         </div>
-        <select value={toolFilter} onChange={(e) => setToolFilter(e.target.value)} style={selectStyle}>
+        <select value={toolFilter} onChange={(e) => setToolFilter(e.target.value)} className={selectClass}>
           {tools.map((t) => <option key={t} value={t}>{t === 'All' ? 'All tools' : t}</option>)}
         </select>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={selectStyle}>
+        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
           {statuses.map((s) => <option key={s} value={s}>{s === 'All' ? 'All statuses' : s}</option>)}
         </select>
-        <span style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8' }}>
+        <span className="ml-auto text-xs text-[#94A3B8]">
           {rows.length} of {RUNS.length} runs
         </span>
       </div>
 
       {/* ── Table ── */}
       <div
-        style={{
-          background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden',
-        }}
+        className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden"
       >
-        <div style={{ maxHeight: 520, overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+        <div className="max-h-[520px] overflow-auto">
+          <table className="w-full border-collapse text-[12.5px]">
             <thead>
               <tr>
                 <TH label="Employee" />
@@ -254,34 +228,28 @@ export default function AdminPanel() {
                 return (
                   <tr
                     key={r.id}
-                    style={{ background: i % 2 === 0 ? '#FFFFFF' : '#FAF9F6', borderTop: '1px solid #EEF1F5' }}
+                    className={`${i % 2 === 0 ? 'bg-white' : 'bg-[#FAF9F6]'} border-t border-[#EEF1F5]`}
                   >
-                    <td style={{ padding: '11px 16px', color: '#0F1E3D', fontWeight: 600, whiteSpace: 'nowrap' }}>{r.analyst}</td>
-                    <td style={{ padding: '11px 16px', color: '#475569', whiteSpace: 'nowrap' }}>{r.tool}</td>
-                    <td style={{ padding: '11px 16px', color: '#334155', minWidth: 220 }}>{r.project}</td>
-                    <td style={{ padding: '11px 16px', color: '#94A3B8', whiteSpace: 'nowrap' }}>{fmtDate(r.date)}</td>
-                    <td style={{ padding: '11px 16px', color: '#475569', whiteSpace: 'nowrap' }}>{r.approvedBy}</td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', whiteSpace: 'nowrap', fontWeight: 600, color: r.revenue > 0 ? '#15803D' : '#CBD5E1' }}>
+                    <td className="px-4 py-[11px] text-[#0F1E3D] font-semibold whitespace-nowrap">{r.analyst}</td>
+                    <td className="px-4 py-[11px] text-[#475569] whitespace-nowrap">{r.tool}</td>
+                    <td className="px-4 py-[11px] text-[#334155] min-w-[220px]">{r.project}</td>
+                    <td className="px-4 py-[11px] text-[#94A3B8] whitespace-nowrap">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-[11px] text-[#475569] whitespace-nowrap">{r.approvedBy}</td>
+                    <td className={`px-4 py-[11px] text-right whitespace-nowrap font-semibold ${r.revenue > 0 ? 'text-[#15803D]' : 'text-[#CBD5E1]'}`}>
                       {r.revenue > 0 ? USD.format(r.revenue) : '—'}
                     </td>
-                    <td style={{ padding: '11px 16px', whiteSpace: 'nowrap' }}>
-                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '3px 10px', borderRadius: 999, background: st.bg, color: st.color, fontSize: 11, fontWeight: 600 }}>
-                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: st.dot }} />
+                    <td className="px-4 py-[11px] whitespace-nowrap">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-[3px] rounded-full text-[11px] font-semibold ${st.pillCls}`}>
+                        <span className={`w-1.5 h-1.5 rounded-full ${st.dotCls}`} />
                         {r.status}
                       </span>
                     </td>
-                    <td style={{ padding: '11px 16px', textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <td className="px-4 py-[11px] text-right whitespace-nowrap">
                       <a
                         href={`/api/admin/runs/${r.id}/download-zip`}
                         download={`run-${r.id}.zip`}
                         title={`Download ${r.files} file(s) as ZIP`}
-                        style={{
-                          display: 'inline-flex', alignItems: 'center', gap: 6,
-                          padding: '6px 11px', borderRadius: 7,
-                          border: '1px solid #E2E8F0', background: '#FFFFFF',
-                          color: '#0F1E3D', fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
-                          transition: 'all 0.13s',
-                        }}
+                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-[#E2E8F0] bg-white text-[#0F1E3D] text-[11.5px] font-semibold no-underline transition-all duration-[130ms]"
                         onMouseEnter={(e) => { e.currentTarget.style.background = '#0F1E3D'; e.currentTarget.style.color = '#FFD100'; e.currentTarget.style.borderColor = '#0F1E3D' }}
                         onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.color = '#0F1E3D'; e.currentTarget.style.borderColor = '#E2E8F0' }}
                       >
@@ -293,7 +261,7 @@ export default function AdminPanel() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} style={{ padding: '40px 16px', textAlign: 'center', color: '#94A3B8', fontSize: 13 }}>
+                  <td colSpan={8} className="px-4 py-10 text-center text-[#94A3B8] text-[13px]">
                     No runs match your filters.
                   </td>
                 </tr>
