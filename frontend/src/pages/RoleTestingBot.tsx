@@ -17,11 +17,11 @@ type Step = 'config' | 'running' | 'results' | 'error'
 const STEPS = ['Configure', 'Processing', 'Results']
 const STEP_INDEX: Record<Step, number> = { config: 0, running: 1, results: 2, error: 1 }
 
-const STATUS_STYLE: Record<string, { bg: string; color: string; label: string }> = {
-  captured:         { bg: '#DCFCE7', color: '#16A34A', label: 'Captured' },
-  captured_no_task: { bg: '#FEF3C7', color: '#B45309', label: 'No task panel' },
-  skipped:          { bg: '#E2E8F0', color: '#475569', label: 'Skipped' },
-  error:            { bg: '#FEE2E2', color: '#DC2626', label: 'Error' },
+const STATUS_STYLE: Record<string, { cls: string; label: string }> = {
+  captured:         { cls: 'bg-[#DCFCE7] text-[#16A34A]', label: 'Captured' },
+  captured_no_task: { cls: 'bg-[#FEF3C7] text-[#B45309]', label: 'No task panel' },
+  skipped:          { cls: 'bg-[#E2E8F0] text-[#475569]', label: 'Skipped' },
+  error:            { cls: 'bg-[#FEE2E2] text-[#DC2626]', label: 'Error' },
 }
 
 export default function RoleTestingBot() {
@@ -134,15 +134,15 @@ export default function RoleTestingBot() {
         <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
         <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />
         <HelpStep num={4} text="When it's done, review the screenshots on the results page and download them all as one ZIP file." />
-        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, marginTop: 8, padding: '9px 12px', borderRadius: 7, background: '#F0F9FF', border: '1px solid #BAE6FD' }}>
-          <Lock size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
-          <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>
+        <div className="flex items-start gap-2 mt-2 px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+          <Lock size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+          <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">
             Your username and password are used only for this one run. They are never stored, logged, or saved anywhere.
           </span>
         </div>
       </HelpAccordion>
 
-      <div style={{ height: 8 }} />
+      <div className="h-2" />
       <StepIndicator steps={STEPS} currentStep={STEP_INDEX[step]} />
 
       {step === 'config' && (
@@ -196,72 +196,66 @@ interface ConfigProps {
 }
 
 function ConfigCard(p: ConfigProps) {
-  const field: React.CSSProperties = {
-    width: '100%', padding: '9px 12px', borderRadius: 8,
-    border: '1px solid #E2E8F0', fontSize: 13, color: '#0F1E3D',
-    background: '#FFFFFF', outline: 'none',
-  }
-  const labelStyle: React.CSSProperties = {
-    display: 'block', fontSize: 12, fontWeight: 600, color: '#334155', marginBottom: 5,
-  }
+  const field = 'w-full px-3 py-[9px] rounded-md border border-[#E2E8F0] text-[13px] text-[#0F1E3D] bg-white outline-none'
+  const labelClass = 'block text-[12px] font-semibold text-[#334155] mb-[5px]'
 
   return (
-    <div style={{ display: 'flex', justifyContent: 'center' }}>
-    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: 24, width: '100%', maxWidth: 560, boxShadow: '0 1px 3px rgba(0,0,0,0.06)' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+    <div className="flex justify-center">
+    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6 w-full max-w-[560px] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+      <div className="flex flex-col gap-4">
         <div>
-          <label style={labelStyle}>Oracle Cloud URL</label>
-          <input style={field} placeholder="https://your-instance.oraclecloud.com" value={p.url}
+          <label className={labelClass}>Oracle Cloud URL</label>
+          <input className={field} placeholder="https://your-instance.oraclecloud.com" value={p.url}
             onChange={e => p.setUrl(e.target.value)} />
         </div>
         <div>
-          <label style={labelStyle}>Username</label>
-          <input style={field} autoComplete="off" value={p.username}
+          <label className={labelClass}>Username</label>
+          <input className={field} autoComplete="off" value={p.username}
             onChange={e => p.setUsername(e.target.value)} />
         </div>
         <div>
-          <label style={labelStyle}>Password</label>
-          <input style={field} type="password" autoComplete="new-password" value={p.password}
+          <label className={labelClass}>Password</label>
+          <input className={field} type="password" autoComplete="new-password" value={p.password}
             onChange={e => p.setPassword(e.target.value)} />
         </div>
 
         <button
           onClick={() => p.setShowAdvanced(!p.showAdvanced)}
-          style={{ alignSelf: 'flex-start', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontSize: 12, fontWeight: 600, color: '#0EA5E9' }}
+          className="self-start bg-transparent border-none p-0 cursor-pointer text-[12px] font-semibold text-[#0EA5E9]"
         >
           {p.showAdvanced ? '− Hide' : '+ Show'} advanced options
         </button>
 
         {p.showAdvanced && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <div style={{ display: 'flex', gap: 14 }}>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Max work areas</label>
-                <input style={field} type="number" min={1} placeholder="all" value={p.maxElements}
+          <div className="flex flex-col gap-3.5">
+            <div className="flex gap-3.5">
+              <div className="flex-1">
+                <label className={labelClass}>Max work areas</label>
+                <input className={field} type="number" min={1} placeholder="all" value={p.maxElements}
                   onChange={e => p.setMaxElements(e.target.value)} />
               </div>
-              <div style={{ flex: 1 }}>
-                <label style={labelStyle}>Timeout (minutes)</label>
-                <input style={field} type="number" min={1} placeholder="none" value={p.timeoutMin}
+              <div className="flex-1">
+                <label className={labelClass}>Timeout (minutes)</label>
+                <input className={field} type="number" min={1} placeholder="none" value={p.timeoutMin}
                   onChange={e => p.setTimeoutMin(e.target.value)} />
               </div>
             </div>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+            <label className="flex items-start gap-[9px] cursor-pointer">
               <input type="checkbox" checked={!p.headless}
-                onChange={e => p.setHeadless(!e.target.checked)} style={{ marginTop: 2 }} />
-              <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.45 }}>
+                onChange={e => p.setHeadless(!e.target.checked)} className="mt-0.5" />
+              <span className="text-[12.5px] text-[#334155] leading-[1.45]">
                 Show the browser window (run non-headless)
-                <span style={{ display: 'block', fontSize: 11, color: '#94A3B8' }}>
+                <span className="block text-[11px] text-[#94A3B8]">
                   For local review only. Leave off for normal/deployed runs.
                 </span>
               </span>
             </label>
-            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 9, cursor: 'pointer' }}>
+            <label className="flex items-start gap-[9px] cursor-pointer">
               <input type="checkbox" checked={p.captureTasks}
-                onChange={e => p.setCaptureTasks(e.target.checked)} style={{ marginTop: 2 }} />
-              <span style={{ fontSize: 12.5, color: '#334155', lineHeight: 1.45 }}>
+                onChange={e => p.setCaptureTasks(e.target.checked)} className="mt-0.5" />
+              <span className="text-[12.5px] text-[#334155] leading-[1.45]">
                 Capture inside each task
-                <span style={{ display: 'block', fontSize: 11, color: '#94A3B8' }}>
+                <span className="block text-[11px] text-[#94A3B8]">
                   Drills into every task of every work area. Much slower.
                 </span>
               </span>
@@ -272,14 +266,12 @@ function ConfigCard(p: ConfigProps) {
         <button
           onClick={p.onStart}
           disabled={!p.canStart}
-          style={{
-            marginTop: 4, alignSelf: 'flex-start',
-            padding: '10px 22px', borderRadius: 8, border: 'none',
-            fontSize: 13, fontWeight: 600,
-            cursor: p.canStart ? 'pointer' : 'not-allowed',
-            background: p.canStart ? '#0F1E3D' : '#E5E7EB',
-            color: p.canStart ? '#FFD100' : '#9CA3AF',
-          }}
+          className={
+            'mt-1 self-start px-[22px] py-2.5 rounded-md border-none text-[13px] font-semibold ' +
+            (p.canStart
+              ? 'cursor-pointer bg-[#0F1E3D] text-[#FFD100]'
+              : 'cursor-not-allowed bg-[#E5E7EB] text-[#9CA3AF]')
+          }
         >
           Start Bot →
         </button>
@@ -294,25 +286,28 @@ function ConfigCard(p: ConfigProps) {
 function RunningCard({ progress, message }: { progress: number; message: string }) {
   const pct = Math.min(100, Math.round(progress))
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', padding: '24px 0' }}>
-      <div style={{ width: '100%', maxWidth: 520, background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden' }}>
-        <div style={{ height: 4, background: '#0EA5E9' }} />
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 12 }}>
-            <div style={{ minWidth: 0 }}>
-              <h3 style={{ fontFamily: "'Lora', serif", fontSize: 15, fontWeight: 600, color: '#0F1E3D' }}>
+    <div className="flex justify-center py-6">
+      <div className="w-full max-w-[520px] bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
+        <div className="h-1 bg-[#0EA5E9]" />
+        <div className="p-6 flex flex-col gap-4">
+          <div className="flex items-end justify-between gap-3">
+            <div className="min-w-0">
+              <h3 className="font-serif text-[15px] font-semibold text-[#0F1E3D]">
                 {message || 'Working…'}
               </h3>
-              <p style={{ fontSize: 11, color: '#94A3B8', marginTop: 2 }}>
+              <p className="text-[11px] text-[#94A3B8] mt-0.5">
                 The bot is driving Oracle Cloud. A full run can take several minutes.
               </p>
             </div>
-            <span style={{ fontFamily: "'Lora', serif", fontSize: 28, fontWeight: 600, color: '#0F1E3D', lineHeight: 1 }}>
-              {pct}<span style={{ fontSize: 18 }}>%</span>
+            <span className="font-serif text-[28px] font-semibold text-[#0F1E3D] leading-none">
+              {pct}<span className="text-[18px]">%</span>
             </span>
           </div>
-          <div style={{ position: 'relative', height: 8, background: '#E2E8F0', borderRadius: 999, overflow: 'hidden' }}>
-            <div style={{ height: '100%', width: `${pct}%`, background: '#0EA5E9', borderRadius: 999, transition: 'width 0.3s ease' }} />
+          <div className="relative h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+            <div
+              className="h-full w-[var(--w)] bg-[#0EA5E9] rounded-full transition-[width] duration-300 ease-[ease]"
+              style={{ '--w': `${pct}%` } as React.CSSProperties}
+            />
           </div>
         </div>
       </div>
@@ -329,9 +324,9 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
   onReset: () => void
 }) {
   const stats = useMemo(() => ([
-    { label: 'Captured', value: summary.captured, color: '#16A34A' },
-    { label: 'Failed', value: summary.failed, color: '#DC2626' },
-    { label: 'Skipped', value: summary.skipped, color: '#475569' },
+    { label: 'Captured', value: summary.captured, colorCls: 'text-[#16A34A]' },
+    { label: 'Failed', value: summary.failed, colorCls: 'text-[#DC2626]' },
+    { label: 'Skipped', value: summary.skipped, colorCls: 'text-[#475569]' },
   ]), [summary])
 
   // Gallery shows only real screenshots — skipped/errored items have no image.
@@ -347,18 +342,18 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
   return (
     <div>
       {/* Stat strip + actions */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18, flexWrap: 'wrap' }}>
+      <div className="flex items-center gap-3 mb-[18px] flex-wrap">
         {stats.map(s => (
-          <div key={s.label} style={{ display: 'flex', alignItems: 'baseline', gap: 7, padding: '8px 14px', background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 9 }}>
-            <span style={{ fontFamily: "'Lora', serif", fontSize: 20, fontWeight: 600, color: s.color }}>{s.value}</span>
-            <span style={{ fontSize: 12, color: '#64748B' }}>{s.label}</span>
+          <div key={s.label} className="flex items-baseline gap-[7px] px-[14px] py-2 bg-white border border-[#E2E8F0] rounded-[9px]">
+            <span className={`font-serif text-[20px] font-semibold ${s.colorCls}`}>{s.value}</span>
+            <span className="text-[12px] text-[#64748B]">{s.label}</span>
           </div>
         ))}
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 10 }}>
+        <div className="ml-auto flex gap-2.5">
           <DownloadButton onClick={onDownload} label="Download All (.zip)" />
           <button
             onClick={onReset}
-            style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '9px 16px', borderRadius: 8, border: '1px solid #E2E8F0', background: '#FFFFFF', color: '#334155', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}
+            className="inline-flex items-center gap-1.5 px-4 py-[9px] rounded border border-[#E2E8F0] bg-white text-[#334155] text-[13px] font-semibold cursor-pointer"
           >
             <RotateCcw size={14} /> New Run
           </button>
@@ -368,7 +363,7 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
       {shots.length === 0 ? (
         <EmptyGallery onReset={onReset} />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: 16 }}>
+        <div className="grid [grid-template-columns:repeat(auto-fill,minmax(240px,1fr))] gap-4">
           {shots.map(shot => (
             <ShotCard key={shot.index} shot={shot} jobId={jobId} onOpen={() => setLightbox(shot)} />
           ))}
@@ -387,21 +382,21 @@ function ShotCard({ shot, jobId, onOpen }: { shot: CapturedScreenshot; jobId: st
   return (
     <div
       onClick={onOpen}
-      style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 10, overflow: 'hidden', display: 'flex', flexDirection: 'column', cursor: 'zoom-in' }}
+      className="bg-white border border-[#E2E8F0] rounded-[10px] overflow-hidden flex flex-col cursor-zoom-in"
     >
-      <div style={{ aspectRatio: '16 / 10', background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+      <div className="aspect-[16/10] bg-[#F1F5F9] flex items-center justify-center overflow-hidden">
         <img
           src={imageUrl(jobId, shot.filename!)}
           alt={shot.title}
           loading="lazy"
-          style={{ width: '100%', height: '100%', objectFit: 'cover', objectPosition: 'top' }}
+          className="w-full h-full object-cover object-top"
         />
       </div>
-      <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <span style={{ fontSize: 12.5, fontWeight: 600, color: '#0F1E3D', lineHeight: 1.35, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={shot.title}>
+      <div className="px-3 py-2.5 flex flex-col gap-1.5">
+        <span className="text-[12.5px] font-semibold text-[#0F1E3D] leading-[1.35] truncate" title={shot.title}>
           {shot.index}. {shot.title}
         </span>
-        <span style={{ alignSelf: 'flex-start', fontSize: 10.5, fontWeight: 600, padding: '2px 8px', borderRadius: 5, background: st.bg, color: st.color }}>
+        <span className={`self-start text-[10.5px] font-semibold px-2 py-0.5 rounded-[5px] ${st.cls}`}>
           {st.label}
         </span>
       </div>
@@ -419,11 +414,11 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
   return (
     <div
       onClick={onClose}
-      style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(15,30,61,0.82)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 32 }}
+      className="fixed inset-0 z-[1000] bg-[rgba(15,30,61,0.82)] flex flex-col items-center justify-center p-8"
     >
       <button
         onClick={onClose}
-        style={{ position: 'absolute', top: 18, right: 22, width: 36, height: 36, borderRadius: 8, border: 'none', background: 'rgba(255,255,255,0.14)', color: '#FFFFFF', fontSize: 20, lineHeight: 1, cursor: 'pointer' }}
+        className="absolute top-[18px] right-[22px] w-9 h-9 rounded border-none bg-[rgba(255,255,255,0.14)] text-white text-[20px] leading-none cursor-pointer"
         aria-label="Close"
       >
         ×
@@ -432,9 +427,9 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
         src={imageUrl(jobId, shot.filename!)}
         alt={shot.title}
         onClick={e => e.stopPropagation()}
-        style={{ maxWidth: '100%', maxHeight: 'calc(100% - 48px)', objectFit: 'contain', borderRadius: 8, boxShadow: '0 8px 40px rgba(0,0,0,0.45)' }}
+        className="max-w-full max-h-[calc(100%-48px)] object-contain rounded shadow-[0_8px_40px_rgba(0,0,0,0.45)]"
       />
-      <span style={{ marginTop: 14, fontSize: 13, fontWeight: 600, color: '#FFFFFF' }}>
+      <span className="mt-[14px] text-[13px] font-semibold text-white">
         {shot.index}. {shot.title}
       </span>
     </div>
@@ -443,11 +438,11 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
 
 function EmptyGallery({ onReset }: { onReset: () => void }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #E2E8F0', borderRadius: 12, padding: '48px 24px', textAlign: 'center' }}>
-      <ImageOff size={36} color="#94A3B8" style={{ margin: '0 auto 12px' }} />
-      <h3 style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: '#0F1E3D', marginBottom: 6 }}>No screenshots captured</h3>
-      <p style={{ fontSize: 13, color: '#64748B', marginBottom: 16 }}>The run finished without capturing any work areas.</p>
-      <button onClick={onReset} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#0F1E3D', color: '#FFD100', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+    <div className="bg-white border border-[#E2E8F0] rounded-lg px-6 py-12 text-center">
+      <ImageOff size={36} color="#94A3B8" className="mx-auto mb-3" />
+      <h3 className="font-serif text-[16px] font-semibold text-[#0F1E3D] mb-1.5">No screenshots captured</h3>
+      <p className="text-[13px] text-[#64748B] mb-4">The run finished without capturing any work areas.</p>
+      <button onClick={onReset} className="px-[18px] py-[9px] rounded border-none bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold cursor-pointer">
         Start a new run
       </button>
     </div>
@@ -458,17 +453,17 @@ function EmptyGallery({ onReset }: { onReset: () => void }) {
 
 function ErrorCard({ errors, onRetry }: { errors: string[]; onRetry: () => void }) {
   return (
-    <div style={{ background: '#FFFFFF', border: '1px solid #FCA5A5', borderRadius: 12, padding: 24, maxWidth: 560 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+    <div className="bg-white border border-[#FCA5A5] rounded-lg p-6 max-w-[560px]">
+      <div className="flex items-center gap-2.5 mb-3">
         <AlertTriangle size={20} color="#DC2626" />
-        <h3 style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: '#0F1E3D' }}>The run failed</h3>
+        <h3 className="font-serif text-[16px] font-semibold text-[#0F1E3D]">The run failed</h3>
       </div>
-      <ul style={{ margin: '0 0 16px', paddingLeft: 18 }}>
+      <ul className="m-0 mb-4 pl-[18px]">
         {errors.map((e, i) => (
-          <li key={i} style={{ fontSize: 13, color: '#B91C1C', lineHeight: 1.6 }}>{e}</li>
+          <li key={i} className="text-[13px] text-[#B91C1C] leading-[1.6]">{e}</li>
         ))}
       </ul>
-      <button onClick={onRetry} style={{ padding: '9px 18px', borderRadius: 8, border: 'none', background: '#0F1E3D', color: '#FFD100', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+      <button onClick={onRetry} className="px-[18px] py-[9px] rounded border-none bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold cursor-pointer">
         Try again
       </button>
     </div>
