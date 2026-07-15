@@ -1,3 +1,4 @@
+import type { CSSProperties } from 'react'
 import { Check } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -84,15 +85,12 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
           {/* Progress bar */}
           <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full bg-gold-bright transition-[width] duration-300 ease-out"
-              style={{ width: `${pct}%` }}
+              className="h-full rounded-full bg-gold-bright transition-[width] duration-300 ease-out w-[var(--w)]"
+              style={{ '--w': `${pct}%` } as CSSProperties}
             />
             <div
-              className="absolute inset-y-0 left-0 rounded-full animate-pulse pointer-events-none"
-              style={{
-                width: `${pct}%`,
-                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.55), transparent)',
-              }}
+              className="absolute inset-y-0 left-0 rounded-full animate-pulse pointer-events-none w-[var(--w)] bg-[linear-gradient(90deg,_transparent,_rgba(255,255,255,0.55),_transparent)]"
+              style={{ '--w': `${pct}%` } as CSSProperties}
             />
           </div>
 
