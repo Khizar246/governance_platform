@@ -34,7 +34,7 @@ export default function StatCard({ value, label, icon, trend, badge, className }
       <div className="flex items-center justify-between">
         <span className="label-caps">{label}</span>
         {icon && (
-          <div className="w-8 h-8 rounded bg-[#F0EFE9] flex items-center justify-center">
+          <div className="w-8 h-8 rounded bg-surface-panel flex items-center justify-center">
             <span className="text-gray-400 [&>svg]:w-4 [&>svg]:h-4">{icon}</span>
           </div>
         )}

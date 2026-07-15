@@ -43,7 +43,7 @@ export default function DownloadButton({
       className={cn(
         'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded text-[13px] font-semibold border-none transition-all duration-150 ease-[ease]',
         disabled || isLoading ? 'cursor-not-allowed' : 'cursor-pointer',
-        isSuccess ? 'bg-[#16A34A] text-white' : disabled ? 'bg-[#E5E7EB] text-[#9CA3AF]' : 'bg-[#0F1E3D] text-[#FFD100]',
+        isSuccess ? 'bg-green-600 text-white' : disabled ? 'bg-slate-200 text-slate-400' : 'bg-navy text-ey-yellow',
         disabled && !isLoading ? 'opacity-60' : 'opacity-100',
       )}
     >

@@ -49,9 +49,9 @@ const TYPE_CARDS = [
     icon: Users,
     title: 'RBAC Analysis',
     description: 'Compare duty roles, inherited role assignments, and privilege-to-role mappings between two Oracle environments.',
-    accentClass: 'border-l-[#22C55E]',
+    accentClass: 'border-l-green-500',
     iconBg: 'bg-green-50',
-    iconColor: 'text-[#22C55E]',
+    iconColor: 'text-green-500',
     meta: '2 RBAC files',
     recommended: false,
   },
@@ -60,9 +60,9 @@ const TYPE_CARDS = [
     icon: Database,
     title: 'DSP Analysis',
     description: 'Compare data security policies, condition statements, and column-level access controls across environments.',
-    accentClass: 'border-l-[#3B82F6]',
+    accentClass: 'border-l-blue-500',
     iconBg: 'bg-blue-50',
-    iconColor: 'text-[#3B82F6]',
+    iconColor: 'text-blue-500',
     meta: '2 DSP files',
     recommended: false,
   },
@@ -71,9 +71,9 @@ const TYPE_CARDS = [
     icon: Layers,
     title: 'Complete Analysis',
     description: 'Full bi-directional comparison covering both RBAC and DSP. Requires two pairs of files plus environment names.',
-    accentClass: 'border-l-[#EAB308]',
+    accentClass: 'border-l-yellow-500',
     iconBg: 'bg-yellow-50',
-    iconColor: 'text-[#EAB308]',
+    iconColor: 'text-yellow-500',
     meta: '4 files total',
     recommended: true,
   },
@@ -97,9 +97,9 @@ function statusCell({ getValue }: { getValue: () => unknown }) {
 
 function matchRatePill(rate: number) {
   const cls =
-    rate >= 90 ? 'bg-[rgba(34,197,94,0.1)] text-[#22C55E]'
-    : rate >= 60 ? 'bg-[rgba(234,179,8,0.1)] text-[#EAB308]'
-    : 'bg-[rgba(239,68,68,0.1)] text-[#EF4444]'
+    rate >= 90 ? 'bg-[rgba(34,197,94,0.1)] text-green-500'
+    : rate >= 60 ? 'bg-[rgba(234,179,8,0.1)] text-yellow-500'
+    : 'bg-[rgba(239,68,68,0.1)] text-red-500'
   return (
     <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${cls}`}>
       {rate}%
@@ -323,9 +323,9 @@ export default function OracleComparator() {
           <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
           <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs. The tool checks for these columns as soon as you upload and will tell you right away if any are missing." />
           <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
-          <div className="flex items-start gap-2 mb-[14px] px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+          <div className="flex items-start gap-2 mb-[14px] px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
             <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
-            <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">
+            <span className="text-[12.5px] text-blue-700 leading-[1.5]">
               In most cases, the files you export directly from Oracle Fusion already match the format below — you can upload them as-is without any changes.
             </span>
           </div>
@@ -480,7 +480,7 @@ export default function OracleComparator() {
                 {TYPE_CARDS.find(c => c.id === analysisType)?.title}
               </span>
               <button
-                className="ml-auto text-[#3B82F6] hover:underline text-[12px]"
+                className="ml-auto text-blue-500 hover:underline text-[12px]"
                 onClick={() => setStep('type')}
               >
                 Change
@@ -495,7 +495,7 @@ export default function OracleComparator() {
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-[width] duration-300 ease-out bg-[#22C55E] w-[var(--w)]"
+                    className="h-full rounded-full transition-[width] duration-300 ease-out bg-green-500 w-[var(--w)]"
                     style={{ '--w': `${uploadProgress}%` } as React.CSSProperties}
                   />
                 </div>
@@ -589,11 +589,11 @@ export default function OracleComparator() {
                         <td className="px-4 py-3 text-[13px] text-gray-700 text-right font-mono tabular-nums">
                           {row.total.toLocaleString()}
                         </td>
-                        <td className="px-4 py-3 text-[13px] text-right font-mono tabular-nums text-[#22C55E]">
+                        <td className="px-4 py-3 text-[13px] text-right font-mono tabular-nums text-green-500">
                           {row.matches.toLocaleString()}
                         </td>
                         <td className="px-4 py-3 text-[13px] text-right font-mono tabular-nums">
-                          <span className={row.missing > 0 ? 'text-[#EF4444]' : 'text-gray-400'}>
+                          <span className={row.missing > 0 ? 'text-red-500' : 'text-gray-400'}>
                             {row.missing.toLocaleString()}
                           </span>
                         </td>
@@ -622,7 +622,7 @@ export default function OracleComparator() {
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap',
                         selectedDir === '1to2'
-                          ? 'bg-[#0F1E3D] text-white'
+                          ? 'bg-navy text-white'
                           : 'bg-white text-gray-600 hover:bg-gray-50',
                       )}
                     >
@@ -633,7 +633,7 @@ export default function OracleComparator() {
                       className={clsx(
                         'px-3 py-1.5 font-medium transition-colors whitespace-nowrap border-l border-gray-200',
                         selectedDir === '2to1'
-                          ? 'bg-[#0F1E3D] text-white'
+                          ? 'bg-navy text-white'
                           : 'bg-white text-gray-600 hover:bg-gray-50',
                       )}
                     >

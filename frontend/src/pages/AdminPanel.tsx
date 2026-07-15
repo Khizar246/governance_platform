@@ -44,8 +44,8 @@ function fmtDate(iso: string) {
 }
 
 const STATUS_STYLE: Record<RunRecord['status'], { dotCls: string; pillCls: string }> = {
-  Billed:         { dotCls: 'bg-[#16A34A]', pillCls: 'bg-[#DCFCE7] text-[#15803D]' },
-  'Non-billable': { dotCls: 'bg-[#D97706]', pillCls: 'bg-[#FEF3C7] text-[#B45309]' },
+  Billed:         { dotCls: 'bg-green-600', pillCls: 'bg-green-100 text-green-700' },
+  'Non-billable': { dotCls: 'bg-amber-600', pillCls: 'bg-amber-100 text-amber-700' },
 }
 
 type SortKey = 'date' | 'revenue' | 'tool' | 'project' | 'status'
@@ -54,15 +54,15 @@ type SortKey = 'date' | 'revenue' | 'tool' | 'project' | 'status'
 function KpiCard({ label, value, sub, accent }: { label: string; value: string; sub: string; accent?: boolean }) {
   return (
     <div
-      className={`flex-1 min-w-[200px] bg-white border rounded-lg px-5 py-[18px] ${accent ? 'border-[#E8C84D] shadow-[0_1px_0_#FFF3CC_inset]' : 'border-[#E2E8F0] shadow-none'}`}
+      className={`flex-1 min-w-[200px] bg-white border rounded-lg px-5 py-[18px] ${accent ? 'border-gold-muted shadow-[0_1px_0_#FFF3CC_inset]' : 'border-slate-200 shadow-none'}`}
     >
-      <div className="text-[10px] font-bold text-[#94A3B8] uppercase tracking-[0.1em]">
+      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-[0.1em]">
         {label}
       </div>
-      <div className="font-serif text-[28px] font-semibold text-[#0F1E3D] mt-2 leading-none">
+      <div className="font-serif text-[28px] font-semibold text-navy mt-2 leading-none">
         {value}
       </div>
-      <div className="text-[11.5px] text-[#94A3B8] mt-2">{sub}</div>
+      <div className="text-[11.5px] text-slate-400 mt-2">{sub}</div>
     </div>
   )
 }
@@ -95,8 +95,8 @@ function IconSearch({ c, s }: { c: string; s: number }) {
   )
 }
 function SortArrow({ dir }: { dir: 'asc' | 'desc' | null }) {
-  if (!dir) return <span className="text-[#CBD5E1] text-[9px] ml-1">▲▼</span>
-  return <span className="text-[#0F1E3D] text-[9px] ml-1">{dir === 'asc' ? '▲' : '▼'}</span>
+  if (!dir) return <span className="text-slate-300 text-[9px] ml-1">▲▼</span>
+  return <span className="text-navy text-[9px] ml-1">{dir === 'asc' ? '▲' : '▼'}</span>
 }
 
 // ── Page ─────────────────────────────────────────────────────────────────────
@@ -154,14 +154,14 @@ export default function AdminPanel() {
   const TH = ({ label, k, align = 'left' }: { label: string; k?: SortKey; align?: 'left' | 'right' }) => (
     <th
       onClick={k ? () => toggleSort(k) : undefined}
-      className={`sticky top-0 z-[1] bg-[#0F1E3D] text-white px-4 py-[11px] text-[10.5px] font-bold tracking-[0.06em] uppercase whitespace-nowrap select-none ${align === 'right' ? 'text-right' : 'text-left'} ${k ? 'cursor-pointer' : 'cursor-default'}`}
+      className={`sticky top-0 z-[1] bg-navy text-white px-4 py-[11px] text-[10.5px] font-bold tracking-[0.06em] uppercase whitespace-nowrap select-none ${align === 'right' ? 'text-right' : 'text-left'} ${k ? 'cursor-pointer' : 'cursor-default'}`}
     >
       {label}{k && <SortArrow dir={sortKey === k ? sortDir : null} />}
     </th>
   )
 
   const selectClass =
-    'select-caret py-2 pr-[30px] pl-3 rounded border border-[#E2E8F0] bg-white text-[12.5px] text-[#334155] cursor-pointer'
+    'select-caret py-2 pr-[30px] pl-3 rounded border border-slate-200 bg-white text-[12.5px] text-slate-700 cursor-pointer'
 
   return (
     <div>
@@ -190,7 +190,7 @@ export default function AdminPanel() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search project, employee, approver…"
-            className="w-full py-[9px] pr-3 pl-[34px] rounded border border-[#E2E8F0] bg-white text-[12.5px] text-[#334155] outline-none"
+            className="w-full py-[9px] pr-3 pl-[34px] rounded border border-slate-200 bg-white text-[12.5px] text-slate-700 outline-none"
           />
         </div>
         <select value={toolFilter} onChange={(e) => setToolFilter(e.target.value)} className={selectClass}>
@@ -199,14 +199,14 @@ export default function AdminPanel() {
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} className={selectClass}>
           {statuses.map((s) => <option key={s} value={s}>{s === 'All' ? 'All statuses' : s}</option>)}
         </select>
-        <span className="ml-auto text-xs text-[#94A3B8]">
+        <span className="ml-auto text-xs text-slate-400">
           {rows.length} of {RUNS.length} runs
         </span>
       </div>
 
       {/* ── Table ── */}
       <div
-        className="bg-white border border-[#E2E8F0] rounded-lg overflow-hidden"
+        className="bg-white border border-slate-200 rounded-lg overflow-hidden"
       >
         <div className="max-h-[520px] overflow-auto">
           <table className="w-full border-collapse text-[12.5px]">
@@ -228,14 +228,14 @@ export default function AdminPanel() {
                 return (
                   <tr
                     key={r.id}
-                    className={`${i % 2 === 0 ? 'bg-white' : 'bg-[#FAF9F6]'} border-t border-[#EEF1F5]`}
+                    className={`${i % 2 === 0 ? 'bg-white' : 'bg-surface-page'} border-t border-slate-100`}
                   >
-                    <td className="px-4 py-[11px] text-[#0F1E3D] font-semibold whitespace-nowrap">{r.analyst}</td>
-                    <td className="px-4 py-[11px] text-[#475569] whitespace-nowrap">{r.tool}</td>
-                    <td className="px-4 py-[11px] text-[#334155] min-w-[220px]">{r.project}</td>
-                    <td className="px-4 py-[11px] text-[#94A3B8] whitespace-nowrap">{fmtDate(r.date)}</td>
-                    <td className="px-4 py-[11px] text-[#475569] whitespace-nowrap">{r.approvedBy}</td>
-                    <td className={`px-4 py-[11px] text-right whitespace-nowrap font-semibold ${r.revenue > 0 ? 'text-[#15803D]' : 'text-[#CBD5E1]'}`}>
+                    <td className="px-4 py-[11px] text-navy font-semibold whitespace-nowrap">{r.analyst}</td>
+                    <td className="px-4 py-[11px] text-slate-600 whitespace-nowrap">{r.tool}</td>
+                    <td className="px-4 py-[11px] text-slate-700 min-w-[220px]">{r.project}</td>
+                    <td className="px-4 py-[11px] text-slate-400 whitespace-nowrap">{fmtDate(r.date)}</td>
+                    <td className="px-4 py-[11px] text-slate-600 whitespace-nowrap">{r.approvedBy}</td>
+                    <td className={`px-4 py-[11px] text-right whitespace-nowrap font-semibold ${r.revenue > 0 ? 'text-green-700' : 'text-slate-300'}`}>
                       {r.revenue > 0 ? USD.format(r.revenue) : '—'}
                     </td>
                     <td className="px-4 py-[11px] whitespace-nowrap">
@@ -249,7 +249,7 @@ export default function AdminPanel() {
                         href={`/api/admin/runs/${r.id}/download-zip`}
                         download={`run-${r.id}.zip`}
                         title={`Download ${r.files} file(s) as ZIP`}
-                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-[#E2E8F0] bg-white text-[#0F1E3D] text-[11.5px] font-semibold no-underline transition-all duration-[130ms] hover:bg-[#0F1E3D] hover:text-[#FFD100] hover:border-[#0F1E3D]"
+                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-slate-200 bg-white text-navy text-[11.5px] font-semibold no-underline transition-all duration-[130ms] hover:bg-navy hover:text-ey-yellow hover:border-navy"
                       >
                         <IconZip c="currentColor" s={14} /> ZIP
                       </a>
@@ -259,7 +259,7 @@ export default function AdminPanel() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-[#94A3B8] text-[13px]">
+                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-[13px]">
                     No runs match your filters.
                   </td>
                 </tr>

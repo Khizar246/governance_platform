@@ -6,10 +6,10 @@ import { ChevronDown } from 'lucide-react'
 export function HelpStep({ num, text }: { num: number; text: string }) {
   return (
     <div className="flex gap-2.5 mb-2.5">
-      <div className="w-[22px] h-[22px] rounded-full bg-[#F0EFE9] border border-[#E2E8F0] flex items-center justify-center shrink-0 mt-px">
-        <span className="text-[11px] font-semibold text-[#334155]">{num}</span>
+      <div className="w-[22px] h-[22px] rounded-full bg-surface-panel border border-slate-200 flex items-center justify-center shrink-0 mt-px">
+        <span className="text-[11px] font-semibold text-slate-700">{num}</span>
       </div>
-      <p className="text-[13px] text-[#334155] leading-[1.6] pt-0.5">{text}</p>
+      <p className="text-[13px] text-slate-700 leading-[1.6] pt-0.5">{text}</p>
     </div>
   )
 }
@@ -23,40 +23,40 @@ export function SchemaTable({
 }) {
   return (
     <div className="mb-3.5">
-      <p className="text-[12.5px] font-semibold text-[#0F1E3D] mb-1.5">{fileLabel}</p>
-      <div className="border border-[#E2E8F0] rounded-[8px] overflow-hidden">
+      <p className="text-[12.5px] font-semibold text-navy mb-1.5">{fileLabel}</p>
+      <div className="border border-slate-200 rounded-[8px] overflow-hidden">
         <table className="w-full border-collapse text-[12px]">
           <thead>
-            <tr className="bg-[#F7F6F3]">
+            <tr className="bg-surface-page">
               {rows.some(r => r.sheet) && (
-                <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Sheet</th>
+                <th className="text-left px-2.5 py-[7px] font-semibold text-slate-500 text-[10.5px] uppercase tracking-[0.04em]">Sheet</th>
               )}
-              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Column</th>
-              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">Status</th>
-              <th className="text-left px-2.5 py-[7px] font-semibold text-[#64748B] text-[10.5px] uppercase tracking-[0.04em]">What it means</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-slate-500 text-[10.5px] uppercase tracking-[0.04em]">Column</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-slate-500 text-[10.5px] uppercase tracking-[0.04em]">Status</th>
+              <th className="text-left px-2.5 py-[7px] font-semibold text-slate-500 text-[10.5px] uppercase tracking-[0.04em]">What it means</th>
             </tr>
           </thead>
           <tbody>
             {rows.map((r, i) => (
-              <tr key={i} className={`border-t border-t-[#F1F0EA] ${i % 2 === 1 ? 'bg-[#FAFAF8]' : 'bg-[#FFFFFF]'}`}>
+              <tr key={i} className={`border-t border-t-slate-200 ${i % 2 === 1 ? 'bg-surface-page' : 'bg-white'}`}>
                 {rows.some(row => row.sheet) && (
-                  <td className="px-2.5 py-[7px] text-[#64748B]">{r.sheet ?? ''}</td>
+                  <td className="px-2.5 py-[7px] text-slate-500">{r.sheet ?? ''}</td>
                 )}
-                <td className="px-2.5 py-[7px] text-[#334155] font-medium">{r.column}</td>
+                <td className="px-2.5 py-[7px] text-slate-700 font-medium">{r.column}</td>
                 <td className="px-2.5 py-[7px]">
                   {(r.status === 'Required' || r.status === 'Optional') ? (
                     <span
                       className={`inline-block px-2 py-0.5 rounded-full text-[10.5px] font-semibold ${
-                        r.status === 'Required' ? 'bg-[#FEE2E2] text-[#B91C1C]' : 'bg-[#DCFCE7] text-[#166534]'
+                        r.status === 'Required' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-800'
                       }`}
                     >
                       {r.status}
                     </span>
                   ) : (
-                    <span className="text-[11.5px] text-[#B45309] font-medium">{r.status}</span>
+                    <span className="text-[11.5px] text-amber-700 font-medium">{r.status}</span>
                   )}
                 </td>
-                <td className="px-2.5 py-[7px] text-[#64748B]">{r.note ?? ''}</td>
+                <td className="px-2.5 py-[7px] text-slate-500">{r.note ?? ''}</td>
               </tr>
             ))}
           </tbody>
@@ -85,15 +85,15 @@ const ACCENT_TINT: Record<string, string> = {
 export default function HelpAccordion({ title, icon, accentColor, children }: HelpAccordionProps) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border border-[#E2E8F0] rounded-[10px] overflow-hidden mb-2.5 bg-[#FFFFFF]">
+    <div className="border border-slate-200 rounded-[10px] overflow-hidden mb-2.5 bg-white">
       <button
         onClick={() => setOpen(o => !o)}
-        className={`w-full flex items-center gap-2.5 px-4 py-[11px] border-none cursor-pointer font-['DM_Sans',sans-serif] transition-[background] duration-150 ${open ? 'bg-[#F7F6F3]' : 'bg-transparent'}`}
+        className={`w-full flex items-center gap-2.5 px-4 py-[11px] border-none cursor-pointer font-['DM_Sans',sans-serif] transition-[background] duration-150 ${open ? 'bg-surface-page' : 'bg-transparent'}`}
       >
         <div className={`w-7 h-7 rounded-[7px] flex items-center justify-center shrink-0 ${ACCENT_TINT[accentColor] ?? ''}`}>
           {icon}
         </div>
-        <span className="text-[13px] font-semibold text-[#0F1E3D] flex-1 text-left">{title}</span>
+        <span className="text-[13px] font-semibold text-navy flex-1 text-left">{title}</span>
         <ChevronDown
           size={16}
           color="#64748B"
@@ -101,7 +101,7 @@ export default function HelpAccordion({ title, icon, accentColor, children }: He
         />
       </button>
       {open && (
-        <div className="px-4 pt-1 pb-4 border-t border-t-[#F1F0EA]">
+        <div className="px-4 pt-1 pb-4 border-t border-t-slate-200">
           <div className="pt-3.5">{children}</div>
         </div>
       )}

@@ -33,25 +33,25 @@ const MONTHS = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', '
 const TOOLS = [
   {
     route: ROUTES.SOD_SA, name: 'SOD & SA Analysis', color: '#D97706',
-    bgCls: 'bg-[#D97706]', tintCls: 'bg-[#D9770614]',
+    bgCls: 'bg-amber-600', tintCls: 'bg-[#D9770614]',
     icon: IconSod, runs: [7, 9, 8, 11, 6, 9, 10, 12, 9, 11, 10, 12],
     hoursPerRun: 16, lastRun: '2 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.RULESET_MAPPING, name: 'Ruleset Mapping', color: '#7C3AED',
-    bgCls: 'bg-[#7C3AED]', tintCls: 'bg-[#7C3AED14]',
+    bgCls: 'bg-violet-600', tintCls: 'bg-[#7C3AED14]',
     icon: IconRuleset, runs: [6, 8, 7, 9, 8, 5, 7, 9, 8, 6, 9, 8],
     hoursPerRun: 12, lastRun: '5 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.ORACLE_COMPARATOR, name: 'Oracle Role Comparison', color: '#16A34A',
-    bgCls: 'bg-[#16A34A]', tintCls: 'bg-[#16A34A14]',
+    bgCls: 'bg-green-600', tintCls: 'bg-[#16A34A14]',
     icon: IconOracle, runs: [2, 0, 3, 1, 0, 2, 4, 1, 0, 2, 1, 2],
     hoursPerRun: 8, lastRun: 'Yesterday', status: 'operational' as const,
   },
   {
     route: ROUTES.ROLE_TESTING, name: 'Role Testing Bot', color: '#0284C7',
-    bgCls: 'bg-[#0284C7]', tintCls: 'bg-[#0284C714]',
+    bgCls: 'bg-blue-600', tintCls: 'bg-[#0284C714]',
     icon: IconBot, runs: [0, 0, 0, 2, 4, 3, 5, 6, 4, 5, 6, 5],
     hoursPerRun: 4, lastRun: 'Yesterday', status: 'beta' as const,
   },
@@ -63,19 +63,19 @@ const CLIENTS_SPARK = [14, 15, 15, 16, 15, 16, 17, 16, 17, 18, 17, 18]
 const REVENUE_SPARK = [310, 325, 318, 340, 332, 348, 355, 370, 362, 381, 390, 420]
 
 const STATUS_BADGE = {
-  operational: { label: 'Operational', cls: 'bg-[#DCFCE7] text-[#15803D]' },
-  beta: { label: 'Beta', cls: 'bg-[#E0F2FE] text-[#0369A1]' },
-  degraded: { label: 'Degraded', cls: 'bg-[#FEF3C7] text-[#B45309]' },
+  operational: { label: 'Operational', cls: 'bg-green-100 text-green-700' },
+  beta: { label: 'Beta', cls: 'bg-blue-100 text-blue-700' },
+  degraded: { label: 'Degraded', cls: 'bg-amber-100 text-amber-700' },
 }
 
 // shadow-card matches the old inline boxShadow exactly (see tailwind.config.ts)
-const CARD_CLASS = 'bg-white border border-[#E2E8F0] rounded-lg shadow-card'
+const CARD_CLASS = 'bg-white border border-slate-200 rounded-lg shadow-card'
 
 function CardTitle({ title, sub }: { title: string; sub?: string }) {
   return (
     <div>
-      <h2 className="text-[13.5px] font-semibold text-[#0F172A]">{title}</h2>
-      {sub && <p className="text-[11.5px] text-[#64748B] mt-px">{sub}</p>}
+      <h2 className="text-[13.5px] font-semibold text-slate-900">{title}</h2>
+      {sub && <p className="text-[11.5px] text-slate-500 mt-px">{sub}</p>}
     </div>
   )
 }
@@ -158,15 +158,15 @@ function ToolUsageChart({ months, series, height = 152 }: { months: string[]; se
       </svg>
       {hover !== null && (
         <div
-          className="absolute top-0.5 pointer-events-none left-[var(--tt-left)] -translate-x-1/2 bg-white border border-[#E2E8F0] rounded px-[9px] py-[7px] shadow-lg min-w-[186px]"
+          className="absolute top-0.5 pointer-events-none left-[var(--tt-left)] -translate-x-1/2 bg-white border border-slate-200 rounded px-[9px] py-[7px] shadow-lg min-w-[186px]"
           style={{ '--tt-left': `${Math.min(Math.max(xOf(hover), 105), w - 105)}px` } as React.CSSProperties}
         >
-          <div className="text-[10.5px] font-semibold text-[#64748B] mb-1">{months[hover]}</div>
+          <div className="text-[10.5px] font-semibold text-slate-500 mb-1">{months[hover]}</div>
           {series.map((s) => (
             <div key={s.name} className="flex items-center gap-1.5 mt-0.5">
               <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${s.bgCls}`} />
-              <span className="text-[11px] text-[#334155] flex-1">{s.name}</span>
-              <span className="text-[11px] font-semibold text-[#0F172A] tabular-nums">{s.data[hover]}</span>
+              <span className="text-[11px] text-slate-700 flex-1">{s.name}</span>
+              <span className="text-[11px] font-semibold text-slate-900 tabular-nums">{s.data[hover]}</span>
             </div>
           ))}
         </div>
@@ -206,10 +206,10 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; bg
           ))}
         </svg>
         <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-          <span className="font-serif text-[19px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
+          <span className="font-serif text-[19px] font-semibold text-navy leading-none tabular-nums">
             {total.toLocaleString()}
           </span>
-          <span className="text-[8.5px] font-semibold text-[#94A3B8] tracking-[0.08em] mt-0.5">HRS</span>
+          <span className="text-[8.5px] font-semibold text-slate-400 tracking-[0.08em] mt-0.5">HRS</span>
         </div>
       </div>
       <div className="flex flex-col gap-2 w-full">
@@ -217,9 +217,9 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; bg
           <div key={it.name} onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)}
             className={`flex items-center gap-1.5 transition-opacity duration-150 ease-[ease] ${active === null || active === i ? 'opacity-100' : 'opacity-[0.45]'}`}>
             <span className={`w-2 h-2 rounded-full shrink-0 ${it.bgCls}`} />
-            <span className="text-[11px] text-[#334155] flex-1 min-w-0 truncate">{it.name}</span>
-            <span className="text-[11.5px] font-semibold text-[#0F172A] tabular-nums">{it.hours.toLocaleString()}h</span>
-            <span className="text-[10px] text-[#94A3B8] w-[26px] text-right tabular-nums">
+            <span className="text-[11px] text-slate-700 flex-1 min-w-0 truncate">{it.name}</span>
+            <span className="text-[11.5px] font-semibold text-slate-900 tabular-nums">{it.hours.toLocaleString()}h</span>
+            <span className="text-[10px] text-slate-400 w-[26px] text-right tabular-nums">
               {Math.round((it.hours / total) * 100)}%
             </span>
           </div>
@@ -236,14 +236,14 @@ function MostUsedBars({ items }: { items: { name: string; bgCls: string; runs: n
     <div className="flex-1 flex flex-col justify-evenly mt-1">
       {sorted.map((it) => (
         <div key={it.name} className="grid [grid-template-columns:156px_minmax(0,1fr)_34px] items-center gap-2.5">
-          <span className="text-[12.5px] text-[#334155] truncate">{it.name}</span>
-          <div className="h-[14px] bg-[#F1F5F9] rounded-full">
+          <span className="text-[12.5px] text-slate-700 truncate">{it.name}</span>
+          <div className="h-[14px] bg-slate-100 rounded-full">
             <div
               className={`h-full rounded-full min-w-[14px] w-[var(--w)] ${it.bgCls}`}
               style={{ '--w': `${(it.runs / max) * 100}%` } as React.CSSProperties}
             />
           </div>
-          <span className="text-[13px] font-semibold text-[#0F172A] text-right tabular-nums">{it.runs}</span>
+          <span className="text-[13px] font-semibold text-slate-900 text-right tabular-nums">{it.runs}</span>
         </div>
       ))}
     </div>
@@ -254,8 +254,8 @@ function Meter({ label, value, pct, fillCls, trackCls }: { label: string; value:
   return (
     <div>
       <div className="flex justify-between items-baseline mb-1">
-        <span className="text-[11.5px] text-[#334155]">{label}</span>
-        <span className="text-[11.5px] font-semibold text-[#0F172A] tabular-nums">{value}</span>
+        <span className="text-[11.5px] text-slate-700">{label}</span>
+        <span className="text-[11.5px] font-semibold text-slate-900 tabular-nums">{value}</span>
       </div>
       <div className={`h-1.5 rounded-[3px] ${trackCls}`}>
         <div
@@ -322,28 +322,28 @@ export default function Home() {
       {/* ── Greeting + controls ── */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="font-serif text-[20px] font-semibold text-[#0F1E3D] leading-[1.2]">
+          <h1 className="font-serif text-[20px] font-semibold text-navy leading-[1.2]">
             {greeting}, Mohd Khizar
           </h1>
-          <p className="text-[11.5px] text-[#64748B] mt-0.5">
-            {today} · <span className="text-[#16A34A] font-medium">● All systems operational</span>
+          <p className="text-[11.5px] text-slate-500 mt-0.5">
+            {today} · <span className="text-green-600 font-medium">● All systems operational</span>
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex bg-[#F0EFE9] rounded p-[3px]">
+          <div className="flex bg-surface-panel rounded p-[3px]">
             {(['6M', '12M'] as const).map((r) => (
               <button key={r} onClick={() => setRange(r)}
                 className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold cursor-pointer border transition-all duration-150 ease-[ease] ${
                   range === r
-                    ? 'border-[#E2E8F0] bg-white text-[#0F172A] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
-                    : 'border-transparent bg-transparent text-[#64748B] shadow-none'
+                    ? 'border-slate-200 bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                    : 'border-transparent bg-transparent text-slate-500 shadow-none'
                 }`}>
                 {r}
               </button>
             ))}
           </div>
           <button onClick={exportReport}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-[#334155] border border-[#E2E8F0] transition-colors duration-150 ease-[ease] hover:bg-[#F8FAFC]">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-slate-700 border border-slate-200 transition-colors duration-150 ease-[ease] hover:bg-slate-50">
             <Download size={13} strokeWidth={2} /> Export report
           </button>
         </div>
@@ -356,7 +356,7 @@ export default function Home() {
           return (
             <div key={k.label} className={`${CARD_CLASS} px-[15px] py-[13px]`}>
               <div className="flex items-center justify-between">
-                <span className="text-[10.5px] font-semibold text-[#94A3B8] uppercase tracking-[0.08em]">
+                <span className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-[0.08em]">
                   {k.label}
                 </span>
                 <div className={`w-6 h-6 rounded-[7px] flex items-center justify-center ${k.tintCls}`}>
@@ -364,16 +364,16 @@ export default function Home() {
                 </div>
               </div>
               <div className="mt-2">
-                <span className="font-serif text-[27px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
+                <span className="font-serif text-[27px] font-semibold text-navy leading-none tabular-nums">
                   {k.value}
                 </span>
                 {k.unit && (
-                  <span className="font-serif text-[16px] font-semibold text-[#64748B] ml-0.5">{k.unit}</span>
+                  <span className="font-serif text-[16px] font-semibold text-slate-500 ml-0.5">{k.unit}</span>
                 )}
               </div>
               <div className="flex items-end justify-between gap-2 mt-2">
-                <span className="text-[10.5px] text-[#64748B] whitespace-nowrap">
-                  <span className="font-semibold text-[#16A34A]">▲ {k.delta}</span> vs last month
+                <span className="text-[10.5px] text-slate-500 whitespace-nowrap">
+                  <span className="font-semibold text-green-600">▲ {k.delta}</span> vs last month
                 </span>
                 <Sparkline data={k.spark} color={k.accent} />
               </div>
@@ -391,7 +391,7 @@ export default function Home() {
           </div>
           <div className="flex items-center justify-center gap-[14px] flex-wrap mt-2">
             {TOOLS.map((t) => (
-              <span key={t.name} className="inline-flex items-center gap-[5px] text-[11.5px] text-[#334155]">
+              <span key={t.name} className="inline-flex items-center gap-[5px] text-[11.5px] text-slate-700">
                 <span className={`w-2 h-2 rounded-full ${t.bgCls}`} />
                 {t.name}
               </span>
@@ -407,23 +407,23 @@ export default function Home() {
         <div className={`${CARD_CLASS} p-4 flex flex-col`}>
           <CardTitle title="Automation impact" sub={`Across all four tools · ${periodLabel}`} />
           <div className="flex items-center gap-2 mt-3 flex-wrap">
-            <span className="font-serif text-[29px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
-              {totalHours.toLocaleString()}<span className="text-[17px] text-[#64748B]"> h</span>
+            <span className="font-serif text-[29px] font-semibold text-navy leading-none tabular-nums">
+              {totalHours.toLocaleString()}<span className="text-[17px] text-slate-500"> h</span>
             </span>
-            <span className="text-[10.5px] font-semibold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
+            <span className="text-[10.5px] font-semibold text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
               {effortCut}% less effort
             </span>
           </div>
-          <p className="text-[11px] text-[#64748B] mt-[5px]">
+          <p className="text-[11px] text-slate-500 mt-[5px]">
             Saved — about {workWeeks} analyst work-weeks.
           </p>
           <div className="flex flex-col gap-3 mt-3 flex-1 justify-center">
-            <Meter label="Done by hand" value={`${manualHours.toLocaleString()} h`} pct={100} fillCls="bg-[#94A3B8]" trackCls="bg-[#F1F5F9]" />
-            <Meter label="With the platform" value={`${platformHours.toLocaleString()} h`} pct={Math.max((platformHours / manualHours) * 100, 3)} fillCls="bg-[#E8A900]" trackCls="bg-[#FFF3CC]" />
+            <Meter label="Done by hand" value={`${manualHours.toLocaleString()} h`} pct={100} fillCls="bg-slate-400" trackCls="bg-slate-100" />
+            <Meter label="With the platform" value={`${platformHours.toLocaleString()} h`} pct={Math.max((platformHours / manualHours) * 100, 3)} fillCls="bg-ey-yellow-hover" trackCls="bg-gold-light" />
           </div>
-          <div className="border-t border-[#F1F5F9] pt-2.5 mt-2.5 flex justify-between gap-2">
-            <span className="text-[10.5px] text-[#64748B]">{totalRuns} runs</span>
-            <span className="text-[10.5px] text-[#64748B] tabular-nums">
+          <div className="border-t border-slate-100 pt-2.5 mt-2.5 flex justify-between gap-2">
+            <span className="text-[10.5px] text-slate-500">{totalRuns} runs</span>
+            <span className="text-[10.5px] text-slate-500 tabular-nums">
               ≈ {(totalHours / totalRuns).toFixed(1)} h saved per run
             </span>
           </div>
@@ -451,14 +451,14 @@ export default function Home() {
                   onMouseEnter={() => setHovHealth(t.route)} onMouseLeave={() => setHovHealth(null)}
                   role="link" tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter') navigate(t.route) }}
-                  className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ease-[ease] ${isH ? 'bg-[#F8FAFC]' : 'bg-transparent'}`}>
+                  className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ease-[ease] ${isH ? 'bg-slate-50' : 'bg-transparent'}`}>
                   <div className={`w-[26px] h-[26px] rounded-[7px] flex items-center justify-center shrink-0 ${t.tintCls}`}>
                     <Icon c={t.color} s={13} />
                   </div>
-                  <span className="text-[12.5px] text-[#0F172A] flex-1 min-w-0 truncate">
+                  <span className="text-[12.5px] text-slate-900 flex-1 min-w-0 truncate">
                     {t.name}
                   </span>
-                  <span className="text-[11px] text-[#64748B] whitespace-nowrap">Last run {t.lastRun}</span>
+                  <span className="text-[11px] text-slate-500 whitespace-nowrap">Last run {t.lastRun}</span>
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold shrink-0 ${badge.cls}`}>
                     ● {badge.label}
                   </span>

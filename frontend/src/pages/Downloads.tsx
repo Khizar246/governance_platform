@@ -146,10 +146,10 @@ function IconDownload({ c, s }: { c: string; s: number }) {
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
     <div className="mb-3">
-      <div className="text-[10.5px] font-semibold text-[#94A3B8] uppercase tracking-[0.12em] mb-[3px]">
+      <div className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-[0.12em] mb-[3px]">
         {title}
       </div>
-      <p className="text-[12.5px] text-[#64748B] leading-[1.5]">{subtitle}</p>
+      <p className="text-[12.5px] text-slate-500 leading-[1.5]">{subtitle}</p>
     </div>
   )
 }
@@ -159,14 +159,14 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
     <a
       href={file.href}
       download={file.filename}
-      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-[#E2E8F0] no-underline bg-white transition-[background,border-color] duration-[120ms] hover:bg-[#FFFBEB] hover:border-[#FFD100]"
+      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-slate-200 no-underline bg-white transition-[background,border-color] duration-[120ms] hover:bg-amber-50 hover:border-ey-yellow"
     >
       <FileSpreadsheet size={16} color={accent} className="shrink-0" />
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-medium text-[#334155]">{file.name}</div>
-        <div className="text-[11.5px] text-[#94A3B8] leading-[1.4]">{file.description}</div>
+        <div className="text-[13px] font-medium text-slate-700">{file.name}</div>
+        <div className="text-[11.5px] text-slate-400 leading-[1.4]">{file.description}</div>
       </div>
-      <code className="text-[10px] bg-[#F0EFE9] px-[7px] py-0.5 rounded-[3px] text-[#64748B] font-mono shrink-0">
+      <code className="text-[10px] bg-surface-panel px-[7px] py-0.5 rounded-[3px] text-slate-500 font-mono shrink-0">
         XLSX
       </code>
       <Download size={14} color="#0F1E3D" className="shrink-0" />
@@ -177,19 +177,19 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
 function TemplateAccordion({ group }: { group: ToolTemplateGroup }) {
   const [open, setOpen] = useState(false)
   return (
-    <div className="border border-[#E2E8F0] rounded-lg overflow-hidden bg-white">
+    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
       <button
         onClick={() => setOpen((o) => !o)}
-        className={`w-full flex items-center gap-3 py-[14px] px-4 border-none cursor-pointer font-sans transition-colors duration-150 text-left ${open ? 'bg-[#F7F6F3]' : 'bg-transparent'}`}
+        className={`w-full flex items-center gap-3 py-[14px] px-4 border-none cursor-pointer font-sans transition-colors duration-150 text-left ${open ? 'bg-surface-page' : 'bg-transparent'}`}
       >
         <div className={`w-[34px] h-[34px] rounded flex items-center justify-center shrink-0 ${group.tintCls}`}>
           {group.icon}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-semibold text-[#0F1E3D]">{group.tool}</div>
-          <div className="text-[11.5px] text-[#94A3B8]">{group.description}</div>
+          <div className="text-[14px] font-semibold text-navy">{group.tool}</div>
+          <div className="text-[11.5px] text-slate-400">{group.description}</div>
         </div>
-        <span className="text-[11px] font-semibold text-[#64748B] bg-[#F0EFE9] px-[9px] py-[3px] rounded-full shrink-0 whitespace-nowrap">
+        <span className="text-[11px] font-semibold text-slate-500 bg-surface-panel px-[9px] py-[3px] rounded-full shrink-0 whitespace-nowrap">
           {group.files.length} {group.files.length === 1 ? 'template' : 'templates'}
         </span>
         <ChevronDown
@@ -199,11 +199,11 @@ function TemplateAccordion({ group }: { group: ToolTemplateGroup }) {
         />
       </button>
       {open && (
-        <div className="pt-[14px] px-4 pb-4 border-t border-[#F1F0EA]">
+        <div className="pt-[14px] px-4 pb-4 border-t border-slate-200">
           {group.note && (
-            <div className="flex items-start gap-2 mb-3 px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+            <div className="flex items-start gap-2 mb-3 px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
               <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
-              <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">{group.note}</span>
+              <span className="text-[12.5px] text-blue-700 leading-[1.5]">{group.note}</span>
             </div>
           )}
           <div className="flex flex-col gap-2">
@@ -238,24 +238,24 @@ export default function Downloads() {
           {REFERENCE_FILES.map((item) => (
             <div
               key={item.filename}
-              className="bg-white border border-[#E2E8F0] rounded-lg p-5 flex flex-col gap-[14px]"
+              className="bg-white border border-slate-200 rounded-lg p-5 flex flex-col gap-[14px]"
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-[9px] bg-[#F0EFE9] flex items-center justify-center shrink-0">
+                <div className="w-10 h-10 rounded-[9px] bg-surface-panel flex items-center justify-center shrink-0">
                   <IconFile c="#0F1E3D" s={20} />
                 </div>
                 <div className="min-w-0">
-                  <div className="text-[14px] font-semibold text-[#0F1E3D]">{item.name}</div>
-                  <div className="text-[11px] text-[#94A3B8] font-mono">{item.filename}</div>
+                  <div className="text-[14px] font-semibold text-navy">{item.name}</div>
+                  <div className="text-[11px] text-slate-400 font-mono">{item.filename}</div>
                 </div>
               </div>
 
-              <p className="text-[12.5px] text-[#64748B] leading-[1.5] flex-1">{item.description}</p>
+              <p className="text-[12.5px] text-slate-500 leading-[1.5] flex-1">{item.description}</p>
 
               <a
                 href={item.href}
                 download={item.filename}
-                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold no-underline transition-colors duration-[130ms] hover:bg-[#16294F]"
+                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-navy text-ey-yellow text-[13px] font-semibold no-underline transition-colors duration-[130ms] hover:bg-navy-mid"
               >
                 <IconDownload c="#FFD100" s={15} /> Download
               </a>

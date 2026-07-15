@@ -65,7 +65,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
     <div className="flex items-center justify-center min-h-[320px] p-6">
       <div className="w-full max-w-xl bg-white border border-gray-200 rounded-xl shadow-sm overflow-hidden">
         {/* EY gold accent rail */}
-        <div className="h-1 bg-gold-bright" />
+        <div className="h-1 bg-ey-yellow" />
 
         <div className="p-6 flex flex-col gap-5">
 
@@ -85,7 +85,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
           {/* Progress bar */}
           <div className="relative w-full h-2 bg-gray-200 rounded-full overflow-hidden">
             <div
-              className="h-full rounded-full bg-gold-bright transition-[width] duration-300 ease-out w-[var(--w)]"
+              className="h-full rounded-full bg-ey-yellow transition-[width] duration-300 ease-out w-[var(--w)]"
               style={{ '--w': `${pct}%` } as CSSProperties}
             />
             <div
@@ -112,7 +112,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                   <span className={clsx(
                     'text-[10px] font-semibold mb-0.5',
                     status === 'done'    && 'text-green-600',
-                    status === 'active'  && 'text-gold-bright',
+                    status === 'active'  && 'text-ey-yellow',
                     status === 'pending' || status === 'disabled' ? 'text-gray-400' : '',
                   )}>
                     {status === 'done' ? '✓' : `Phase ${phase}`}
@@ -153,7 +153,7 @@ export default function LoadingOverlay({ message, progress, currentStep, steps, 
                       <div className={clsx(
                         'w-[22px] h-[22px] rounded-full shrink-0 flex items-center justify-center text-[10px] font-bold mt-px',
                         status === 'done'    && 'bg-green-500 text-white',
-                        status === 'active'  && 'bg-gold-bright text-navy',
+                        status === 'active'  && 'bg-ey-yellow text-navy',
                         status === 'pending' && 'bg-gray-100 text-gray-400',
                       )}>
                         {status === 'done'

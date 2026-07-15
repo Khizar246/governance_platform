@@ -126,7 +126,7 @@ export default function FileUpload({
         </div>
         <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
           <div
-            className="h-full rounded-full transition-[width] duration-300 ease-out bg-[#FFD100] w-[var(--w)]"
+            className="h-full rounded-full transition-[width] duration-300 ease-out bg-ey-yellow w-[var(--w)]"
             style={{ '--w': `${progress}%` } as CSSProperties}
           />
         </div>
@@ -144,20 +144,20 @@ export default function FileUpload({
       className={clsx(
         'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-150 outline-none',
         isDragActive
-          ? 'border-[#E8A900] bg-[#FFF3CC]'
+          ? 'border-ey-yellow-hover bg-gold-light'
           : 'border-gray-300 hover:border-gray-400 bg-white hover:bg-gray-50',
       )}
     >
       <input {...getInputProps()} />
 
       <div
-        className="w-9 h-9 bg-[#F0EFE9] rounded flex items-center justify-center mt-0 mx-auto mb-[10px]"
+        className="w-9 h-9 bg-surface-panel rounded flex items-center justify-center mt-0 mx-auto mb-[10px]"
       >
         <Upload
           size={18}
           className={clsx(
             'transition-colors duration-150',
-            isDragActive ? 'text-[#E8A900]' : 'text-gray-400',
+            isDragActive ? 'text-ey-yellow-hover' : 'text-gray-400',
           )}
         />
       </div>

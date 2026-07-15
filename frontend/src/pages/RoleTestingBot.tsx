@@ -18,10 +18,10 @@ const STEPS = ['Configure', 'Processing', 'Results']
 const STEP_INDEX: Record<Step, number> = { config: 0, running: 1, results: 2, error: 1 }
 
 const STATUS_STYLE: Record<string, { cls: string; label: string }> = {
-  captured:         { cls: 'bg-[#DCFCE7] text-[#16A34A]', label: 'Captured' },
-  captured_no_task: { cls: 'bg-[#FEF3C7] text-[#B45309]', label: 'No task panel' },
-  skipped:          { cls: 'bg-[#E2E8F0] text-[#475569]', label: 'Skipped' },
-  error:            { cls: 'bg-[#FEE2E2] text-[#DC2626]', label: 'Error' },
+  captured:         { cls: 'bg-green-100 text-green-600', label: 'Captured' },
+  captured_no_task: { cls: 'bg-amber-100 text-amber-700', label: 'No task panel' },
+  skipped:          { cls: 'bg-slate-200 text-slate-600', label: 'Skipped' },
+  error:            { cls: 'bg-red-100 text-red-600', label: 'Error' },
 }
 
 export default function RoleTestingBot() {
@@ -134,9 +134,9 @@ export default function RoleTestingBot() {
         <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
         <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />
         <HelpStep num={4} text="When it's done, review the screenshots on the results page and download them all as one ZIP file." />
-        <div className="flex items-start gap-2 mt-2 px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+        <div className="flex items-start gap-2 mt-2 px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
           <Lock size={13} color="#0369A1" className="mt-0.5 shrink-0" />
-          <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">
+          <span className="text-[12.5px] text-blue-700 leading-[1.5]">
             Your username and password are used only for this one run. They are never stored, logged, or saved anywhere.
           </span>
         </div>
@@ -196,12 +196,12 @@ interface ConfigProps {
 }
 
 function ConfigCard(p: ConfigProps) {
-  const field = 'w-full px-3 py-[9px] rounded-md border border-[#E2E8F0] text-[13px] text-[#0F1E3D] bg-white outline-none'
-  const labelClass = 'block text-[12px] font-semibold text-[#334155] mb-[5px]'
+  const field = 'w-full px-3 py-[9px] rounded-md border border-slate-200 text-[13px] text-navy bg-white outline-none'
+  const labelClass = 'block text-[12px] font-semibold text-slate-700 mb-[5px]'
 
   return (
     <div className="flex justify-center">
-    <div className="bg-white border border-[#E2E8F0] rounded-lg p-6 w-full max-w-[560px] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
+    <div className="bg-white border border-slate-200 rounded-lg p-6 w-full max-w-[560px] shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
       <div className="flex flex-col gap-4">
         <div>
           <label className={labelClass}>Oracle Cloud URL</label>
@@ -221,7 +221,7 @@ function ConfigCard(p: ConfigProps) {
 
         <button
           onClick={() => p.setShowAdvanced(!p.showAdvanced)}
-          className="self-start bg-transparent border-none p-0 cursor-pointer text-[12px] font-semibold text-[#0EA5E9]"
+          className="self-start bg-transparent border-none p-0 cursor-pointer text-[12px] font-semibold text-blue-500"
         >
           {p.showAdvanced ? '− Hide' : '+ Show'} advanced options
         </button>
@@ -243,9 +243,9 @@ function ConfigCard(p: ConfigProps) {
             <label className="flex items-start gap-[9px] cursor-pointer">
               <input type="checkbox" checked={!p.headless}
                 onChange={e => p.setHeadless(!e.target.checked)} className="mt-0.5" />
-              <span className="text-[12.5px] text-[#334155] leading-[1.45]">
+              <span className="text-[12.5px] text-slate-700 leading-[1.45]">
                 Show the browser window (run non-headless)
-                <span className="block text-[11px] text-[#94A3B8]">
+                <span className="block text-[11px] text-slate-400">
                   For local review only. Leave off for normal/deployed runs.
                 </span>
               </span>
@@ -253,9 +253,9 @@ function ConfigCard(p: ConfigProps) {
             <label className="flex items-start gap-[9px] cursor-pointer">
               <input type="checkbox" checked={p.captureTasks}
                 onChange={e => p.setCaptureTasks(e.target.checked)} className="mt-0.5" />
-              <span className="text-[12.5px] text-[#334155] leading-[1.45]">
+              <span className="text-[12.5px] text-slate-700 leading-[1.45]">
                 Capture inside each task
-                <span className="block text-[11px] text-[#94A3B8]">
+                <span className="block text-[11px] text-slate-400">
                   Drills into every task of every work area. Much slower.
                 </span>
               </span>
@@ -269,8 +269,8 @@ function ConfigCard(p: ConfigProps) {
           className={
             'mt-1 self-start px-[22px] py-2.5 rounded-md border-none text-[13px] font-semibold ' +
             (p.canStart
-              ? 'cursor-pointer bg-[#0F1E3D] text-[#FFD100]'
-              : 'cursor-not-allowed bg-[#E5E7EB] text-[#9CA3AF]')
+              ? 'cursor-pointer bg-navy text-ey-yellow'
+              : 'cursor-not-allowed bg-slate-200 text-slate-400')
           }
         >
           Start Bot →
@@ -287,25 +287,25 @@ function RunningCard({ progress, message }: { progress: number; message: string 
   const pct = Math.min(100, Math.round(progress))
   return (
     <div className="flex justify-center py-6">
-      <div className="w-full max-w-[520px] bg-white border border-[#E2E8F0] rounded-lg overflow-hidden">
-        <div className="h-1 bg-[#0EA5E9]" />
+      <div className="w-full max-w-[520px] bg-white border border-slate-200 rounded-lg overflow-hidden">
+        <div className="h-1 bg-blue-500" />
         <div className="p-6 flex flex-col gap-4">
           <div className="flex items-end justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="font-serif text-[15px] font-semibold text-[#0F1E3D]">
+              <h3 className="font-serif text-[15px] font-semibold text-navy">
                 {message || 'Working…'}
               </h3>
-              <p className="text-[11px] text-[#94A3B8] mt-0.5">
+              <p className="text-[11px] text-slate-400 mt-0.5">
                 The bot is driving Oracle Cloud. A full run can take several minutes.
               </p>
             </div>
-            <span className="font-serif text-[28px] font-semibold text-[#0F1E3D] leading-none">
+            <span className="font-serif text-[28px] font-semibold text-navy leading-none">
               {pct}<span className="text-[18px]">%</span>
             </span>
           </div>
-          <div className="relative h-2 bg-[#E2E8F0] rounded-full overflow-hidden">
+          <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden">
             <div
-              className="h-full w-[var(--w)] bg-[#0EA5E9] rounded-full transition-[width] duration-300 ease-[ease]"
+              className="h-full w-[var(--w)] bg-blue-500 rounded-full transition-[width] duration-300 ease-[ease]"
               style={{ '--w': `${pct}%` } as React.CSSProperties}
             />
           </div>
@@ -324,9 +324,9 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
   onReset: () => void
 }) {
   const stats = useMemo(() => ([
-    { label: 'Captured', value: summary.captured, colorCls: 'text-[#16A34A]' },
-    { label: 'Failed', value: summary.failed, colorCls: 'text-[#DC2626]' },
-    { label: 'Skipped', value: summary.skipped, colorCls: 'text-[#475569]' },
+    { label: 'Captured', value: summary.captured, colorCls: 'text-green-600' },
+    { label: 'Failed', value: summary.failed, colorCls: 'text-red-600' },
+    { label: 'Skipped', value: summary.skipped, colorCls: 'text-slate-600' },
   ]), [summary])
 
   // Gallery shows only real screenshots — skipped/errored items have no image.
@@ -344,16 +344,16 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
       {/* Stat strip + actions */}
       <div className="flex items-center gap-3 mb-[18px] flex-wrap">
         {stats.map(s => (
-          <div key={s.label} className="flex items-baseline gap-[7px] px-[14px] py-2 bg-white border border-[#E2E8F0] rounded-[9px]">
+          <div key={s.label} className="flex items-baseline gap-[7px] px-[14px] py-2 bg-white border border-slate-200 rounded-[9px]">
             <span className={`font-serif text-[20px] font-semibold ${s.colorCls}`}>{s.value}</span>
-            <span className="text-[12px] text-[#64748B]">{s.label}</span>
+            <span className="text-[12px] text-slate-500">{s.label}</span>
           </div>
         ))}
         <div className="ml-auto flex gap-2.5">
           <DownloadButton onClick={onDownload} label="Download All (.zip)" />
           <button
             onClick={onReset}
-            className="inline-flex items-center gap-1.5 px-4 py-[9px] rounded border border-[#E2E8F0] bg-white text-[#334155] text-[13px] font-semibold cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-4 py-[9px] rounded border border-slate-200 bg-white text-slate-700 text-[13px] font-semibold cursor-pointer"
           >
             <RotateCcw size={14} /> New Run
           </button>
@@ -382,9 +382,9 @@ function ShotCard({ shot, jobId, onOpen }: { shot: CapturedScreenshot; jobId: st
   return (
     <div
       onClick={onOpen}
-      className="bg-white border border-[#E2E8F0] rounded-[10px] overflow-hidden flex flex-col cursor-zoom-in"
+      className="bg-white border border-slate-200 rounded-[10px] overflow-hidden flex flex-col cursor-zoom-in"
     >
-      <div className="aspect-[16/10] bg-[#F1F5F9] flex items-center justify-center overflow-hidden">
+      <div className="aspect-[16/10] bg-slate-100 flex items-center justify-center overflow-hidden">
         <img
           src={imageUrl(jobId, shot.filename!)}
           alt={shot.title}
@@ -393,7 +393,7 @@ function ShotCard({ shot, jobId, onOpen }: { shot: CapturedScreenshot; jobId: st
         />
       </div>
       <div className="px-3 py-2.5 flex flex-col gap-1.5">
-        <span className="text-[12.5px] font-semibold text-[#0F1E3D] leading-[1.35] truncate" title={shot.title}>
+        <span className="text-[12.5px] font-semibold text-navy leading-[1.35] truncate" title={shot.title}>
           {shot.index}. {shot.title}
         </span>
         <span className={`self-start text-[10.5px] font-semibold px-2 py-0.5 rounded-[5px] ${st.cls}`}>
@@ -438,11 +438,11 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
 
 function EmptyGallery({ onReset }: { onReset: () => void }) {
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-lg px-6 py-12 text-center">
+    <div className="bg-white border border-slate-200 rounded-lg px-6 py-12 text-center">
       <ImageOff size={36} color="#94A3B8" className="mx-auto mb-3" />
-      <h3 className="font-serif text-[16px] font-semibold text-[#0F1E3D] mb-1.5">No screenshots captured</h3>
-      <p className="text-[13px] text-[#64748B] mb-4">The run finished without capturing any work areas.</p>
-      <button onClick={onReset} className="px-[18px] py-[9px] rounded border-none bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold cursor-pointer">
+      <h3 className="font-serif text-[16px] font-semibold text-navy mb-1.5">No screenshots captured</h3>
+      <p className="text-[13px] text-slate-500 mb-4">The run finished without capturing any work areas.</p>
+      <button onClick={onReset} className="px-[18px] py-[9px] rounded border-none bg-navy text-ey-yellow text-[13px] font-semibold cursor-pointer">
         Start a new run
       </button>
     </div>
@@ -453,17 +453,17 @@ function EmptyGallery({ onReset }: { onReset: () => void }) {
 
 function ErrorCard({ errors, onRetry }: { errors: string[]; onRetry: () => void }) {
   return (
-    <div className="bg-white border border-[#FCA5A5] rounded-lg p-6 max-w-[560px]">
+    <div className="bg-white border border-red-300 rounded-lg p-6 max-w-[560px]">
       <div className="flex items-center gap-2.5 mb-3">
         <AlertTriangle size={20} color="#DC2626" />
-        <h3 className="font-serif text-[16px] font-semibold text-[#0F1E3D]">The run failed</h3>
+        <h3 className="font-serif text-[16px] font-semibold text-navy">The run failed</h3>
       </div>
       <ul className="m-0 mb-4 pl-[18px]">
         {errors.map((e, i) => (
-          <li key={i} className="text-[13px] text-[#B91C1C] leading-[1.6]">{e}</li>
+          <li key={i} className="text-[13px] text-red-700 leading-[1.6]">{e}</li>
         ))}
       </ul>
-      <button onClick={onRetry} className="px-[18px] py-[9px] rounded border-none bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold cursor-pointer">
+      <button onClick={onRetry} className="px-[18px] py-[9px] rounded border-none bg-navy text-ey-yellow text-[13px] font-semibold cursor-pointer">
         Try again
       </button>
     </div>

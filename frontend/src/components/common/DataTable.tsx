@@ -315,7 +315,7 @@ export default function DataTable<T>({
                             className={clsx(
                               'flex items-center justify-between gap-1 w-full h-6 px-1.5 rounded border text-[11px] transition-colors',
                               clientActive
-                                ? 'border-[#FFD100] bg-yellow-50 text-gray-700'
+                                ? 'border-ey-yellow bg-yellow-50 text-gray-700'
                                 : 'border-gray-200 bg-white text-gray-400 hover:text-gray-600 hover:border-gray-300',
                             )}
                           >
@@ -531,7 +531,7 @@ export default function DataTable<T>({
                           type="checkbox"
                           checked={allChecked}
                           onChange={() => table.getColumn(openFilterCol)?.setFilterValue(allChecked ? [] : undefined)}
-                          className="h-3.5 w-3.5 rounded accent-[#FFD100]"
+                          className="h-3.5 w-3.5 rounded accent-ey-yellow"
                         />
                         <span className="text-[12px] text-gray-500 italic">(Select All)</span>
                       </label>
@@ -545,7 +545,7 @@ export default function DataTable<T>({
                           type="checkbox"
                           checked={effectiveSelected.includes(val)}
                           onChange={() => toggleClientValue(openFilterCol, val)}
-                          className="h-3.5 w-3.5 rounded accent-[#FFD100]"
+                          className="h-3.5 w-3.5 rounded accent-ey-yellow"
                         />
                         <span className="text-[12px] text-gray-700 truncate" title={val || '[Empty]'}>
                           {val === '' ? <em className="text-gray-400">[Empty]</em> : val}
@@ -572,7 +572,7 @@ export default function DataTable<T>({
                 </button>
                 <button
                   onClick={() => { setOpenFilterCol(null); setFilterSearch('') }}
-                  className="text-[11px] font-semibold text-[#0F1E3D] hover:text-[#1a2f5f] transition-colors"
+                  className="text-[11px] font-semibold text-navy hover:text-navy-mid transition-colors"
                 >
                   Done
                 </button>

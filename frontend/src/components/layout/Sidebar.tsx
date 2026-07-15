@@ -102,7 +102,7 @@ function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]
   return (
     <div className="mb-1.5">
       {!collapsed && (
-        <div className="text-[9.5px] font-semibold text-[#94A3B8] uppercase tracking-[0.12em] px-2 py-1.5 mb-0.5">
+        <div className="text-[9.5px] font-semibold text-slate-400 uppercase tracking-[0.12em] px-2 py-1.5 mb-0.5">
           {title}
         </div>
       )}
@@ -117,19 +117,19 @@ function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]
             className={({ isActive }) => [
               'flex items-center gap-[9px] rounded-[7px] border w-full cursor-pointer no-underline transition-all duration-[130ms] mb-0.5',
               collapsed ? 'py-[7px] px-0 justify-center' : 'py-[7px] px-2 justify-start',
-              isActive ? 'border-[#E8C84D] bg-[#FFF3CC]' : 'border-transparent bg-transparent',
+              isActive ? 'border-gold-muted bg-gold-light' : 'border-transparent bg-transparent',
             ].join(' ')}
           >
             {({ isActive }) => (
               <>
                 <div
-                  className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 transition-colors duration-[130ms] ${isActive ? 'bg-[#E8A900]' : 'bg-[#F0EFE9]'}`}
+                  className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 transition-colors duration-[130ms] ${isActive ? 'bg-ey-yellow-hover' : 'bg-surface-panel'}`}
                 >
                   <IconComp s={14} c={isActive ? '#FFFFFF' : '#64748B'} />
                 </div>
                 {!collapsed && (
                   <span
-                    className={`text-[13px] whitespace-nowrap ${isActive ? 'font-semibold text-[#0F1E3D]' : 'font-normal text-[#334155]'}`}
+                    className={`text-[13px] whitespace-nowrap ${isActive ? 'font-semibold text-navy' : 'font-normal text-slate-700'}`}
                   >
                     {item.label}
                   </span>
@@ -149,14 +149,14 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`h-full flex flex-col bg-white border-r border-[#E2E8F0] transition-[width,min-width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-20 shrink-0 ${collapsed ? 'w-[60px] min-w-[60px]' : 'w-[232px] min-w-[232px]'}`}
+      className={`h-full flex flex-col bg-white border-r border-slate-200 transition-[width,min-width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-20 shrink-0 ${collapsed ? 'w-[60px] min-w-[60px]' : 'w-[232px] min-w-[232px]'}`}
     >
       {/* ── Logo ── */}
       <div
-        className={`border-b border-[#F1F0EA] shrink-0 ${collapsed ? 'px-[14px] py-[18px]' : 'pt-[18px] px-[18px] pb-[14px]'}`}
+        className={`border-b border-slate-200 shrink-0 ${collapsed ? 'px-[14px] py-[18px]' : 'pt-[18px] px-[18px] pb-[14px]'}`}
       >
         <div
-          className={`w-9 h-9 bg-[#0F1E3D] rounded flex items-center justify-center ${collapsed ? 'mb-0' : 'mb-2.5'}`}
+          className={`w-9 h-9 bg-navy rounded flex items-center justify-center ${collapsed ? 'mb-0' : 'mb-2.5'}`}
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden>
             <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"
@@ -165,10 +165,10 @@ export default function Sidebar() {
         </div>
         {!collapsed && (
           <>
-            <p className="font-serif text-[13px] font-semibold text-[#0F1E3D] tracking-[0.01em] leading-[1.2]">
+            <p className="font-serif text-[13px] font-semibold text-navy tracking-[0.01em] leading-[1.2]">
               Access Governance
             </p>
-            <p className="text-[9.5px] text-[#94A3B8] tracking-[0.12em] uppercase mt-0.5">
+            <p className="text-[9.5px] text-slate-400 tracking-[0.12em] uppercase mt-0.5">
               Platform · Enterprise
             </p>
           </>
@@ -182,13 +182,13 @@ export default function Sidebar() {
       </nav>
 
       {/* ── Footer ── */}
-      <div className="pt-2.5 px-2.5 pb-3 border-t border-[#F1F0EA] shrink-0">
+      <div className="pt-2.5 px-2.5 pb-3 border-t border-slate-200 shrink-0">
         {/* Trust badges */}
         {!collapsed && (
           <div className="flex gap-1.5 mb-2.5 flex-wrap">
             {[
-              { label: 'TLS 1.3', cls: 'bg-[#DCFCE7] text-[#16A34A]', iconColor: '#16A34A' },
-              { label: 'SOC2',    cls: 'bg-[#DBEAFE] text-[#2563EB]', iconColor: '#2563EB' },
+              { label: 'TLS 1.3', cls: 'bg-green-100 text-green-600', iconColor: '#16A34A' },
+              { label: 'SOC2',    cls: 'bg-blue-100 text-blue-600', iconColor: '#2563EB' },
             ].map(({ label, cls, iconColor }) => (
               <span
                 key={label}
@@ -202,13 +202,13 @@ export default function Sidebar() {
 
         {/* User card */}
         {!collapsed && (
-          <div className="flex items-center gap-2 px-2.5 py-2 rounded bg-[#F0EFE9] mb-2">
-            <div className="w-8 h-8 rounded-full bg-[#0F1E3D] flex items-center justify-center text-[11px] font-bold text-[#FFD100] shrink-0">
+          <div className="flex items-center gap-2 px-2.5 py-2 rounded bg-surface-panel mb-2">
+            <div className="w-8 h-8 rounded-full bg-navy flex items-center justify-center text-[11px] font-bold text-ey-yellow shrink-0">
               MK
             </div>
             <div className="flex-1 min-w-0">
-              <div className="text-[12.5px] font-semibold text-[#0F1E3D]">Mohd Khizar</div>
-              <div className="text-[10.5px] text-[#94A3B8]">EY · Analyst</div>
+              <div className="text-[12.5px] font-semibold text-navy">Mohd Khizar</div>
+              <div className="text-[10.5px] text-slate-400">EY · Analyst</div>
             </div>
           </div>
         )}
@@ -216,11 +216,11 @@ export default function Sidebar() {
         {/* Collapse toggle */}
         <button
           onClick={() => setSidebarCollapsed(!collapsed)}
-          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] hover:bg-[#F0EFE9] ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
+          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] hover:bg-surface-panel ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
         >
           <IconChevron collapsed={collapsed} c="#94A3B8" />
           {!collapsed && (
-            <span className="text-[11.5px] text-[#94A3B8]">Collapse sidebar</span>
+            <span className="text-[11.5px] text-slate-400">Collapse sidebar</span>
           )}
         </button>
       </div>

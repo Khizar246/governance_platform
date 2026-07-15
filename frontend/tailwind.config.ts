@@ -46,29 +46,18 @@ const config: Config = {
         navy:         '#0F1E3D',
         'navy-mid':   '#1B2E52',
         'navy-light': '#2D4270',
-        gold:         '#E8A900',
-        'gold-bright':'#FFD100',
         'gold-light': '#FFF3CC',
+        'gold-muted': '#E8C84D',
+
+        // ── Surfaces ──────────────────────────────────────────────────────────
+        'surface-page':  '#F7F6F3',
+        'surface-panel': '#F0EFE9',
 
         // ── EY brand (gold = goldBright from reference) ───────────────────────
         'ey-yellow':        '#FFD100',
         'ey-yellow-hover':  '#E8A900',
         'ey-yellow-subtle': 'rgba(255,209,0,0.12)',
         'ey-yellow-glow':   'rgba(255,209,0,0.24)',
-
-        // ── Standard gray scale (light) ───────────────────────────────────────
-        gray: {
-          50:  '#F9FAFB',
-          100: '#F3F4F6',
-          200: '#E5E7EB',
-          300: '#D1D5DB',
-          400: '#9CA3AF',
-          500: '#6B7280',
-          600: '#4B5563',
-          700: '#374151',
-          800: '#1F2937',
-          900: '#111827',
-        },
 
         // ── Semantic — actual light colors ────────────────────────────────────
         success:         '#16A34A',
@@ -95,7 +84,7 @@ const config: Config = {
           700: '#15803D',
         },
         red: {
-          50:  '#FFF1F2',
+          50:  '#FEF2F2',
           100: '#FEE2E2',
           200: '#FECACA',
           300: '#FCA5A5',
@@ -123,14 +112,6 @@ const config: Config = {
           500: '#F59E0B',
           600: '#D97706',
           700: '#B45309',
-        },
-        yellow: {
-          50:  '#FEFCE8',
-          100: '#FEF9C3',
-          300: '#FDE047',
-          400: '#FACC15',
-          500: '#FFD100',
-          600: '#E8A900',
         },
       },
 

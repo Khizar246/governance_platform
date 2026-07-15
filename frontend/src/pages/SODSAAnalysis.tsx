@@ -139,14 +139,14 @@ function InsightCard({ title, items }: { title: string; items: SODSATopItem[] })
         {items.map((item, i) => (
           <div key={i} className="flex items-center gap-3 px-4 py-2.5">
             <span
-              className="flex items-center justify-center shrink-0 rounded text-[10px] font-bold text-white w-[18px] h-[18px] min-w-[18px] bg-[#0F1E3D]"
+              className="flex items-center justify-center shrink-0 rounded text-[10px] font-bold text-white w-[18px] h-[18px] min-w-[18px] bg-navy"
             >
               {i + 1}
             </span>
             <span className="text-[12.5px] text-gray-700 flex-1 truncate min-w-0" title={item.name}>
               {item.name}
             </span>
-            <span className="font-serif text-[14px] font-bold text-[#E8A900] shrink-0">
+            <span className="font-serif text-[14px] font-bold text-ey-yellow-hover shrink-0">
               {item.count}
             </span>
           </div>
@@ -177,7 +177,7 @@ function OptionToggle({ checked, onChange, title, description }: {
           checked={checked}
           onChange={e => onChange(e.target.checked)}
         />
-        <span className="w-9 h-5 rounded-full bg-gray-300 transition-colors duration-150 peer-checked:bg-[#0F1E3D] peer-focus-visible:ring-2 peer-focus-visible:ring-[#FFD100] peer-focus-visible:ring-offset-1" />
+        <span className="w-9 h-5 rounded-full bg-gray-300 transition-colors duration-150 peer-checked:bg-navy peer-focus-visible:ring-2 peer-focus-visible:ring-ey-yellow peer-focus-visible:ring-offset-1" />
         <span className="pointer-events-none absolute left-0.5 top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform duration-150 peer-checked:translate-x-4" />
       </span>
     </label>
@@ -812,7 +812,7 @@ export default function SODSAAnalysis() {
                   <button
                     type="button"
                     onClick={() => { setRulesetSeeded(s => !s); setRulesetFile(null); discardStagedJob() }}
-                    className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
+                    className="mt-2 text-[12px] text-blue-500 hover:underline"
                   >
                     {rulesetSeeded ? 'Use my own file instead' : 'Use seeded ruleset →'}
                   </button>
@@ -838,7 +838,7 @@ export default function SODSAAnalysis() {
                     <button
                       type="button"
                       onClick={() => { setFpDbSeeded(s => !s); setFpDbFile(null); discardStagedJob() }}
-                      className="mt-2 text-[12px] text-[#3B82F6] hover:underline"
+                      className="mt-2 text-[12px] text-blue-500 hover:underline"
                     >
                       {fpDbSeeded ? 'Use my own file instead' : 'Use seeded FP Database →'}
                     </button>
@@ -875,7 +875,7 @@ export default function SODSAAnalysis() {
                 {with3Leg && <span className="ml-1 text-violet-600">· 3-leg SOD on</span>}
               </span>
               <button
-                className="ml-auto text-[#3B82F6] hover:underline text-[12px]"
+                className="ml-auto text-blue-500 hover:underline text-[12px]"
                 onClick={() => setStep('config')}
               >
                 Change
@@ -1079,14 +1079,14 @@ export default function SODSAAnalysis() {
                           className={clsx(
                             'flex items-center gap-2 px-5 py-3 text-[13px] font-medium transition-colors border-b-2',
                             activeTab === id
-                              ? 'border-[#FFD100] text-[#0F1E3D] font-semibold'
+                              ? 'border-ey-yellow text-navy font-semibold'
                               : 'border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50',
                           )}
                         >
                           {SHEET_LABELS[id]}
                           <span className={clsx(
                             'text-[11px] px-1.5 py-0.5 rounded-full font-semibold',
-                            activeTab === id ? 'bg-[#FFD100]/15 text-[#B45309]' : 'bg-gray-100 text-gray-400',
+                            activeTab === id ? 'bg-ey-yellow/15 text-amber-700' : 'bg-gray-100 text-gray-400',
                           )}>
                             {count.toLocaleString()}
                           </span>

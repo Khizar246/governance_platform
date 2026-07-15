@@ -7,33 +7,31 @@
 @layer base {
   :root {
     /* ── Light palette ───────────────────────────────────────────────── */
-    --bg:          #F7F6F3;
-    --surface:     #FFFFFF;
-    --surface-alt: #F0EFE9;
-    --navy:        #0F1E3D;
-    --navy-mid:    #1B2E52;
-    --gold:        #E8A900;
-    --gold-bright: #FFD100;
-    --gold-light:  #FFF3CC;
+    --bg:          theme('colors.surface-page');
+    --surface:     theme('colors.white');
+    --surface-alt: theme('colors.surface-panel');
+    --navy:        theme('colors.navy');
+    --navy-mid:    theme('colors.navy-mid');
+    --gold-light:  theme('colors.gold-light');
 
     /* ── Text ─────────────────────────────────────────────────────────── */
-    --t0: #0F172A;
-    --t1: #64748B;
-    --t2: #94A3B8;
+    --t0: theme('colors.slate.900');
+    --t1: theme('colors.slate.500');
+    --t2: theme('colors.slate.400');
 
     /* ── Borders ──────────────────────────────────────────────────────── */
-    --border:       #E2E8F0;
-    --border-light: #F1F0EA;
+    --border:       theme('colors.slate.200');
+    --border-light: theme('colors.slate.200');
 
     /* ── Semantic ─────────────────────────────────────────────────────── */
-    --success:    #16A34A;
-    --success-bg: #DCFCE7;
-    --warning:    #D97706;
-    --warning-bg: #FEF3C7;
-    --error:      #DC2626;
-    --error-bg:   #FEE2E2;
-    --info:       #2563EB;
-    --info-bg:    #DBEAFE;
+    --success:    theme('colors.green.600');
+    --success-bg: theme('colors.green.100');
+    --warning:    theme('colors.amber.600');
+    --warning-bg: theme('colors.amber.100');
+    --error:      theme('colors.red.600');
+    --error-bg:   theme('colors.red.100');
+    --info:       theme('colors.blue.600');
+    --info-bg:    theme('colors.blue.100');
 
     /* ── shadcn CSS-variable system (light) ──────────────────────────── */
     --background:            42 43% 96%;
@@ -82,46 +80,46 @@
   /* ── Scrollbar ──────────────────────────────────────────────────────────── */
   ::-webkit-scrollbar { width: 4px; height: 4px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #D1D5DB; border-radius: 4px; }
-  ::-webkit-scrollbar-thumb:hover { background: #9CA3AF; }
+  ::-webkit-scrollbar-thumb { background: theme('colors.slate.300'); border-radius: 4px; }
+  ::-webkit-scrollbar-thumb:hover { background: theme('colors.slate.400'); }
 }
 
 @layer components {
   /* Navy primary button — gold text */
   .btn-primary {
     @apply inline-flex items-center gap-1.5 font-semibold text-sm px-4 py-2 rounded cursor-pointer transition-all duration-150;
-    background: #0F1E3D;
-    color: #FFD100;
+    background: theme('colors.navy');
+    color: theme('colors.ey-yellow');
     border: none;
   }
-  .btn-primary:hover { background: #1B2E52; }
+  .btn-primary:hover { background: theme('colors.navy-mid'); }
   .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Gold action button — navy text (for run/submit actions) */
   .btn-gold {
     @apply inline-flex items-center gap-1.5 font-semibold text-sm px-4 py-2 rounded cursor-pointer transition-all duration-150;
-    background: #FFD100;
-    color: #0F1E3D;
+    background: theme('colors.ey-yellow');
+    color: theme('colors.navy');
     border: none;
   }
-  .btn-gold:hover { background: #E8A900; }
+  .btn-gold:hover { background: theme('colors.ey-yellow-hover'); }
   .btn-gold:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Secondary / ghost button */
   .btn-secondary {
     @apply inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded transition-all duration-150;
     background: transparent;
-    color: #334155;
-    border: 1px solid #E2E8F0;
+    color: theme('colors.slate.700');
+    border: 1px solid theme('colors.slate.200');
   }
-  .btn-secondary:hover { background: #F0EFE9; color: #0F172A; }
+  .btn-secondary:hover { background: theme('colors.surface-panel'); color: theme('colors.slate.900'); }
   .btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
 
   /* Standard light card */
   .card {
     border-radius: 12px;
-    background: #FFFFFF;
-    border: 1px solid #E2E8F0;
+    background: theme('colors.white');
+    border: 1px solid theme('colors.slate.200');
     box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
     padding: 20px;
   }
@@ -132,7 +130,7 @@
     font-size: 36px;
     font-weight: 600;
     line-height: 1;
-    color: #0F1E3D;
+    color: theme('colors.navy');
     font-variant-numeric: tabular-nums;
   }
 
@@ -140,7 +138,7 @@
   .label-caps {
     font-size: 11px;
     font-weight: 600;
-    color: #94A3B8;
+    color: theme('colors.slate.400');
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
@@ -148,7 +146,7 @@
   .label-uppercase {
     font-size: 11px;
     font-weight: 600;
-    color: #94A3B8;
+    color: theme('colors.slate.400');
     text-transform: uppercase;
     letter-spacing: 0.08em;
   }
@@ -187,7 +185,7 @@
     100% { background-position:  800px 0; }
   }
   .animate-shimmer {
-    background: linear-gradient(90deg, #F3F4F6 0, #E5E7EB 50%, #F3F4F6 100%);
+    background: linear-gradient(90deg, theme('colors.slate.100') 0, theme('colors.slate.200') 50%, theme('colors.slate.100') 100%);
     background-size: 800px 100%;
     animation: shimmer 1.6s infinite;
   }

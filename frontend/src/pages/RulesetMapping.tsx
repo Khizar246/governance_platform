@@ -381,7 +381,7 @@ export default function RulesetMapping() {
                 </div>
                 <div className="w-full bg-gray-200 rounded-full h-1.5 overflow-hidden">
                   <div
-                    className="h-full rounded-full transition-[width] duration-300 ease-out w-[var(--w)] bg-[#FFD100]"
+                    className="h-full rounded-full transition-[width] duration-300 ease-out w-[var(--w)] bg-ey-yellow"
                     style={{ '--w': `${uploadProgress}%` } as React.CSSProperties}
                   />
                 </div>
