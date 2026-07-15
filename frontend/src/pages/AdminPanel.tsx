@@ -249,9 +249,7 @@ export default function AdminPanel() {
                         href={`/api/admin/runs/${r.id}/download-zip`}
                         download={`run-${r.id}.zip`}
                         title={`Download ${r.files} file(s) as ZIP`}
-                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-[#E2E8F0] bg-white text-[#0F1E3D] text-[11.5px] font-semibold no-underline transition-all duration-[130ms]"
-                        onMouseEnter={(e) => { e.currentTarget.style.background = '#0F1E3D'; e.currentTarget.style.color = '#FFD100'; e.currentTarget.style.borderColor = '#0F1E3D' }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = '#FFFFFF'; e.currentTarget.style.color = '#0F1E3D'; e.currentTarget.style.borderColor = '#E2E8F0' }}
+                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-[#E2E8F0] bg-white text-[#0F1E3D] text-[11.5px] font-semibold no-underline transition-all duration-[130ms] hover:bg-[#0F1E3D] hover:text-[#FFD100] hover:border-[#0F1E3D]"
                       >
                         <IconZip c="currentColor" s={14} /> ZIP
                       </a>

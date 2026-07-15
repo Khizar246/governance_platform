@@ -343,9 +343,7 @@ export default function Home() {
             ))}
           </div>
           <button onClick={exportReport}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-[#334155] border border-[#E2E8F0] transition-colors duration-150 ease-[ease]"
-            onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
-            onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}>
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-[#334155] border border-[#E2E8F0] transition-colors duration-150 ease-[ease] hover:bg-[#F8FAFC]">
             <Download size={13} strokeWidth={2} /> Export report
           </button>
         </div>

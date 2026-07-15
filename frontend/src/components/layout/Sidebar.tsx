@@ -216,9 +216,7 @@ export default function Sidebar() {
         {/* Collapse toggle */}
         <button
           onClick={() => setSidebarCollapsed(!collapsed)}
-          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
-          onMouseEnter={(e) => { e.currentTarget.style.background = '#F0EFE9' }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] hover:bg-[#F0EFE9] ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
         >
           <IconChevron collapsed={collapsed} c="#94A3B8" />
           {!collapsed && (

@@ -159,15 +159,7 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
     <a
       href={file.href}
       download={file.filename}
-      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-[#E2E8F0] no-underline bg-white transition-[background,border-color] duration-[120ms]"
-      onMouseEnter={(e) => {
-        e.currentTarget.style.background = '#FFFBEB'
-        e.currentTarget.style.borderColor = '#FFD100'
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.background = '#FFFFFF'
-        e.currentTarget.style.borderColor = '#E2E8F0'
-      }}
+      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-[#E2E8F0] no-underline bg-white transition-[background,border-color] duration-[120ms] hover:bg-[#FFFBEB] hover:border-[#FFD100]"
     >
       <FileSpreadsheet size={16} color={accent} className="shrink-0" />
       <div className="flex-1 min-w-0">
@@ -263,9 +255,7 @@ export default function Downloads() {
               <a
                 href={item.href}
                 download={item.filename}
-                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold no-underline transition-colors duration-[130ms]"
-                onMouseEnter={(e) => { e.currentTarget.style.background = '#16294F' }}
-                onMouseLeave={(e) => { e.currentTarget.style.background = '#0F1E3D' }}
+                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold no-underline transition-colors duration-[130ms] hover:bg-[#16294F]"
               >
                 <IconDownload c="#FFD100" s={15} /> Download
               </a>
