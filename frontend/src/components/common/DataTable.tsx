@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import {
   useReactTable,
@@ -263,8 +263,8 @@ export default function DataTable<T>({
 
         {/* ── Scrollable table ── */}
         <div
-          className="overflow-auto rounded-lg border border-gray-200"
-          style={{ maxHeight }}
+          className="overflow-auto rounded-lg border border-gray-200 max-h-[var(--max-h)]"
+          style={{ '--max-h': maxHeight } as CSSProperties}
         >
           <table className="w-full text-sm">
 
@@ -282,8 +282,7 @@ export default function DataTable<T>({
                     return (
                       <TableHead
                         key={header.id}
-                        style={{ minWidth: 120 }}
-                        className="sticky top-0 z-10 h-auto bg-gray-50 border-b border-gray-200 px-3 pt-2.5 pb-1.5 align-top"
+                        className="sticky top-0 z-10 h-auto min-w-[120px] bg-gray-50 border-b border-gray-200 px-3 pt-2.5 pb-1.5 align-top"
                       >
                         {/* Column label + sort */}
                         <div
@@ -364,8 +363,8 @@ export default function DataTable<T>({
                     {columns.map((_, ci) => (
                       <TableCell key={ci} className="px-3 py-2.5">
                         <Skeleton
-                          className="h-3.5 rounded"
-                          style={{ width: `${45 + ((ri * 7 + ci * 13) % 45)}%` }}
+                          className="h-3.5 rounded w-[var(--w)]"
+                          style={{ '--w': `${45 + ((ri * 7 + ci * 13) % 45)}%` } as CSSProperties}
                         />
                       </TableCell>
                     ))}
@@ -480,14 +479,8 @@ export default function DataTable<T>({
         createPortal(
           <div
             ref={dropdownRef}
-            style={{
-              position: 'fixed',
-              top: dropTop,
-              left: dropLeft,
-              width: DROPDOWN_WIDTH,
-              zIndex: 9999,
-            }}
-            className="bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
+            style={{ '--dd-top': `${dropTop}px`, '--dd-left': `${dropLeft}px` } as CSSProperties}
+            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-gray-200 shadow-xl overflow-hidden"
           >
             {/* Search box */}
             <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-gray-100">
