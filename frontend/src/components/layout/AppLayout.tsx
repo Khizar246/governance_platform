@@ -7,27 +7,12 @@ export default function AppLayout() {
   const isHome = location.pathname === ROUTES.HOME
 
   return (
-    <div
-      style={{
-        display: 'flex',
-        flexDirection: 'row',
-        height: '100vh',
-        overflow: 'hidden',
-        background: '#F7F6F3',
-      }}
-    >
+    <div className="flex flex-row h-screen overflow-hidden bg-[#F7F6F3]">
       <Sidebar />
 
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
-        <main
-          style={{
-            flex: 1,
-            overflowY: 'auto',
-            overflowX: 'hidden',
-            background: '#F7F6F3',
-          }}
-        >
-          <div style={{ maxWidth: 1400, margin: '0 auto', padding: isHome ? '14px 32px 14px' : '28px 32px' }}>
+      <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-[#F7F6F3]">
+          <div className={`max-w-[1400px] mx-auto px-8 ${isHome ? 'py-3.5' : 'py-7'}`}>
             <div className="fade-in">
               <Outlet />
             </div>
