@@ -14,17 +14,17 @@ const GOLD_DEEP = '#E8A900'
 const GREEN = '#16A34A'
 
 // ── Icons ─────────────────────────────────────────────────────────────────────
-function IconRuleset({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/><path d="M17.5 14v7M14 17.5h7" stroke={c} strokeWidth="1.6" strokeLinecap="round"/></svg>
+function IconRuleset({ cls, s }: { cls: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}><rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/><path d="M17.5 14v7M14 17.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>
 }
-function IconOracle({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.6"/><path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="2" strokeLinecap="round"/></svg>
+function IconOracle({ cls, s }: { cls: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}><circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6"/><path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
 }
-function IconSod({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><path d="M12 3l9 4.5v5c0 5-3.6 9.7-9 11-5.4-1.3-9-6-9-11V7.5L12 3z" stroke={c} strokeWidth="1.6"/><path d="M9 12l2 2 4-4" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
+function IconSod({ cls, s }: { cls: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}><path d="M12 3l9 4.5v5c0 5-3.6 9.7-9 11-5.4-1.3-9-6-9-11V7.5L12 3z" stroke="currentColor" strokeWidth="1.6"/><path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/></svg>
 }
-function IconBot({ c, s }: { c: string; s: number }) {
-  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden><rect x="4" y="8" width="16" height="11" rx="2.5" stroke={c} strokeWidth="1.6"/><path d="M12 4v4" stroke={c} strokeWidth="1.6" strokeLinecap="round"/><circle cx="12" cy="3.5" r="1.3" stroke={c} strokeWidth="1.6"/><circle cx="9" cy="13" r="1.2" fill={c}/><circle cx="15" cy="13" r="1.2" fill={c}/></svg>
+function IconBot({ cls, s }: { cls: string; s: number }) {
+  return <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}><rect x="4" y="8" width="16" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.6"/><path d="M12 4v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><circle cx="12" cy="3.5" r="1.3" stroke="currentColor" strokeWidth="1.6"/><circle cx="9" cy="13" r="1.2" fill="currentColor"/><circle cx="15" cy="13" r="1.2" fill="currentColor"/></svg>
 }
 
 // ── Sample data (static; realistic monthly volumes) ──────────────────────────
@@ -33,25 +33,25 @@ const MONTHS = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', '
 const TOOLS = [
   {
     route: ROUTES.SOD_SA, name: 'SOD & SA Analysis', color: '#D97706',
-    bgCls: 'bg-amber-600', tintCls: 'bg-[#D9770614]',
+    bgCls: 'bg-amber-600', textCls: 'text-amber-600', tintCls: 'bg-amber-600/10',
     icon: IconSod, runs: [7, 9, 8, 11, 6, 9, 10, 12, 9, 11, 10, 12],
     hoursPerRun: 16, lastRun: '2 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.RULESET_MAPPING, name: 'Ruleset Mapping', color: '#7C3AED',
-    bgCls: 'bg-violet-600', tintCls: 'bg-[#7C3AED14]',
+    bgCls: 'bg-violet-600', textCls: 'text-violet-600', tintCls: 'bg-violet-600/10',
     icon: IconRuleset, runs: [6, 8, 7, 9, 8, 5, 7, 9, 8, 6, 9, 8],
     hoursPerRun: 12, lastRun: '5 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.ORACLE_COMPARATOR, name: 'Oracle Role Comparison', color: '#16A34A',
-    bgCls: 'bg-green-600', tintCls: 'bg-[#16A34A14]',
+    bgCls: 'bg-green-600', textCls: 'text-green-600', tintCls: 'bg-green-600/10',
     icon: IconOracle, runs: [2, 0, 3, 1, 0, 2, 4, 1, 0, 2, 1, 2],
     hoursPerRun: 8, lastRun: 'Yesterday', status: 'operational' as const,
   },
   {
     route: ROUTES.ROLE_TESTING, name: 'Role Testing Bot', color: '#0284C7',
-    bgCls: 'bg-blue-600', tintCls: 'bg-[#0284C714]',
+    bgCls: 'bg-blue-600', textCls: 'text-blue-600', tintCls: 'bg-blue-600/10',
     icon: IconBot, runs: [0, 0, 0, 2, 4, 3, 5, 6, 4, 5, 6, 5],
     hoursPerRun: 4, lastRun: 'Yesterday', status: 'beta' as const,
   },
@@ -296,10 +296,10 @@ export default function Home() {
   const toolsByUsage = TOOLS.map((t, i) => ({ t, runs: windowRuns[i] })).sort((a, b) => b.runs - a.runs).map((x) => x.t)
 
   const kpis = [
-    { label: 'Total runs', value: totalRuns.toLocaleString(), unit: '', delta: '+4%', icon: Activity, accent: NAVY, tintCls: 'bg-[#0F1E3D14]', spark: MONTHLY_TOTALS.slice(from) },
-    { label: 'Hours saved', value: totalHours.toLocaleString(), unit: 'h', delta: '+8%', icon: Clock, accent: GREEN, tintCls: 'bg-[#16A34A14]', spark: MONTHLY_HOURS.slice(from) },
-    { label: 'Clients served', value: '18', unit: '', delta: '+6%', icon: Users, accent: NAVY, tintCls: 'bg-[#0F1E3D14]', spark: CLIENTS_SPARK.slice(from) },
-    { label: 'Revenue earned', value: '$420', unit: 'K', delta: '+8%', icon: DollarSign, accent: GOLD_DEEP, tintCls: 'bg-[#E8A90014]', spark: REVENUE_SPARK.slice(from) },
+    { label: 'Total runs', value: totalRuns.toLocaleString(), unit: '', delta: '+4%', icon: Activity, accent: NAVY, textCls: 'text-navy', tintCls: 'bg-navy/10', spark: MONTHLY_TOTALS.slice(from) },
+    { label: 'Hours saved', value: totalHours.toLocaleString(), unit: 'h', delta: '+8%', icon: Clock, accent: GREEN, textCls: 'text-green-600', tintCls: 'bg-green-600/10', spark: MONTHLY_HOURS.slice(from) },
+    { label: 'Clients served', value: '18', unit: '', delta: '+6%', icon: Users, accent: NAVY, textCls: 'text-navy', tintCls: 'bg-navy/10', spark: CLIENTS_SPARK.slice(from) },
+    { label: 'Revenue earned', value: '$420', unit: 'K', delta: '+8%', icon: DollarSign, accent: GOLD_DEEP, textCls: 'text-ey-yellow-hover', tintCls: 'bg-ey-yellow-hover/10', spark: REVENUE_SPARK.slice(from) },
   ]
 
   const exportReport = async () => {
@@ -360,7 +360,7 @@ export default function Home() {
                   {k.label}
                 </span>
                 <div className={`w-6 h-6 rounded-[7px] flex items-center justify-center ${k.tintCls}`}>
-                  <Icon size={13} color={k.accent} strokeWidth={2} />
+                  <Icon size={13} className={k.textCls} strokeWidth={2} />
                 </div>
               </div>
               <div className="mt-2">
@@ -453,7 +453,7 @@ export default function Home() {
                   onKeyDown={(e) => { if (e.key === 'Enter') navigate(t.route) }}
                   className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ease-[ease] ${isH ? 'bg-slate-50' : 'bg-transparent'}`}>
                   <div className={`w-[26px] h-[26px] rounded-[7px] flex items-center justify-center shrink-0 ${t.tintCls}`}>
-                    <Icon c={t.color} s={13} />
+                    <Icon cls={t.textCls} s={13} />
                   </div>
                   <span className="text-[12.5px] text-slate-900 flex-1 min-w-0 truncate">
                     {t.name}

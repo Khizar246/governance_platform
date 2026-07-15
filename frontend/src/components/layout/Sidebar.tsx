@@ -3,100 +3,100 @@ import { ROUTES } from '../../utils/constants'
 import { useAppStore } from '../../stores/useAppStore'
 
 const NAV_ITEMS = [
-  { to: ROUTES.HOME,                icon: IconHome,    label: 'Dashboard',            accent: '#E8A900' },
-  { to: ROUTES.RULESET_MAPPING,     icon: IconRuleset, label: 'Ruleset Mapping',      accent: '#7C3AED' },
-  { to: ROUTES.ORACLE_COMPARATOR,   icon: IconOracle,  label: 'Oracle Role Comparison', accent: '#16A34A' },
-  { to: ROUTES.SOD_SA,              icon: IconSod,     label: 'SOD & SA Analysis',    accent: '#D97706' },
-  { to: ROUTES.ROLE_TESTING,        icon: IconBot,     label: 'Role Testing Bot',     accent: '#0EA5E9' },
+  { to: ROUTES.HOME,                icon: IconHome,    label: 'Dashboard',            accent: 'text-ey-yellow-hover' },
+  { to: ROUTES.RULESET_MAPPING,     icon: IconRuleset, label: 'Ruleset Mapping',      accent: 'text-violet-600' },
+  { to: ROUTES.ORACLE_COMPARATOR,   icon: IconOracle,  label: 'Oracle Role Comparison', accent: 'text-green-600' },
+  { to: ROUTES.SOD_SA,              icon: IconSod,     label: 'SOD & SA Analysis',    accent: 'text-amber-600' },
+  { to: ROUTES.ROLE_TESTING,        icon: IconBot,     label: 'Role Testing Bot',     accent: 'text-blue-500' },
 ]
 
 const RESOURCE_ITEMS = [
-  { to: ROUTES.DOWNLOADS, icon: IconDownload, label: 'Downloads',   accent: '#0EA5E9' },
-  { to: ROUTES.ADMIN,     icon: IconAdmin,    label: 'Admin Panel', accent: '#64748B' },
+  { to: ROUTES.DOWNLOADS, icon: IconDownload, label: 'Downloads',   accent: 'text-blue-500' },
+  { to: ROUTES.ADMIN,     icon: IconAdmin,    label: 'Admin Panel', accent: 'text-slate-500' },
 ]
 
 // ── SVG Icons ────────────────────────────────────────────────────────────────
-function IconHome({ c, s }: { c: string; s: number }) {
+function IconHome({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke={c} strokeWidth="1.6"/>
-      <path d="M9 21V12h6v9" stroke={c} strokeWidth="1.6"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M3 9.5L12 3l9 6.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V9.5z" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M9 21V12h6v9" stroke="currentColor" strokeWidth="1.6"/>
     </svg>
   )
 }
-function IconOracle({ c, s }: { c: string; s: number }) {
+function IconOracle({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.6"/>
-      <path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="2" strokeLinecap="round"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
     </svg>
   )
 }
-function IconSod({ c, s }: { c: string; s: number }) {
+function IconSod({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 3l9 4.5v5c0 5-3.6 9.7-9 11-5.4-1.3-9-6-9-11V7.5L12 3z" stroke={c} strokeWidth="1.6"/>
-      <path d="M9 12l2 2 4-4" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M12 3l9 4.5v5c0 5-3.6 9.7-9 11-5.4-1.3-9-6-9-11V7.5L12 3z" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M9 12l2 2 4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
-function IconRuleset({ c, s }: { c: string; s: number }) {
+function IconRuleset({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/>
-      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/>
-      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke={c} strokeWidth="1.6"/>
-      <path d="M17.5 14v7M14 17.5h7" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <rect x="3" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+      <rect x="14" y="3" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+      <rect x="3" y="14" width="7" height="7" rx="1.5" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M17.5 14v7M14 17.5h7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
     </svg>
   )
 }
-function IconBot({ c, s }: { c: string; s: number }) {
+function IconBot({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="4" y="8" width="16" height="11" rx="2.5" stroke={c} strokeWidth="1.6"/>
-      <path d="M12 4v4" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
-      <circle cx="12" cy="3.5" r="1.3" stroke={c} strokeWidth="1.6"/>
-      <circle cx="9" cy="13" r="1.2" fill={c}/>
-      <circle cx="15" cy="13" r="1.2" fill={c}/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <rect x="4" y="8" width="16" height="11" rx="2.5" stroke="currentColor" strokeWidth="1.6"/>
+      <path d="M12 4v4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      <circle cx="12" cy="3.5" r="1.3" stroke="currentColor" strokeWidth="1.6"/>
+      <circle cx="9" cy="13" r="1.2" fill="currentColor"/>
+      <circle cx="15" cy="13" r="1.2" fill="currentColor"/>
     </svg>
   )
 }
-function IconChevron({ collapsed, c }: { collapsed: boolean; c: string }) {
+function IconChevron({ collapsed, cls }: { collapsed: boolean; cls: string }) {
   return (
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden
-      className={`transition-transform duration-[220ms] ${collapsed ? 'rotate-0' : 'rotate-180'}`}>
-      <path d="M9 6l6 6-6 6" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      className={`${cls} transition-transform duration-[220ms] ${collapsed ? 'rotate-0' : 'rotate-180'}`}>
+      <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
 }
-function IconDownload({ c, s }: { c: string; s: number }) {
+function IconDownload({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
     </svg>
   )
 }
-function IconAdmin({ c, s }: { c: string; s: number }) {
+function IconAdmin({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 6h16M4 12h16M4 18h16" stroke={c} strokeWidth="1.6" strokeLinecap="round"/>
-      <circle cx="9" cy="6" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
-      <circle cx="15" cy="12" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
-      <circle cx="8" cy="18" r="2" fill="#FFFFFF" stroke={c} strokeWidth="1.6"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/>
+      <circle cx="9" cy="6" r="2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.6"/>
+      <circle cx="15" cy="12" r="2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.6"/>
+      <circle cx="8" cy="18" r="2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.6"/>
     </svg>
   )
 }
-function IconLock({ c, s }: { c: string; s: number }) {
+function IconLock({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <rect x="3" y="11" width="18" height="11" rx="2" stroke={c} strokeWidth="1.5"/>
-      <path d="M7 11V7a5 5 0 0110 0v4" stroke={c} strokeWidth="1.5"/>
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <rect x="3" y="11" width="18" height="11" rx="2" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M7 11V7a5 5 0 0110 0v4" stroke="currentColor" strokeWidth="1.5"/>
     </svg>
   )
 }
 
-type NavItem = { to: string; icon: (p: { c: string; s: number }) => JSX.Element; label: string; accent: string }
+type NavItem = { to: string; icon: (p: { cls: string; s: number }) => JSX.Element; label: string; accent: string }
 
 function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]; collapsed: boolean }) {
   return (
@@ -125,7 +125,7 @@ function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]
                 <div
                   className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 transition-colors duration-[130ms] ${isActive ? 'bg-ey-yellow-hover' : 'bg-surface-panel'}`}
                 >
-                  <IconComp s={14} c={isActive ? '#FFFFFF' : '#64748B'} />
+                  <IconComp s={14} cls={isActive ? 'text-white' : 'text-slate-500'} />
                 </div>
                 {!collapsed && (
                   <span
@@ -187,14 +187,14 @@ export default function Sidebar() {
         {!collapsed && (
           <div className="flex gap-1.5 mb-2.5 flex-wrap">
             {[
-              { label: 'TLS 1.3', cls: 'bg-green-100 text-green-600', iconColor: '#16A34A' },
-              { label: 'SOC2',    cls: 'bg-blue-100 text-blue-600', iconColor: '#2563EB' },
-            ].map(({ label, cls, iconColor }) => (
+              { label: 'TLS 1.3', cls: 'bg-green-100 text-green-600', iconCls: 'text-green-600' },
+              { label: 'SOC2',    cls: 'bg-blue-100 text-blue-600', iconCls: 'text-blue-600' },
+            ].map(({ label, cls, iconCls }) => (
               <span
                 key={label}
                 className={`inline-flex items-center gap-1 px-[7px] py-0.5 rounded-[4px] text-[9.5px] font-semibold tracking-[0.04em] ${cls}`}
               >
-                <IconLock c={iconColor} s={9} /> {label}
+                <IconLock cls={iconCls} s={9} /> {label}
               </span>
             ))}
           </div>
@@ -218,7 +218,7 @@ export default function Sidebar() {
           onClick={() => setSidebarCollapsed(!collapsed)}
           className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] hover:bg-surface-panel ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
         >
-          <IconChevron collapsed={collapsed} c="#94A3B8" />
+          <IconChevron collapsed={collapsed} cls="text-slate-400" />
           {!collapsed && (
             <span className="text-[11.5px] text-slate-400">Collapse sidebar</span>
           )}

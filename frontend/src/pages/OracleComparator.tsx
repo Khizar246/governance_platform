@@ -318,13 +318,13 @@ export default function OracleComparator() {
       />
 
       <div className="mb-5">
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two Oracle environments — like Production and a test environment — and shows what's different between them. Pick RBAC (roles and privileges), DSP (data security policies), or Complete (both)." />
           <HelpStep num={2} text="Give each environment a short name, like 'Production' and 'UAT'. These names show up in the results so you know which side is which." />
           <HelpStep num={3} text="Export the files from Oracle Fusion and upload them. The tables below show exactly which columns each file needs. The tool checks for these columns as soon as you upload and will tell you right away if any are missing." />
           <HelpStep num={4} text="Click Run Comparison. The results show what exists only in Environment 1, only in Environment 2, and in both. Download the Excel report when you're done." />
           <div className="flex items-start gap-2 mb-[14px] px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
-            <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+            <Info size={13} className="text-blue-700 mt-0.5 shrink-0" />
             <span className="text-[12.5px] text-blue-700 leading-[1.5]">
               In most cases, the files you export directly from Oracle Fusion already match the format below — you can upload them as-is without any changes.
             </span>

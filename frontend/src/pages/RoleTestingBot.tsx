@@ -129,13 +129,13 @@ export default function RoleTestingBot() {
         subtitle="Drive Oracle Fusion Cloud and capture a screenshot of every Navigator work area."
       />
 
-      <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#0EA5E9" />} accentColor="#0EA5E9">
+      <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-500" />} accentColor="#0EA5E9">
         <HelpStep num={1} text="Type in the Oracle Cloud web address, your username, and your password." />
         <HelpStep num={2} text="Click Start. The tool opens a browser in the background, signs in for you, and visits every work area in the Navigator menu one by one." />
         <HelpStep num={3} text="For each work area, it takes a screenshot and opens the Tasks panel if there is one, so you can see what actions are available." />
         <HelpStep num={4} text="When it's done, review the screenshots on the results page and download them all as one ZIP file." />
         <div className="flex items-start gap-2 mt-2 px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
-          <Lock size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+          <Lock size={13} className="text-blue-700 mt-0.5 shrink-0" />
           <span className="text-[12.5px] text-blue-700 leading-[1.5]">
             Your username and password are used only for this one run. They are never stored, logged, or saved anywhere.
           </span>
@@ -439,7 +439,7 @@ function Lightbox({ shot, jobId, onClose }: { shot: CapturedScreenshot; jobId: s
 function EmptyGallery({ onReset }: { onReset: () => void }) {
   return (
     <div className="bg-white border border-slate-200 rounded-lg px-6 py-12 text-center">
-      <ImageOff size={36} color="#94A3B8" className="mx-auto mb-3" />
+      <ImageOff size={36} className="text-slate-400 mx-auto mb-3" />
       <h3 className="font-serif text-[16px] font-semibold text-navy mb-1.5">No screenshots captured</h3>
       <p className="text-[13px] text-slate-500 mb-4">The run finished without capturing any work areas.</p>
       <button onClick={onReset} className="px-[18px] py-[9px] rounded border-none bg-navy text-ey-yellow text-[13px] font-semibold cursor-pointer">
@@ -455,7 +455,7 @@ function ErrorCard({ errors, onRetry }: { errors: string[]; onRetry: () => void 
   return (
     <div className="bg-white border border-red-300 rounded-lg p-6 max-w-[560px]">
       <div className="flex items-center gap-2.5 mb-3">
-        <AlertTriangle size={20} color="#DC2626" />
+        <AlertTriangle size={20} className="text-red-600" />
         <h3 className="font-serif text-[16px] font-semibold text-navy">The run failed</h3>
       </div>
       <ul className="m-0 mb-4 pl-[18px]">

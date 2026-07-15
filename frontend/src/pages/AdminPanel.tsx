@@ -68,29 +68,29 @@ function KpiCard({ label, value, sub, accent }: { label: string; value: string; 
 }
 
 // ── Icons ────────────────────────────────────────────────────────────────────
-function IconAdmin({ c, s }: { c: string; s: number }) {
+function IconAdmin({ cls, s }: { cls?: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M4 6h16M4 12h16M4 18h16" stroke={c} strokeWidth="1.6" strokeLinecap="round" />
-      <circle cx="9" cy="6" r="2" fill="#0F1E3D" stroke={c} strokeWidth="1.6" />
-      <circle cx="15" cy="12" r="2" fill="#0F1E3D" stroke={c} strokeWidth="1.6" />
-      <circle cx="8" cy="18" r="2" fill="#0F1E3D" stroke={c} strokeWidth="1.6" />
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M4 6h16M4 12h16M4 18h16" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+      <circle cx="9" cy="6" r="2" fill="#0F1E3D" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="15" cy="12" r="2" fill="#0F1E3D" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="8" cy="18" r="2" fill="#0F1E3D" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   )
 }
-function IconZip({ c, s }: { c: string; s: number }) {
+function IconZip({ cls, s }: { cls?: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" stroke={c} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke={c} strokeWidth="1.6" strokeLinecap="round" />
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M12 3v10m0 0l-3.5-3.5M12 13l3.5-3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   )
 }
-function IconSearch({ c, s }: { c: string; s: number }) {
+function IconSearch({ cls, s }: { cls?: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <circle cx="11" cy="11" r="7" stroke={c} strokeWidth="1.6" />
-      <path d="M20 20l-3.5-3.5" stroke={c} strokeWidth="2" strokeLinecap="round" />
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <circle cx="11" cy="11" r="7" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M20 20l-3.5-3.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
     </svg>
   )
 }
@@ -166,7 +166,7 @@ export default function AdminPanel() {
   return (
     <div>
       <PageHeader
-        icon={<IconAdmin c="#FFD100" s={20} />}
+        icon={<IconAdmin cls="text-ey-yellow" s={20} />}
         title="Admin Panel"
         subtitle="Tool usage records, project assignments and SOD revenue tracking."
       />
@@ -184,7 +184,7 @@ export default function AdminPanel() {
       <div className="flex gap-2.5 flex-wrap items-center mb-[14px]">
         <div className="relative flex-1 min-w-[240px] max-w-[360px]">
           <span className="absolute left-[11px] top-1/2 -translate-y-1/2">
-            <IconSearch c="#94A3B8" s={15} />
+            <IconSearch cls="text-slate-400" s={15} />
           </span>
           <input
             value={search}
@@ -251,7 +251,7 @@ export default function AdminPanel() {
                         title={`Download ${r.files} file(s) as ZIP`}
                         className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-slate-200 bg-white text-navy text-[11.5px] font-semibold no-underline transition-all duration-[130ms] hover:bg-navy hover:text-ey-yellow hover:border-navy"
                       >
-                        <IconZip c="currentColor" s={14} /> ZIP
+                        <IconZip s={14} /> ZIP
                       </a>
                     </td>
                   </tr>

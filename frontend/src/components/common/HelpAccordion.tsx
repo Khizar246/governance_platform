@@ -75,11 +75,11 @@ interface HelpAccordionProps {
   children: React.ReactNode
 }
 
-// Tailwind needs statically analyzable class literals, so the accentColor + '18'
-// tint is precomputed per accent hex actually passed by call sites.
+// Tailwind needs statically analyzable class literals, so the ~9% tint is
+// precomputed per accent hex actually passed by call sites.
 const ACCENT_TINT: Record<string, string> = {
-  '#2563EB': 'bg-[#2563EB18]',
-  '#0EA5E9': 'bg-[#0EA5E918]',
+  '#2563EB': 'bg-blue-600/10',
+  '#0EA5E9': 'bg-blue-500/10',
 }
 
 export default function HelpAccordion({ title, icon, accentColor, children }: HelpAccordionProps) {
@@ -96,8 +96,7 @@ export default function HelpAccordion({ title, icon, accentColor, children }: He
         <span className="text-[13px] font-semibold text-navy flex-1 text-left">{title}</span>
         <ChevronDown
           size={16}
-          color="#64748B"
-          className={`shrink-0 transition-transform duration-[220ms] ${open ? 'rotate-180' : 'rotate-0'}`}
+          className={`text-slate-500 shrink-0 transition-transform duration-[220ms] ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (

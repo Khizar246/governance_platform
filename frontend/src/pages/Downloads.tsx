@@ -39,9 +39,9 @@ interface ToolTemplateGroup {
 const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   {
     tool: 'Ruleset Mapping',
-    accent: '#7C3AED',
-    tintCls: 'bg-[#7C3AED15]',
-    icon: <GitMerge size={16} color="#7C3AED" />,
+    accent: 'text-violet-600',
+    tintCls: 'bg-violet-600/10',
+    icon: <GitMerge size={16} className="text-violet-600" />,
     description: 'Client and EY ruleset files for control mapping.',
     files: [
       {
@@ -60,9 +60,9 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   },
   {
     tool: 'Oracle Comparator',
-    accent: '#16A34A',
-    tintCls: 'bg-[#16A34A15]',
-    icon: <Search size={16} color="#16A34A" />,
+    accent: 'text-green-600',
+    tintCls: 'bg-green-600/10',
+    icon: <Search size={16} className="text-green-600" />,
     description: 'RBAC and DSP export formats for environment comparison.',
     note: 'These templates are for reference only. If you already have RBAC or DSP extracts from Oracle Fusion, you can upload them directly — no need to reformat them to match the template.',
     files: [
@@ -82,9 +82,9 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   },
   {
     tool: 'SOD & SA Analysis',
-    accent: '#D97706',
-    tintCls: 'bg-[#D9770615]',
-    icon: <Shield size={16} color="#D97706" />,
+    accent: 'text-amber-600',
+    tintCls: 'bg-amber-600/10',
+    icon: <Shield size={16} className="text-amber-600" />,
     description: 'Input files for role-level and user-level SoD / SA analysis.',
     files: [
       {
@@ -123,20 +123,20 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
 
 // ── Icons (page header / reference cards) ─────────────────────────────────
 
-function IconFile({ c, s }: { c: string; s: number }) {
+function IconFile({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" stroke={c} strokeWidth="1.6" strokeLinejoin="round" />
-      <path d="M14 3v5h5" stroke={c} strokeWidth="1.6" strokeLinejoin="round" />
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8l-5-5z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M14 3v5h5" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
     </svg>
   )
 }
 
-function IconDownload({ c, s }: { c: string; s: number }) {
+function IconDownload({ cls, s }: { cls: string; s: number }) {
   return (
-    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden>
-      <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke={c} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke={c} strokeWidth="1.7" strokeLinecap="round" />
+    <svg width={s} height={s} viewBox="0 0 24 24" fill="none" aria-hidden className={cls}>
+      <path d="M12 3v12m0 0l-4-4m4 4l4-4" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   )
 }
@@ -161,7 +161,7 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
       download={file.filename}
       className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-slate-200 no-underline bg-white transition-[background,border-color] duration-[120ms] hover:bg-amber-50 hover:border-ey-yellow"
     >
-      <FileSpreadsheet size={16} color={accent} className="shrink-0" />
+      <FileSpreadsheet size={16} className={`${accent} shrink-0`} />
       <div className="flex-1 min-w-0">
         <div className="text-[13px] font-medium text-slate-700">{file.name}</div>
         <div className="text-[11.5px] text-slate-400 leading-[1.4]">{file.description}</div>
@@ -169,7 +169,7 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
       <code className="text-[10px] bg-surface-panel px-[7px] py-0.5 rounded-[3px] text-slate-500 font-mono shrink-0">
         XLSX
       </code>
-      <Download size={14} color="#0F1E3D" className="shrink-0" />
+      <Download size={14} className="text-navy shrink-0" />
     </a>
   )
 }
@@ -194,15 +194,14 @@ function TemplateAccordion({ group }: { group: ToolTemplateGroup }) {
         </span>
         <ChevronDown
           size={16}
-          color="#64748B"
-          className={`transition-transform duration-[220ms] shrink-0 ${open ? 'rotate-180' : 'rotate-0'}`}
+          className={`text-slate-500 transition-transform duration-[220ms] shrink-0 ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (
         <div className="pt-[14px] px-4 pb-4 border-t border-slate-200">
           {group.note && (
             <div className="flex items-start gap-2 mb-3 px-3 py-[9px] rounded-[7px] bg-blue-50 border border-blue-200">
-              <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+              <Info size={13} className="text-blue-700 mt-0.5 shrink-0" />
               <span className="text-[12.5px] text-blue-700 leading-[1.5]">{group.note}</span>
             </div>
           )}
@@ -223,7 +222,7 @@ export default function Downloads() {
   return (
     <div>
       <PageHeader
-        icon={<IconDownload c="#FFD100" s={20} />}
+        icon={<IconDownload cls="text-ey-yellow" s={20} />}
         title="Downloads"
         subtitle="One place for every file — standard EY reference files and blank templates for each tool."
       />
@@ -242,7 +241,7 @@ export default function Downloads() {
             >
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-[9px] bg-surface-panel flex items-center justify-center shrink-0">
-                  <IconFile c="#0F1E3D" s={20} />
+                  <IconFile cls="text-navy" s={20} />
                 </div>
                 <div className="min-w-0">
                   <div className="text-[14px] font-semibold text-navy">{item.name}</div>
@@ -257,7 +256,7 @@ export default function Downloads() {
                 download={item.filename}
                 className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-navy text-ey-yellow text-[13px] font-semibold no-underline transition-colors duration-[130ms] hover:bg-navy-mid"
               >
-                <IconDownload c="#FFD100" s={15} /> Download
+                <IconDownload cls="text-ey-yellow" s={15} /> Download
               </a>
             </div>
           ))}

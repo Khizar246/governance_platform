@@ -314,7 +314,7 @@ export default function RulesetMapping() {
       />
 
       <div className="mb-5">
-        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} color="#2563EB" />} accentColor="#2563EB">
+        <HelpAccordion title="How to Use This Tool" icon={<Info size={14} className="text-blue-600" />} accentColor="#2563EB">
           <HelpStep num={1} text="This tool compares two ruleset files — one from your Client and one from EY — and matches up their controls. Download the two blank template files from the Downloads page (sidebar → Resources) and fill them in first." />
           <HelpStep num={2} text="Each file needs these 3 sheets. The table below shows every column each sheet needs — Required columns must be present or the upload will fail; Optional columns can be left out and the mapping will still run." />
           <HelpStep num={3} text="Upload both files, then click Validate & Preview. If anything is missing, the tool tells you exactly what and where — fix it and upload again." />
