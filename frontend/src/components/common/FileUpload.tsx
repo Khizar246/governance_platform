@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react'
+import { useCallback, useRef, type CSSProperties } from 'react'
 import { useDropzone } from 'react-dropzone'
 import { Upload, CheckCircle2, XCircle, X, FileText } from 'lucide-react'
 import { clsx } from 'clsx'
@@ -126,8 +126,8 @@ export default function FileUpload({
         </div>
         <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
           <div
-            className="h-full rounded-full transition-[width] duration-300 ease-out"
-            style={{ width: `${progress}%`, background: '#FFD100' }}
+            className="h-full rounded-full transition-[width] duration-300 ease-out bg-[#FFD100] w-[var(--w)]"
+            style={{ '--w': `${progress}%` } as CSSProperties}
           />
         </div>
         {fileInfo && (
@@ -151,7 +151,7 @@ export default function FileUpload({
       <input {...getInputProps()} />
 
       <div
-        style={{ width: 36, height: 36, background: '#F0EFE9', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 10px' }}
+        className="w-9 h-9 bg-[#F0EFE9] rounded flex items-center justify-center mt-0 mx-auto mb-[10px]"
       >
         <Upload
           size={18}
