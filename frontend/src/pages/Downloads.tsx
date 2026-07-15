@@ -29,6 +29,7 @@ const REFERENCE_FILES: DownloadItem[] = [
 interface ToolTemplateGroup {
   tool: string
   accent: string
+  tintCls: string
   icon: React.ReactNode
   description: string
   note?: string
@@ -39,6 +40,7 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   {
     tool: 'Ruleset Mapping',
     accent: '#7C3AED',
+    tintCls: 'bg-[#7C3AED15]',
     icon: <GitMerge size={16} color="#7C3AED" />,
     description: 'Client and EY ruleset files for control mapping.',
     files: [
@@ -59,6 +61,7 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   {
     tool: 'Oracle Comparator',
     accent: '#16A34A',
+    tintCls: 'bg-[#16A34A15]',
     icon: <Search size={16} color="#16A34A" />,
     description: 'RBAC and DSP export formats for environment comparison.',
     note: 'These templates are for reference only. If you already have RBAC or DSP extracts from Oracle Fusion, you can upload them directly — no need to reformat them to match the template.',
@@ -80,6 +83,7 @@ const TEMPLATE_GROUPS: ToolTemplateGroup[] = [
   {
     tool: 'SOD & SA Analysis',
     accent: '#D97706',
+    tintCls: 'bg-[#D9770615]',
     icon: <Shield size={16} color="#D97706" />,
     description: 'Input files for role-level and user-level SoD / SA analysis.',
     files: [
@@ -141,17 +145,11 @@ function IconDownload({ c, s }: { c: string; s: number }) {
 
 function SectionHeader({ title, subtitle }: { title: string; subtitle: string }) {
   return (
-    <div style={{ marginBottom: 12 }}>
-      <div
-        style={{
-          fontSize: 10.5, fontWeight: 600, color: '#94A3B8',
-          textTransform: 'uppercase', letterSpacing: '0.12em',
-          marginBottom: 3,
-        }}
-      >
+    <div className="mb-3">
+      <div className="text-[10.5px] font-semibold text-[#94A3B8] uppercase tracking-[0.12em] mb-[3px]">
         {title}
       </div>
-      <p style={{ fontSize: 12.5, color: '#64748B', lineHeight: 1.5 }}>{subtitle}</p>
+      <p className="text-[12.5px] text-[#64748B] leading-[1.5]">{subtitle}</p>
     </div>
   )
 }
@@ -161,14 +159,7 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
     <a
       href={file.href}
       download={file.filename}
-      style={{
-        display: 'flex', alignItems: 'center', gap: 11,
-        padding: '9px 12px', borderRadius: 8,
-        border: '1px solid #E2E8F0',
-        textDecoration: 'none',
-        background: '#FFFFFF',
-        transition: 'background 0.12s, border-color 0.12s',
-      }}
+      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-[#E2E8F0] no-underline bg-white transition-[background,border-color] duration-[120ms]"
       onMouseEnter={(e) => {
         e.currentTarget.style.background = '#FFFBEB'
         e.currentTarget.style.borderColor = '#FFD100'
@@ -178,20 +169,15 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
         e.currentTarget.style.borderColor = '#E2E8F0'
       }}
     >
-      <FileSpreadsheet size={16} color={accent} style={{ flexShrink: 0 }} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 500, color: '#334155' }}>{file.name}</div>
-        <div style={{ fontSize: 11.5, color: '#94A3B8', lineHeight: 1.4 }}>{file.description}</div>
+      <FileSpreadsheet size={16} color={accent} className="shrink-0" />
+      <div className="flex-1 min-w-0">
+        <div className="text-[13px] font-medium text-[#334155]">{file.name}</div>
+        <div className="text-[11.5px] text-[#94A3B8] leading-[1.4]">{file.description}</div>
       </div>
-      <code
-        style={{
-          fontSize: 10, background: '#F0EFE9', padding: '2px 7px', borderRadius: 3,
-          color: '#64748B', fontFamily: 'monospace', flexShrink: 0,
-        }}
-      >
+      <code className="text-[10px] bg-[#F0EFE9] px-[7px] py-0.5 rounded-[3px] text-[#64748B] font-mono shrink-0">
         XLSX
       </code>
-      <Download size={14} color="#0F1E3D" style={{ flexShrink: 0 }} />
+      <Download size={14} color="#0F1E3D" className="shrink-0" />
     </a>
   )
 }
@@ -199,63 +185,36 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
 function TemplateAccordion({ group }: { group: ToolTemplateGroup }) {
   const [open, setOpen] = useState(false)
   return (
-    <div style={{ border: '1px solid #E2E8F0', borderRadius: 12, overflow: 'hidden', background: '#FFFFFF' }}>
+    <div className="border border-[#E2E8F0] rounded-lg overflow-hidden bg-white">
       <button
         onClick={() => setOpen((o) => !o)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center', gap: 12,
-          padding: '14px 16px',
-          background: open ? '#F7F6F3' : 'transparent',
-          border: 'none', cursor: 'pointer',
-          fontFamily: "'DM Sans', sans-serif",
-          transition: 'background 0.15s',
-          textAlign: 'left',
-        }}
+        className={`w-full flex items-center gap-3 py-[14px] px-4 border-none cursor-pointer font-sans transition-colors duration-150 text-left ${open ? 'bg-[#F7F6F3]' : 'bg-transparent'}`}
       >
-        <div
-          style={{
-            width: 34, height: 34, borderRadius: 8,
-            background: group.accent + '15',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}
-        >
+        <div className={`w-[34px] h-[34px] rounded flex items-center justify-center shrink-0 ${group.tintCls}`}>
           {group.icon}
         </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#0F1E3D' }}>{group.tool}</div>
-          <div style={{ fontSize: 11.5, color: '#94A3B8' }}>{group.description}</div>
+        <div className="flex-1 min-w-0">
+          <div className="text-[14px] font-semibold text-[#0F1E3D]">{group.tool}</div>
+          <div className="text-[11.5px] text-[#94A3B8]">{group.description}</div>
         </div>
-        <span
-          style={{
-            fontSize: 11, fontWeight: 600, color: '#64748B',
-            background: '#F0EFE9', padding: '3px 9px', borderRadius: 999,
-            flexShrink: 0, whiteSpace: 'nowrap',
-          }}
-        >
+        <span className="text-[11px] font-semibold text-[#64748B] bg-[#F0EFE9] px-[9px] py-[3px] rounded-full shrink-0 whitespace-nowrap">
           {group.files.length} {group.files.length === 1 ? 'template' : 'templates'}
         </span>
         <ChevronDown
           size={16}
           color="#64748B"
-          style={{ transform: open ? 'rotate(180deg)' : 'rotate(0deg)', transition: 'transform 0.22s', flexShrink: 0 }}
+          className={`transition-transform duration-[220ms] shrink-0 ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (
-        <div style={{ padding: '14px 16px 16px', borderTop: '1px solid #F1F0EA' }}>
+        <div className="pt-[14px] px-4 pb-4 border-t border-[#F1F0EA]">
           {group.note && (
-            <div
-              style={{
-                display: 'flex', alignItems: 'flex-start', gap: 8,
-                marginBottom: 12, padding: '9px 12px', borderRadius: 7,
-                background: '#F0F9FF', border: '1px solid #BAE6FD',
-              }}
-            >
-              <Info size={13} color="#0369A1" style={{ marginTop: 2, flexShrink: 0 }} />
-              <span style={{ fontSize: 12.5, color: '#0369A1', lineHeight: 1.5 }}>{group.note}</span>
+            <div className="flex items-start gap-2 mb-3 px-3 py-[9px] rounded-[7px] bg-[#F0F9FF] border border-[#BAE6FD]">
+              <Info size={13} color="#0369A1" className="mt-0.5 shrink-0" />
+              <span className="text-[12.5px] text-[#0369A1] leading-[1.5]">{group.note}</span>
             </div>
           )}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="flex flex-col gap-2">
             {group.files.map((file) => (
               <TemplateRow key={file.filename} file={file} accent={group.accent} />
             ))}
@@ -278,70 +237,33 @@ export default function Downloads() {
       />
 
       {/* ── EY Reference Files ── */}
-      <div style={{ marginBottom: 28 }}>
+      <div className="mb-7">
         <SectionHeader
           title="EY Reference Files"
           subtitle="Ready-to-use standard files maintained by EY — download and use them as-is."
         />
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))',
-            gap: 16,
-          }}
-        >
+        <div className="grid [grid-template-columns:repeat(auto-fit,minmax(320px,1fr))] gap-4">
           {REFERENCE_FILES.map((item) => (
             <div
               key={item.filename}
-              style={{
-                background: '#FFFFFF',
-                border: '1px solid #E2E8F0',
-                borderRadius: 12,
-                padding: 20,
-                display: 'flex',
-                flexDirection: 'column',
-                gap: 14,
-              }}
+              className="bg-white border border-[#E2E8F0] rounded-lg p-5 flex flex-col gap-[14px]"
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                <div
-                  style={{
-                    width: 40, height: 40,
-                    borderRadius: 9,
-                    background: '#F0EFE9',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    flexShrink: 0,
-                  }}
-                >
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-[9px] bg-[#F0EFE9] flex items-center justify-center shrink-0">
                   <IconFile c="#0F1E3D" s={20} />
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 600, color: '#0F1E3D' }}>{item.name}</div>
-                  <div style={{ fontSize: 11, color: '#94A3B8', fontFamily: 'monospace' }}>{item.filename}</div>
+                <div className="min-w-0">
+                  <div className="text-[14px] font-semibold text-[#0F1E3D]">{item.name}</div>
+                  <div className="text-[11px] text-[#94A3B8] font-mono">{item.filename}</div>
                 </div>
               </div>
 
-              <p style={{ fontSize: 12.5, color: '#64748B', lineHeight: 1.5, flex: 1 }}>{item.description}</p>
+              <p className="text-[12.5px] text-[#64748B] leading-[1.5] flex-1">{item.description}</p>
 
               <a
                 href={item.href}
                 download={item.filename}
-                style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  padding: '9px 14px',
-                  borderRadius: 8,
-                  background: '#0F1E3D',
-                  color: '#FFD100',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  textDecoration: 'none',
-                  transition: 'background 0.13s',
-                }}
+                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-[#0F1E3D] text-[#FFD100] text-[13px] font-semibold no-underline transition-colors duration-[130ms]"
                 onMouseEnter={(e) => { e.currentTarget.style.background = '#16294F' }}
                 onMouseLeave={(e) => { e.currentTarget.style.background = '#0F1E3D' }}
               >
@@ -358,7 +280,7 @@ export default function Downloads() {
           title="Tool Templates"
           subtitle={'Blank templates with the correct column headers and a "How to Fill Data" guide sheet pre-filled. Expand a tool to see its templates.'}
         />
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {TEMPLATE_GROUPS.map((group) => (
             <TemplateAccordion key={group.tool} group={group} />
           ))}
