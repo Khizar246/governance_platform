@@ -6,11 +6,10 @@ import { toast } from 'sonner'
 import { ROUTES } from '../utils/constants'
 
 // ── Palette (chart series colors validated: CVD ΔE ≥ 12, contrast ≥ 3:1 on white) ──
+// Hex constants are kept only where SVG attributes / component props need them.
 const NAVY = '#0F1E3D'
-const INK = '#0F172A'
 const SEC = '#64748B'
 const TER = '#94A3B8'
-const BORDER = '#E2E8F0'
 const GOLD_DEEP = '#E8A900'
 const GREEN = '#16A34A'
 
@@ -34,21 +33,25 @@ const MONTHS = ['Aug', 'Sep', 'Oct', 'Nov', 'Dec', 'Jan', 'Feb', 'Mar', 'Apr', '
 const TOOLS = [
   {
     route: ROUTES.SOD_SA, name: 'SOD & SA Analysis', color: '#D97706',
+    bgCls: 'bg-[#D97706]', tintCls: 'bg-[#D9770614]',
     icon: IconSod, runs: [7, 9, 8, 11, 6, 9, 10, 12, 9, 11, 10, 12],
     hoursPerRun: 16, lastRun: '2 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.RULESET_MAPPING, name: 'Ruleset Mapping', color: '#7C3AED',
+    bgCls: 'bg-[#7C3AED]', tintCls: 'bg-[#7C3AED14]',
     icon: IconRuleset, runs: [6, 8, 7, 9, 8, 5, 7, 9, 8, 6, 9, 8],
     hoursPerRun: 12, lastRun: '5 h ago', status: 'operational' as const,
   },
   {
     route: ROUTES.ORACLE_COMPARATOR, name: 'Oracle Role Comparison', color: '#16A34A',
+    bgCls: 'bg-[#16A34A]', tintCls: 'bg-[#16A34A14]',
     icon: IconOracle, runs: [2, 0, 3, 1, 0, 2, 4, 1, 0, 2, 1, 2],
     hoursPerRun: 8, lastRun: 'Yesterday', status: 'operational' as const,
   },
   {
     route: ROUTES.ROLE_TESTING, name: 'Role Testing Bot', color: '#0284C7',
+    bgCls: 'bg-[#0284C7]', tintCls: 'bg-[#0284C714]',
     icon: IconBot, runs: [0, 0, 0, 2, 4, 3, 5, 6, 4, 5, 6, 5],
     hoursPerRun: 4, lastRun: 'Yesterday', status: 'beta' as const,
   },
@@ -60,23 +63,19 @@ const CLIENTS_SPARK = [14, 15, 15, 16, 15, 16, 17, 16, 17, 18, 17, 18]
 const REVENUE_SPARK = [310, 325, 318, 340, 332, 348, 355, 370, 362, 381, 390, 420]
 
 const STATUS_BADGE = {
-  operational: { label: 'Operational', bg: '#DCFCE7', color: '#15803D' },
-  beta: { label: 'Beta', bg: '#E0F2FE', color: '#0369A1' },
-  degraded: { label: 'Degraded', bg: '#FEF3C7', color: '#B45309' },
+  operational: { label: 'Operational', cls: 'bg-[#DCFCE7] text-[#15803D]' },
+  beta: { label: 'Beta', cls: 'bg-[#E0F2FE] text-[#0369A1]' },
+  degraded: { label: 'Degraded', cls: 'bg-[#FEF3C7] text-[#B45309]' },
 }
 
-const CARD: React.CSSProperties = {
-  background: '#FFFFFF',
-  border: `1px solid ${BORDER}`,
-  borderRadius: 12,
-  boxShadow: '0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04)',
-}
+// shadow-card matches the old inline boxShadow exactly (see tailwind.config.ts)
+const CARD_CLASS = 'bg-white border border-[#E2E8F0] rounded-lg shadow-card'
 
 function CardTitle({ title, sub }: { title: string; sub?: string }) {
   return (
     <div>
-      <h2 style={{ fontSize: 13.5, fontWeight: 600, color: INK }}>{title}</h2>
-      {sub && <p style={{ fontSize: 11.5, color: SEC, marginTop: 1 }}>{sub}</p>}
+      <h2 className="text-[13.5px] font-semibold text-[#0F172A]">{title}</h2>
+      {sub && <p className="text-[11.5px] text-[#64748B] mt-px">{sub}</p>}
     </div>
   )
 }
@@ -98,7 +97,7 @@ function Sparkline({ data, color, w = 70, h = 24 }: { data: number[]; color: str
   )
 }
 
-function ToolUsageChart({ months, series, height = 152 }: { months: string[]; series: { name: string; color: string; data: number[] }[]; height?: number }) {
+function ToolUsageChart({ months, series, height = 152 }: { months: string[]; series: { name: string; color: string; bgCls: string; data: number[] }[]; height?: number }) {
   const wrapRef = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(420)
   const [hover, setHover] = useState<number | null>(null)
@@ -130,8 +129,8 @@ function ToolUsageChart({ months, series, height = 152 }: { months: string[]; se
   }
 
   return (
-    <div ref={wrapRef} style={{ position: 'relative' }}>
-      <svg width={w} height={H} role="img" aria-label="Runs per month by tool" style={{ display: 'block' }}
+    <div ref={wrapRef} className="relative">
+      <svg width={w} height={H} role="img" aria-label="Runs per month by tool" className="block"
         onMouseMove={onMove} onMouseLeave={() => setHover(null)}>
         {ticks.map((t) => (
           <g key={t}>
@@ -158,18 +157,16 @@ function ToolUsageChart({ months, series, height = 152 }: { months: string[]; se
         })}
       </svg>
       {hover !== null && (
-        <div style={{
-          position: 'absolute', top: 2, pointerEvents: 'none',
-          left: Math.min(Math.max(xOf(hover), 105), w - 105), transform: 'translateX(-50%)',
-          background: '#FFFFFF', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '7px 9px',
-          boxShadow: '0 10px 15px rgba(0,0,0,0.08), 0 4px 6px rgba(0,0,0,0.05)', minWidth: 186,
-        }}>
-          <div style={{ fontSize: 10.5, fontWeight: 600, color: SEC, marginBottom: 4 }}>{months[hover]}</div>
+        <div
+          className="absolute top-0.5 pointer-events-none left-[var(--tt-left)] -translate-x-1/2 bg-white border border-[#E2E8F0] rounded px-[9px] py-[7px] shadow-lg min-w-[186px]"
+          style={{ '--tt-left': `${Math.min(Math.max(xOf(hover), 105), w - 105)}px` } as React.CSSProperties}
+        >
+          <div className="text-[10.5px] font-semibold text-[#64748B] mb-1">{months[hover]}</div>
           {series.map((s) => (
-            <div key={s.name} style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 2 }}>
-              <span style={{ width: 7, height: 7, borderRadius: '50%', background: s.color, flexShrink: 0 }} />
-              <span style={{ fontSize: 11, color: '#334155', flex: 1 }}>{s.name}</span>
-              <span style={{ fontSize: 11, fontWeight: 600, color: INK, fontVariantNumeric: 'tabular-nums' }}>{s.data[hover]}</span>
+            <div key={s.name} className="flex items-center gap-1.5 mt-0.5">
+              <span className={`w-[7px] h-[7px] rounded-full shrink-0 ${s.bgCls}`} />
+              <span className="text-[11px] text-[#334155] flex-1">{s.name}</span>
+              <span className="text-[11px] font-semibold text-[#0F172A] tabular-nums">{s.data[hover]}</span>
             </div>
           ))}
         </div>
@@ -178,7 +175,7 @@ function ToolUsageChart({ months, series, height = 152 }: { months: string[]; se
   )
 }
 
-function HoursDonut({ items, total }: { items: { name: string; color: string; hours: number }[]; total: number }) {
+function HoursDonut({ items, total }: { items: { name: string; color: string; bgCls: string; hours: number }[]; total: number }) {
   const [active, setActive] = useState<number | null>(null)
   const size = 110, stroke = 17
   const r = (size - stroke) / 2
@@ -199,30 +196,30 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; ho
   }, [items, total, cx, cy, r])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, flex: 1, justifyContent: 'center' }}>
-      <div style={{ position: 'relative', width: size, height: size }}>
+    <div className="flex flex-col items-center gap-2.5 flex-1 justify-center">
+      <div className="relative w-[110px] h-[110px]">
         <svg width={size} height={size} role="img" aria-label="Hours saved per tool">
           {arcs.map((a, i) => (
             <path key={items[i].name} d={a.d} fill="none" stroke={items[i].color} strokeWidth={stroke}
-              opacity={active === null || active === i ? 1 : 0.35} style={{ transition: 'opacity 150ms ease' }}
+              opacity={active === null || active === i ? 1 : 0.35} className="transition-opacity duration-150 ease-[ease]"
               onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)} />
           ))}
         </svg>
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none' }}>
-          <span style={{ fontFamily: "'Lora', serif", fontSize: 19, fontWeight: 600, color: NAVY, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+        <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+          <span className="font-serif text-[19px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
             {total.toLocaleString()}
           </span>
-          <span style={{ fontSize: 8.5, fontWeight: 600, color: TER, letterSpacing: '0.08em', marginTop: 2 }}>HRS</span>
+          <span className="text-[8.5px] font-semibold text-[#94A3B8] tracking-[0.08em] mt-0.5">HRS</span>
         </div>
       </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, width: '100%' }}>
+      <div className="flex flex-col gap-2 w-full">
         {items.map((it, i) => (
           <div key={it.name} onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)}
-            style={{ display: 'flex', alignItems: 'center', gap: 6, opacity: active === null || active === i ? 1 : 0.45, transition: 'opacity 150ms ease' }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: it.color, flexShrink: 0 }} />
-            <span style={{ fontSize: 11, color: '#334155', flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
-            <span style={{ fontSize: 11.5, fontWeight: 600, color: INK, fontVariantNumeric: 'tabular-nums' }}>{it.hours.toLocaleString()}h</span>
-            <span style={{ fontSize: 10, color: TER, width: 26, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
+            className={`flex items-center gap-1.5 transition-opacity duration-150 ease-[ease] ${active === null || active === i ? 'opacity-100' : 'opacity-[0.45]'}`}>
+            <span className={`w-2 h-2 rounded-full shrink-0 ${it.bgCls}`} />
+            <span className="text-[11px] text-[#334155] flex-1 min-w-0 truncate">{it.name}</span>
+            <span className="text-[11.5px] font-semibold text-[#0F172A] tabular-nums">{it.hours.toLocaleString()}h</span>
+            <span className="text-[10px] text-[#94A3B8] w-[26px] text-right tabular-nums">
               {Math.round((it.hours / total) * 100)}%
             </span>
           </div>
@@ -232,33 +229,39 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; ho
   )
 }
 
-function MostUsedBars({ items }: { items: { name: string; color: string; runs: number }[] }) {
+function MostUsedBars({ items }: { items: { name: string; bgCls: string; runs: number }[] }) {
   const sorted = [...items].sort((a, b) => b.runs - a.runs)
   const max = Math.max(...sorted.map((it) => it.runs), 1)
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'space-evenly', marginTop: 4 }}>
+    <div className="flex-1 flex flex-col justify-evenly mt-1">
       {sorted.map((it) => (
-        <div key={it.name} style={{ display: 'grid', gridTemplateColumns: '156px minmax(0, 1fr) 34px', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: 12.5, color: '#334155', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{it.name}</span>
-          <div style={{ height: 14, background: '#F1F5F9', borderRadius: 999 }}>
-            <div style={{ height: '100%', width: `${(it.runs / max) * 100}%`, background: it.color, borderRadius: 999, minWidth: 14 }} />
+        <div key={it.name} className="grid [grid-template-columns:156px_minmax(0,1fr)_34px] items-center gap-2.5">
+          <span className="text-[12.5px] text-[#334155] truncate">{it.name}</span>
+          <div className="h-[14px] bg-[#F1F5F9] rounded-full">
+            <div
+              className={`h-full rounded-full min-w-[14px] w-[var(--w)] ${it.bgCls}`}
+              style={{ '--w': `${(it.runs / max) * 100}%` } as React.CSSProperties}
+            />
           </div>
-          <span style={{ fontSize: 13, fontWeight: 600, color: INK, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>{it.runs}</span>
+          <span className="text-[13px] font-semibold text-[#0F172A] text-right tabular-nums">{it.runs}</span>
         </div>
       ))}
     </div>
   )
 }
 
-function Meter({ label, value, pct, fill, track }: { label: string; value: string; pct: number; fill: string; track: string }) {
+function Meter({ label, value, pct, fillCls, trackCls }: { label: string; value: string; pct: number; fillCls: string; trackCls: string }) {
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
-        <span style={{ fontSize: 11.5, color: '#334155' }}>{label}</span>
-        <span style={{ fontSize: 11.5, fontWeight: 600, color: INK, fontVariantNumeric: 'tabular-nums' }}>{value}</span>
+      <div className="flex justify-between items-baseline mb-1">
+        <span className="text-[11.5px] text-[#334155]">{label}</span>
+        <span className="text-[11.5px] font-semibold text-[#0F172A] tabular-nums">{value}</span>
       </div>
-      <div style={{ height: 6, background: track, borderRadius: 3 }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: fill, borderRadius: 3 }} />
+      <div className={`h-1.5 rounded-[3px] ${trackCls}`}>
+        <div
+          className={`h-full rounded-[3px] w-[var(--w)] ${fillCls}`}
+          style={{ '--w': `${pct}%` } as React.CSSProperties}
+        />
       </div>
     </div>
   )
@@ -279,7 +282,7 @@ export default function Home() {
   const from = range === '6M' ? 6 : 0
   const periodLabel = range === '6M' ? 'last 6 months' : 'last 12 months'
   const monthsView = MONTHS.slice(from)
-  const seriesView = TOOLS.map((t) => ({ name: t.name, color: t.color, data: t.runs.slice(from) }))
+  const seriesView = TOOLS.map((t) => ({ name: t.name, color: t.color, bgCls: t.bgCls, data: t.runs.slice(from) }))
   const windowRuns = TOOLS.map((t) => t.runs.slice(from).reduce((a, b) => a + b, 0))
   const windowHours = TOOLS.map((t, i) => windowRuns[i] * t.hoursPerRun)
   const totalRuns = windowRuns.reduce((a, b) => a + b, 0)
@@ -288,15 +291,15 @@ export default function Home() {
   const manualHours = totalHours + platformHours
   const effortCut = Math.round((1 - platformHours / manualHours) * 100)
   const workWeeks = Math.round(totalHours / 40)
-  const donutItems = TOOLS.map((t, i) => ({ name: t.name, color: t.color, hours: windowHours[i] }))
-  const barItems = TOOLS.map((t, i) => ({ name: t.name, color: t.color, runs: windowRuns[i] }))
+  const donutItems = TOOLS.map((t, i) => ({ name: t.name, color: t.color, bgCls: t.bgCls, hours: windowHours[i] }))
+  const barItems = TOOLS.map((t, i) => ({ name: t.name, bgCls: t.bgCls, runs: windowRuns[i] }))
   const toolsByUsage = TOOLS.map((t, i) => ({ t, runs: windowRuns[i] })).sort((a, b) => b.runs - a.runs).map((x) => x.t)
 
   const kpis = [
-    { label: 'Total runs', value: totalRuns.toLocaleString(), unit: '', delta: '+4%', icon: Activity, accent: NAVY, spark: MONTHLY_TOTALS.slice(from) },
-    { label: 'Hours saved', value: totalHours.toLocaleString(), unit: 'h', delta: '+8%', icon: Clock, accent: GREEN, spark: MONTHLY_HOURS.slice(from) },
-    { label: 'Clients served', value: '18', unit: '', delta: '+6%', icon: Users, accent: NAVY, spark: CLIENTS_SPARK.slice(from) },
-    { label: 'Revenue earned', value: '$420', unit: 'K', delta: '+8%', icon: DollarSign, accent: GOLD_DEEP, spark: REVENUE_SPARK.slice(from) },
+    { label: 'Total runs', value: totalRuns.toLocaleString(), unit: '', delta: '+4%', icon: Activity, accent: NAVY, tintCls: 'bg-[#0F1E3D14]', spark: MONTHLY_TOTALS.slice(from) },
+    { label: 'Hours saved', value: totalHours.toLocaleString(), unit: 'h', delta: '+8%', icon: Clock, accent: GREEN, tintCls: 'bg-[#16A34A14]', spark: MONTHLY_HOURS.slice(from) },
+    { label: 'Clients served', value: '18', unit: '', delta: '+6%', icon: Users, accent: NAVY, tintCls: 'bg-[#0F1E3D14]', spark: CLIENTS_SPARK.slice(from) },
+    { label: 'Revenue earned', value: '$420', unit: 'K', delta: '+8%', icon: DollarSign, accent: GOLD_DEEP, tintCls: 'bg-[#E8A90014]', spark: REVENUE_SPARK.slice(from) },
   ]
 
   const exportReport = async () => {
@@ -314,40 +317,33 @@ export default function Home() {
   }
 
   return (
-    <div ref={rootRef} style={{ display: 'flex', flexDirection: 'column', gap: 11 }}>
+    <div ref={rootRef} className="flex flex-col gap-[11px]">
 
       {/* ── Greeting + controls ── */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 style={{ fontFamily: "'Lora', serif", fontSize: 20, fontWeight: 600, color: NAVY, lineHeight: 1.2 }}>
+          <h1 className="font-serif text-[20px] font-semibold text-[#0F1E3D] leading-[1.2]">
             {greeting}, Mohd Khizar
           </h1>
-          <p style={{ fontSize: 11.5, color: SEC, marginTop: 2 }}>
-            {today} · <span style={{ color: GREEN, fontWeight: 500 }}>● All systems operational</span>
+          <p className="text-[11.5px] text-[#64748B] mt-0.5">
+            {today} · <span className="text-[#16A34A] font-medium">● All systems operational</span>
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', background: '#F0EFE9', borderRadius: 8, padding: 3 }}>
+        <div className="flex items-center gap-2">
+          <div className="flex bg-[#F0EFE9] rounded p-[3px]">
             {(['6M', '12M'] as const).map((r) => (
               <button key={r} onClick={() => setRange(r)}
-                style={{
-                  padding: '4px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  border: range === r ? `1px solid ${BORDER}` : '1px solid transparent',
-                  background: range === r ? '#FFFFFF' : 'transparent',
-                  color: range === r ? INK : SEC,
-                  boxShadow: range === r ? '0 1px 2px rgba(0,0,0,0.05)' : 'none',
-                  transition: 'all 150ms ease',
-                }}>
+                className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold cursor-pointer border transition-all duration-150 ease-[ease] ${
+                  range === r
+                    ? 'border-[#E2E8F0] bg-white text-[#0F172A] shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
+                    : 'border-transparent bg-transparent text-[#64748B] shadow-none'
+                }`}>
                 {r}
               </button>
             ))}
           </div>
           <button onClick={exportReport}
-            style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 8,
-              fontSize: 12.5, fontWeight: 500, cursor: 'pointer', background: '#FFFFFF', color: '#334155',
-              border: `1px solid ${BORDER}`, transition: 'background 150ms ease',
-            }}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-[#334155] border border-[#E2E8F0] transition-colors duration-150 ease-[ease]"
             onMouseEnter={(e) => (e.currentTarget.style.background = '#F8FAFC')}
             onMouseLeave={(e) => (e.currentTarget.style.background = '#FFFFFF')}>
             <Download size={13} strokeWidth={2} /> Export report
@@ -356,30 +352,30 @@ export default function Home() {
       </div>
 
       {/* ── KPI row ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 11 }}>
+      <div className="grid grid-cols-4 gap-[11px]">
         {kpis.map((k) => {
           const Icon = k.icon
           return (
-            <div key={k.label} style={{ ...CARD, padding: '13px 15px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                <span style={{ fontSize: 10.5, fontWeight: 600, color: TER, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            <div key={k.label} className={`${CARD_CLASS} px-[15px] py-[13px]`}>
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-semibold text-[#94A3B8] uppercase tracking-[0.08em]">
                   {k.label}
                 </span>
-                <div style={{ width: 24, height: 24, borderRadius: 7, background: `${k.accent}14`, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                <div className={`w-6 h-6 rounded-[7px] flex items-center justify-center ${k.tintCls}`}>
                   <Icon size={13} color={k.accent} strokeWidth={2} />
                 </div>
               </div>
-              <div style={{ marginTop: 8 }}>
-                <span style={{ fontFamily: "'Lora', serif", fontSize: 27, fontWeight: 600, color: NAVY, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+              <div className="mt-2">
+                <span className="font-serif text-[27px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
                   {k.value}
                 </span>
                 {k.unit && (
-                  <span style={{ fontFamily: "'Lora', serif", fontSize: 16, fontWeight: 600, color: SEC, marginLeft: 2 }}>{k.unit}</span>
+                  <span className="font-serif text-[16px] font-semibold text-[#64748B] ml-0.5">{k.unit}</span>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8, marginTop: 8 }}>
-                <span style={{ fontSize: 10.5, color: SEC, whiteSpace: 'nowrap' }}>
-                  <span style={{ fontWeight: 600, color: GREEN }}>▲ {k.delta}</span> vs last month
+              <div className="flex items-end justify-between gap-2 mt-2">
+                <span className="text-[10.5px] text-[#64748B] whitespace-nowrap">
+                  <span className="font-semibold text-[#16A34A]">▲ {k.delta}</span> vs last month
                 </span>
                 <Sparkline data={k.spark} color={k.accent} />
               </div>
@@ -389,47 +385,47 @@ export default function Home() {
       </div>
 
       {/* ── Usage, hours saved, automation ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 11 }}>
-        <div style={{ ...CARD, padding: 16, gridColumn: 'span 2', display: 'flex', flexDirection: 'column' }}>
+      <div className="grid grid-cols-4 gap-[11px]">
+        <div className={`${CARD_CLASS} p-4 col-span-2 flex flex-col`}>
           <CardTitle title="Tool usage over time" sub={`Runs per month · ${periodLabel}`} />
-          <div style={{ marginTop: 10, flex: 1 }}>
+          <div className="mt-2.5 flex-1">
             <ToolUsageChart months={monthsView} series={seriesView} height={176} />
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 14, flexWrap: 'wrap', marginTop: 8 }}>
+          <div className="flex items-center justify-center gap-[14px] flex-wrap mt-2">
             {TOOLS.map((t) => (
-              <span key={t.name} style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: '#334155' }}>
-                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color }} />
+              <span key={t.name} className="inline-flex items-center gap-[5px] text-[11.5px] text-[#334155]">
+                <span className={`w-2 h-2 rounded-full ${t.bgCls}`} />
                 {t.name}
               </span>
             ))}
           </div>
         </div>
 
-        <div style={{ ...CARD, padding: 16, display: 'flex', flexDirection: 'column' }}>
+        <div className={`${CARD_CLASS} p-4 flex flex-col`}>
           <CardTitle title="Hours saved per tool" sub={`Analyst effort reclaimed · ${periodLabel}`} />
           <HoursDonut items={donutItems} total={totalHours} />
         </div>
 
-        <div style={{ ...CARD, padding: 16, display: 'flex', flexDirection: 'column' }}>
+        <div className={`${CARD_CLASS} p-4 flex flex-col`}>
           <CardTitle title="Automation impact" sub={`Across all four tools · ${periodLabel}`} />
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12, flexWrap: 'wrap' }}>
-            <span style={{ fontFamily: "'Lora', serif", fontSize: 29, fontWeight: 600, color: NAVY, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-              {totalHours.toLocaleString()}<span style={{ fontSize: 17, color: SEC }}> h</span>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span className="font-serif text-[29px] font-semibold text-[#0F1E3D] leading-none tabular-nums">
+              {totalHours.toLocaleString()}<span className="text-[17px] text-[#64748B]"> h</span>
             </span>
-            <span style={{ fontSize: 10.5, fontWeight: 600, color: '#15803D', background: '#DCFCE7', padding: '2px 8px', borderRadius: 999 }}>
+            <span className="text-[10.5px] font-semibold text-[#15803D] bg-[#DCFCE7] px-2 py-0.5 rounded-full">
               {effortCut}% less effort
             </span>
           </div>
-          <p style={{ fontSize: 11, color: SEC, marginTop: 5 }}>
+          <p className="text-[11px] text-[#64748B] mt-[5px]">
             Saved — about {workWeeks} analyst work-weeks.
           </p>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, flex: 1, justifyContent: 'center' }}>
-            <Meter label="Done by hand" value={`${manualHours.toLocaleString()} h`} pct={100} fill="#94A3B8" track="#F1F5F9" />
-            <Meter label="With the platform" value={`${platformHours.toLocaleString()} h`} pct={Math.max((platformHours / manualHours) * 100, 3)} fill={GOLD_DEEP} track="#FFF3CC" />
+          <div className="flex flex-col gap-3 mt-3 flex-1 justify-center">
+            <Meter label="Done by hand" value={`${manualHours.toLocaleString()} h`} pct={100} fillCls="bg-[#94A3B8]" trackCls="bg-[#F1F5F9]" />
+            <Meter label="With the platform" value={`${platformHours.toLocaleString()} h`} pct={Math.max((platformHours / manualHours) * 100, 3)} fillCls="bg-[#E8A900]" trackCls="bg-[#FFF3CC]" />
           </div>
-          <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 10, marginTop: 10, display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-            <span style={{ fontSize: 10.5, color: SEC }}>{totalRuns} runs</span>
-            <span style={{ fontSize: 10.5, color: SEC, fontVariantNumeric: 'tabular-nums' }}>
+          <div className="border-t border-[#F1F5F9] pt-2.5 mt-2.5 flex justify-between gap-2">
+            <span className="text-[10.5px] text-[#64748B]">{totalRuns} runs</span>
+            <span className="text-[10.5px] text-[#64748B] tabular-nums">
               ≈ {(totalHours / totalRuns).toFixed(1)} h saved per run
             </span>
           </div>
@@ -437,17 +433,17 @@ export default function Home() {
       </div>
 
       {/* ── Most used + tool health ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 11 }}>
-        <div style={{ ...CARD, padding: 16, display: 'flex', flexDirection: 'column' }}>
+      <div className="grid grid-cols-2 gap-[11px]">
+        <div className={`${CARD_CLASS} p-4 flex flex-col`}>
           <CardTitle title="Most used tools" sub={`Total runs · ${periodLabel}`} />
           <MostUsedBars items={barItems} />
         </div>
 
-        <div style={{ ...CARD, padding: '12px 12px' }}>
-          <div style={{ padding: '4px 8px 6px' }}>
+        <div className={`${CARD_CLASS} p-3`}>
+          <div className="pt-1 px-2 pb-1.5">
             <CardTitle title="Tool health" sub="Engine status & last activity" />
           </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div className="flex flex-col gap-1">
             {toolsByUsage.map((t) => {
               const Icon = t.icon
               const badge = STATUS_BADGE[t.status]
@@ -457,24 +453,18 @@ export default function Home() {
                   onMouseEnter={() => setHovHealth(t.route)} onMouseLeave={() => setHovHealth(null)}
                   role="link" tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter') navigate(t.route) }}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10, padding: '5px 8px', borderRadius: 8,
-                    cursor: 'pointer', background: isH ? '#F8FAFC' : 'transparent', transition: 'background 150ms ease',
-                  }}>
-                  <div style={{ width: 26, height: 26, borderRadius: 7, background: `${t.color}14`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ease-[ease] ${isH ? 'bg-[#F8FAFC]' : 'bg-transparent'}`}>
+                  <div className={`w-[26px] h-[26px] rounded-[7px] flex items-center justify-center shrink-0 ${t.tintCls}`}>
                     <Icon c={t.color} s={13} />
                   </div>
-                  <span style={{ fontSize: 12.5, color: INK, flex: 1, minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  <span className="text-[12.5px] text-[#0F172A] flex-1 min-w-0 truncate">
                     {t.name}
                   </span>
-                  <span style={{ fontSize: 11, color: SEC, whiteSpace: 'nowrap' }}>Last run {t.lastRun}</span>
-                  <span style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', borderRadius: 999,
-                    fontSize: 10.5, fontWeight: 600, background: badge.bg, color: badge.color, flexShrink: 0,
-                  }}>
+                  <span className="text-[11px] text-[#64748B] whitespace-nowrap">Last run {t.lastRun}</span>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold shrink-0 ${badge.cls}`}>
                     ● {badge.label}
                   </span>
-                  <ChevronRight size={13} color={isH ? SEC : '#CBD5E1'} style={{ flexShrink: 0, transition: 'color 150ms ease' }} />
+                  <ChevronRight size={13} color={isH ? SEC : '#CBD5E1'} className="shrink-0 transition-colors duration-150 ease-[ease]" />
                 </div>
               )
             })}
