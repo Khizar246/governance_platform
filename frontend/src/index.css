@@ -8,20 +8,13 @@
   :root {
     /* ── Light palette ───────────────────────────────────────────────── */
     --bg:          theme('colors.surface-page');
-    --surface:     theme('colors.white');
     --surface-alt: theme('colors.surface-panel');
-    --navy:        theme('colors.navy');
-    --navy-mid:    theme('colors.navy-mid');
-    --gold-light:  theme('colors.gold-light');
 
     /* ── Text ─────────────────────────────────────────────────────────── */
     --t0: theme('colors.slate.900');
-    --t1: theme('colors.slate.500');
-    --t2: theme('colors.slate.400');
 
     /* ── Borders ──────────────────────────────────────────────────────── */
     --border:       theme('colors.slate.200');
-    --border-light: theme('colors.slate.200');
 
     /* ── Semantic ─────────────────────────────────────────────────────── */
     --success:    theme('colors.green.600');
