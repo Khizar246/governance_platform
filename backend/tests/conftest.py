@@ -43,6 +43,26 @@ def _reset_jobs():
     yield
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _drain_analysis_pool():
+    """Let all in-flight pool futures finish before the session's log stream closes.
+
+    Router tests fire real analyses into the process pool, then the next test's
+    _reset_jobs clears the job registry out from under them. When such a future
+    later completes, its done-callback logs "Job deleted while running" — and if
+    that lands after pytest has closed the log stream, logging raises
+    "I/O operation on closed file" and dumps a spurious traceback. Draining the
+    pool with wait=True at session end runs every pending callback while logging
+    still works, so the output stays clean.
+    """
+    yield
+    from services.analysis_pool import analysis_pool
+    with analysis_pool._lock:
+        executor = analysis_pool._executor
+    if executor is not None:
+        executor.shutdown(wait=True)
+
+
 @pytest.fixture
 def upload(client):
     """Return a function that uploads the given file bytes and returns the Response.

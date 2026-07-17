@@ -116,10 +116,14 @@ def _make_factory(driver):
 
 @pytest.fixture(autouse=True)
 def _patch_selenium(monkeypatch):
-    # _login: succeed/fail based on the driver flag.
+    # _login: succeed/fail based on the driver flag. `login_ok` may be True,
+    # False (→ InvalidCredentialsError), or the string "url" (→ UrlUnreachableError)
+    # so tests can exercise both distinct failure messages.
     def fake_login(driver, url, username, password, sel, logger):
+        if driver.login_ok == "url":
+            raise rte.UrlUnreachableError("unreachable")
         if not driver.login_ok:
-            raise RuntimeError("bad credentials")
+            raise rte.InvalidCredentialsError("bad credentials")
 
     # _open_navigator_popup: return a popup built from the driver's nav_items.
     def fake_popup(driver, interactor, sel, logger):
@@ -246,6 +250,25 @@ def test_login_failure(tmp_path):
     res = run("http://x", "u", "wrong", str(tmp_path), _LOG,
               driver_factory=_make_factory(driver))
     assert not res.success and res.errors
+
+
+def test_bad_credentials_message(tmp_path):
+    # InvalidCredentialsError → the "verify your credentials" message.
+    driver = FakeDriver(_items(3), login_ok=False)
+    res = run("http://x", "u", "wrong", str(tmp_path), _LOG,
+              driver_factory=_make_factory(driver))
+    assert not res.success
+    assert res.errors == ["The username or password provided is incorrect. "
+                          "Please verify your credentials and try again."]
+
+
+def test_unreachable_url_message(tmp_path):
+    # UrlUnreachableError → the "URL is invalid or cannot be reached" message.
+    driver = FakeDriver(_items(3), login_ok="url")
+    res = run("http://bad", "u", "p", str(tmp_path), _LOG,
+              driver_factory=_make_factory(driver))
+    assert not res.success
+    assert res.errors == ["The provided URL is invalid or cannot be reached."]
 
 
 def test_no_work_areas(tmp_path):
