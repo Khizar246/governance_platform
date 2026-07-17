@@ -1,0 +1,1142 @@
+<title>Access Governance Platform — A Plain-English Tour</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+/* ============================================================
+   TOKENS
+   ============================================================ */
+:root{
+  --paper:#F6F4EE;
+  --paper-2:#EFEBE1;
+  --card:#FFFFFF;
+  --ink:#12213F;
+  --ink-soft:#3A4A6B;
+  --muted:#6B7488;
+  --faint:#9AA1B2;
+  --line:#E4DFD3;
+  --line-2:#D8D2C4;
+  --gold:#E9A700;
+  --gold-deep:#C98A00;
+  --gold-tint:#FBEFCB;
+  --navy:#12213F;
+  --navy-2:#1E3055;
+
+  /* tool accents (soft, friendly) */
+  --amber:#D98A29;   --amber-tint:#FBEBD6;
+  --violet:#7C5CD6;  --violet-tint:#ECE6FB;
+  --green:#2E9E6B;   --green-tint:#DCF3E7;
+  --blue:#3B7DD8;    --blue-tint:#DEEBFA;
+
+  --good:#2E9E6B;    --good-tint:#DCF3E7;
+  --warn:#C98A00;    --warn-tint:#FBEFCB;
+  --stop:#C6503C;    --stop-tint:#F7E0DB;
+
+  --shadow: 0 1px 2px rgba(18,33,63,.05), 0 8px 24px rgba(18,33,63,.07);
+  --shadow-lg: 0 2px 4px rgba(18,33,63,.06), 0 20px 50px rgba(18,33,63,.13);
+  /* Artifact radius scale (this document's own system — deliberately softer than
+     the app's, to read as a friendly explainer, not the product UI). */
+  --r-xs:6px;
+  --r-sm:10px;
+  --r-md:14px;
+  --r-lg:18px;
+  --r-pill:100px;
+  --radius:var(--r-lg);
+  --radius-sm:var(--r-md);
+  --maxw:1080px;
+
+  --serif: "Iowan Old Style","Palatino Linotype",Palatino,"Book Antiqua",Georgia,serif;
+  --sans: ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --paper:#10151F; --paper-2:#161D2B; --card:#182234;
+    --ink:#EAF0F8; --ink-soft:#C2CEE0; --muted:#94A0B5; --faint:#6E7A90;
+    --line:#25324A; --line-2:#2E3C57;
+    --gold:#F2B92E; --gold-deep:#E9A700; --gold-tint:#3A310F;
+    --navy:#0C1220; --navy-2:#1A2942;
+    --amber:#E6A34E; --amber-tint:#3A2A14;
+    --violet:#A98BEA; --violet-tint:#2A2145;
+    --green:#4FBE8A; --green-tint:#123528;
+    --blue:#6BA4E8; --blue-tint:#132B47;
+    --good:#4FBE8A; --good-tint:#123528;
+    --warn:#F2B92E; --warn-tint:#3A310F;
+    --stop:#E17765; --stop-tint:#3B1A14;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+    --shadow-lg: 0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+  }
+}
+:root[data-theme="dark"]{
+  --paper:#10151F; --paper-2:#161D2B; --card:#182234;
+  --ink:#EAF0F8; --ink-soft:#C2CEE0; --muted:#94A0B5; --faint:#6E7A90;
+  --line:#25324A; --line-2:#2E3C57;
+  --gold:#F2B92E; --gold-deep:#E9A700; --gold-tint:#3A310F;
+  --navy:#0C1220; --navy-2:#1A2942;
+  --amber:#E6A34E; --amber-tint:#3A2A14;
+  --violet:#A98BEA; --violet-tint:#2A2145;
+  --green:#4FBE8A; --green-tint:#123528;
+  --blue:#6BA4E8; --blue-tint:#132B47;
+  --good:#4FBE8A; --good-tint:#123528;
+  --warn:#F2B92E; --warn-tint:#3A310F;
+  --stop:#E17765; --stop-tint:#3B1A14;
+  --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.45);
+  --shadow-lg: 0 2px 6px rgba(0,0,0,.5), 0 24px 60px rgba(0,0,0,.55);
+}
+:root[data-theme="light"]{
+  --paper:#F6F4EE; --paper-2:#EFEBE1; --card:#FFFFFF;
+  --ink:#12213F; --ink-soft:#3A4A6B; --muted:#6B7488; --faint:#9AA1B2;
+  --line:#E4DFD3; --line-2:#D8D2C4;
+  --gold:#E9A700; --gold-deep:#C98A00; --gold-tint:#FBEFCB;
+  --navy:#12213F; --navy-2:#1E3055;
+  --amber:#D98A29; --amber-tint:#FBEBD6;
+  --violet:#7C5CD6; --violet-tint:#ECE6FB;
+  --green:#2E9E6B; --green-tint:#DCF3E7;
+  --blue:#3B7DD8; --blue-tint:#DEEBFA;
+  --good:#2E9E6B; --good-tint:#DCF3E7;
+  --warn:#C98A00; --warn-tint:#FBEFCB;
+  --stop:#C6503C; --stop-tint:#F7E0DB;
+  --shadow: 0 1px 2px rgba(18,33,63,.05), 0 8px 24px rgba(18,33,63,.07);
+  --shadow-lg: 0 2px 4px rgba(18,33,63,.06), 0 20px 50px rgba(18,33,63,.13);
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--paper);color:var(--ink);
+  font-family:var(--sans);font-size:17px;line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+  background-image:radial-gradient(var(--line) .7px, transparent .7px);
+  background-size:26px 26px;
+}
+img{max-width:100%}
+h1,h2,h3,h4{font-family:var(--serif);font-weight:600;color:var(--ink);text-wrap:balance;line-height:1.12;margin:0}
+p{margin:0}
+a{color:inherit}
+
+/* ============================================================
+   LAYOUT SHELL
+   ============================================================ */
+.shell{display:flex;min-height:100vh}
+.rail{
+  width:264px;flex:0 0 264px;position:sticky;top:0;height:100vh;
+  border-right:1px solid var(--line);background:var(--card);
+  display:flex;flex-direction:column;padding:26px 20px;gap:6px;overflow-y:auto;
+}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:22px;padding:0 6px}
+.brand .mark{width:40px;height:40px;flex:0 0 40px;border-radius:var(--r-sm);background:var(--navy);display:grid;place-items:center}
+.brand .mk-name{font-family:var(--serif);font-weight:600;font-size:16px;letter-spacing:.01em;line-height:1.15}
+.brand .mk-sub{font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint);margin-top:3px}
+
+.nav-group-label{font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--faint);font-weight:700;padding:14px 10px 6px}
+.nav-link{
+  display:flex;align-items:center;gap:11px;padding:9px 11px;border-radius:var(--r-sm);
+  color:var(--ink-soft);text-decoration:none;font-size:14.5px;font-weight:500;cursor:pointer;
+  border:1px solid transparent;transition:background .15s,color .15s,border-color .15s;
+}
+.nav-link .ni{width:26px;height:26px;flex:0 0 26px;border-radius:var(--r-sm);background:var(--paper-2);display:grid;place-items:center;transition:background .15s}
+.nav-link:hover{background:var(--paper-2)}
+.nav-link.active{background:var(--gold-tint);border-color:var(--line-2);color:var(--ink);font-weight:600}
+.nav-link.active .ni{background:var(--gold)}
+.nav-num{margin-left:auto;font-size:11px;color:var(--faint);font-variant-numeric:tabular-nums}
+
+.rail-foot{margin-top:auto;padding-top:18px;border-top:1px solid var(--line);font-size:12px;color:var(--faint);display:flex;flex-direction:column;gap:12px}
+.themebtn{
+  display:flex;align-items:center;gap:9px;width:100%;padding:9px 11px;border-radius:var(--r-sm);
+  border:1px solid var(--line-2);background:var(--paper-2);color:var(--ink-soft);
+  font-family:var(--sans);font-size:13px;font-weight:600;cursor:pointer;transition:background .15s;
+}
+.themebtn:hover{background:var(--line)}
+
+.main{flex:1;min-width:0}
+.page{display:none;animation:fade .4s ease both}
+.page.show{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+.wrap{max-width:var(--maxw);margin:0 auto;padding:56px 40px 100px}
+
+@media (prefers-reduced-motion:reduce){*{animation:none !important;transition:none !important;scroll-behavior:auto}}
+
+/* mobile top bar */
+.topbar{display:none}
+@media(max-width:880px){
+  .shell{flex-direction:column}
+  .rail{position:static;width:auto;height:auto;flex:none;flex-direction:row;flex-wrap:wrap;
+    align-items:center;padding:14px 16px;gap:6px;overflow-x:auto}
+  .brand{margin:0 auto 0 0}
+  .nav-group-label,.rail-foot{display:none}
+  .nav-link{padding:7px 10px;font-size:13px}
+  .nav-link .ni{display:none}.nav-num{display:none}
+  .wrap{padding:34px 20px 80px}
+}
+
+/* ============================================================
+   TYPE HELPERS + ELEMENTS
+   ============================================================ */
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-family:var(--sans);font-size:11.5px;
+  letter-spacing:.16em;text-transform:uppercase;font-weight:700;color:var(--gold-deep);margin-bottom:14px}
+/* impeccable-disable design-system-radius -- 2px rounds the ends of a 2px-tall hairline accent bar; snapping to the 6px token would distort it into a lozenge. */
+.eyebrow::before{content:"";width:24px;height:2px;background:var(--gold);border-radius:2px}
+h1.big{font-size:clamp(34px,5vw,52px);letter-spacing:-.015em;margin-bottom:18px}
+h2.sec{font-size:clamp(26px,3.4vw,34px);letter-spacing:-.01em;margin-bottom:12px}
+h3.sub{font-size:21px;margin-bottom:8px}
+.lead{font-size:clamp(18px,2.2vw,20px);color:var(--ink-soft);line-height:1.6;max-width:64ch}
+.kick{font-family:var(--sans);color:var(--muted);max-width:64ch}
+.divider{height:1px;background:var(--line);margin:50px 0;border:0}
+.small-caps{font-size:12px;letter-spacing:.12em;text-transform:uppercase;font-weight:700;color:var(--faint)}
+
+/* generic card */
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);box-shadow:var(--shadow)}
+.pad{padding:26px}
+.pad-lg{padding:34px}
+
+/* stat row */
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:28px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:20px;box-shadow:var(--shadow)}
+.stat .n{font-family:var(--serif);font-size:38px;line-height:1;color:var(--ink);font-variant-numeric:tabular-nums}
+.stat .n small{font-size:20px;color:var(--gold-deep)}
+.stat .l{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.4}
+
+/* callout */
+.callout{display:flex;gap:16px;background:var(--gold-tint);border:1px solid var(--line-2);
+  border-radius:var(--radius);padding:22px 24px;margin:26px 0}
+.callout .ic{flex:0 0 40px;width:40px;height:40px;border-radius:var(--r-sm);background:var(--card);
+  border:1px solid var(--line-2);display:grid;place-items:center}
+.callout h4{font-size:16.5px;margin-bottom:5px}
+.callout p{font-size:14.5px;color:var(--ink-soft)}
+.callout.value{background:var(--good-tint)}
+.callout.value .ic{color:var(--good)}
+
+/* pill */
+.pill{display:inline-flex;align-items:center;gap:6px;font-family:var(--sans);font-size:12px;font-weight:700;
+  padding:4px 10px;border-radius:var(--r-pill);letter-spacing:.02em}
+.pill.good{background:var(--good-tint);color:var(--good)}
+.pill.warn{background:var(--warn-tint);color:var(--warn)}
+.pill.stop{background:var(--stop-tint);color:var(--stop)}
+.pill.gold{background:var(--gold-tint);color:var(--gold-deep)}
+
+/* two-col */
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+.grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:760px){.grid2,.grid3{grid-template-columns:1fr}}
+
+/* figure caption */
+.figwrap{margin:34px 0}
+.figcap{display:flex;align-items:baseline;gap:10px;margin-bottom:14px}
+.figcap .tag{font-size:11px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--card);background:var(--navy);padding:3px 9px;border-radius:var(--r-xs)}
+.figcap .txt{font-size:14px;color:var(--muted)}
+.stage{background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:22px;overflow-x:auto}
+.stage svg{display:block;min-width:640px;margin:0 auto;height:auto;max-width:100%}
+.stage.tall svg{min-width:560px}
+
+/* tool hero head */
+.toolhead{display:flex;align-items:center;gap:18px;margin-bottom:8px}
+.toolhead .badge{width:60px;height:60px;flex:0 0 60px;border-radius:var(--r-md);display:grid;place-items:center;box-shadow:var(--shadow)}
+.t-amber{background:var(--amber-tint);color:var(--amber)}
+.t-violet{background:var(--violet-tint);color:var(--violet)}
+.t-green{background:var(--green-tint);color:var(--green)}
+.t-blue{background:var(--blue-tint);color:var(--blue)}
+.toolhead .kv{font-size:12px;color:var(--faint);letter-spacing:.06em;text-transform:uppercase;font-weight:700}
+
+/* numbered steps list */
+.steps{display:flex;flex-direction:column;gap:14px;margin:26px 0;counter-reset:s}
+.step{display:flex;gap:16px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-sm);padding:18px 20px;box-shadow:var(--shadow)}
+.step .num{flex:0 0 34px;width:34px;height:34px;border-radius:var(--r-sm);background:var(--navy);color:#fff;
+  font-family:var(--serif);font-size:16px;display:grid;place-items:center;font-variant-numeric:tabular-nums}
+.step h4{font-size:16px;margin-bottom:4px}
+.step p{font-size:14.5px;color:var(--ink-soft)}
+
+/* tool nav cards on home */
+.toolgrid{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:8px}
+@media(max-width:760px){.toolgrid{grid-template-columns:1fr}}
+.toolcard{display:block;text-decoration:none;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--radius);padding:24px;box-shadow:var(--shadow);cursor:pointer;
+  transition:transform .18s,box-shadow .18s,border-color .18s;position:relative;overflow:hidden}
+.toolcard:hover{transform:translateY(-3px);box-shadow:var(--shadow-lg);border-color:var(--line-2)}
+.toolcard .rail-accent{position:absolute;left:0;top:0;bottom:0;width:5px}
+.toolcard .tc-badge{width:46px;height:46px;border-radius:var(--r-sm);display:grid;place-items:center;margin-bottom:14px}
+.toolcard h4{font-size:18px;margin-bottom:6px}
+.toolcard p{font-size:14px;color:var(--muted)}
+.toolcard .go{display:inline-flex;align-items:center;gap:6px;margin-top:14px;font-size:13px;font-weight:700;color:var(--gold-deep)}
+
+/* legend chips */
+.legend{display:flex;flex-wrap:wrap;gap:10px 18px;margin:18px 0 4px;font-size:13px;color:var(--muted)}
+.legend .lg{display:inline-flex;align-items:center;gap:7px}
+.legend .dot{width:13px;height:13px;border-radius:var(--r-xs);flex:0 0 13px}
+
+/* faq / q rows */
+.qrow{border-top:1px solid var(--line);padding:20px 0}
+.qrow:last-child{border-bottom:1px solid var(--line)}
+.qrow h4{font-size:17px;margin-bottom:6px}
+.qrow p{font-size:15px;color:var(--ink-soft)}
+
+/* footer note */
+.foot{margin-top:60px;padding-top:24px;border-top:1px solid var(--line);color:var(--faint);font-size:13px;display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px}
+
+/* inline term highlight (kept plain — no jargon) */
+.hl{background:var(--gold-tint);padding:0 4px;border-radius:var(--r-xs);font-weight:600;color:var(--ink)}
+
+/* svg animated dash on view */
+.flow-dash{stroke-dasharray:7 7;animation:march 1.1s linear infinite}
+@keyframes march{to{stroke-dashoffset:-14}}
+
+/* prev/next */
+.pager{display:flex;justify-content:space-between;gap:14px;margin-top:44px}
+.pgbtn{display:flex;flex-direction:column;gap:3px;text-decoration:none;background:var(--card);border:1px solid var(--line);
+  border-radius:var(--r-md);padding:14px 20px;box-shadow:var(--shadow);cursor:pointer;min-width:180px;transition:border-color .15s,transform .15s}
+.pgbtn:hover{border-color:var(--gold);transform:translateY(-2px)}
+.pgbtn .d{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--faint);font-weight:700}
+.pgbtn .t{font-size:15px;font-weight:600;color:var(--ink);font-family:var(--serif)}
+.pgbtn.next{text-align:right;margin-left:auto}
+</style>
+
+<div class="shell">
+  <!-- ================= NAV RAIL ================= -->
+  <nav class="rail">
+    <div class="brand">
+      <div class="mark">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="#F2B705" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+      </div>
+      <div>
+        <div class="mk-name">Access Governance</div>
+        <div class="mk-sub">A Guided Tour</div>
+      </div>
+    </div>
+
+    <div class="nav-group-label">Start here</div>
+    <a class="nav-link active" data-goto="home"><span class="ni">🏠</span>Welcome</a>
+    <a class="nav-link" data-goto="how"><span class="ni">🧭</span>How it all works</a>
+
+    <div class="nav-group-label">The four tools</div>
+    <a class="nav-link" data-goto="sod"><span class="ni">🛡️</span>Conflict &amp; Access Check<span class="nav-num">01</span></a>
+    <a class="nav-link" data-goto="ruleset"><span class="ni">🧩</span>Rulebook Matcher<span class="nav-num">02</span></a>
+    <a class="nav-link" data-goto="oracle"><span class="ni">🔍</span>Environment Compare<span class="nav-num">03</span></a>
+    <a class="nav-link" data-goto="bot"><span class="ni">📸</span>Screen Capture Bot<span class="nav-num">04</span></a>
+
+    <div class="nav-group-label">Wrap up</div>
+    <a class="nav-link" data-goto="value"><span class="ni">💡</span>Why it matters</a>
+    <a class="nav-link" data-goto="faq"><span class="ni">❓</span>Common questions</a>
+
+    <div class="rail-foot">
+      <button class="themebtn" id="themeToggle">
+        <span id="themeIcon">🌙</span><span id="themeLabel">Dark mode</span>
+      </button>
+      <div>Prepared for a business audience.<br>No technical background needed.</div>
+    </div>
+  </nav>
+
+  <div class="main">
+
+  <!-- ============================================================
+       PAGE: HOME
+       ============================================================ -->
+  <section class="page show" id="page-home">
+    <div class="wrap">
+      <span class="eyebrow">The platform, in plain English</span>
+      <h1 class="big">One workspace that does the slow, careful checking&nbsp;— so our people don't have to.</h1>
+      <p class="lead">Our consultants review who can do what inside a client's business systems. Done by hand, that work takes days and invites mistakes. This platform does the heavy checking in minutes and hands back a clean, client-ready report. This tour walks through it — no technical background required.</p>
+
+      <div class="stats">
+        <div class="stat"><div class="n">4</div><div class="l">Tools, each for one specific job</div></div>
+        <div class="stat"><div class="n">~5<small>min</small></div><div class="l">Typical time for a check that once took a day</div></div>
+        <div class="stat"><div class="n">1</div><div class="l">Tidy Excel report at the end, every time</div></div>
+        <div class="stat"><div class="n">0</div><div class="l">Files kept afterwards — cleared automatically</div></div>
+      </div>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">The big picture</span><span class="txt">Everything the platform does, on one page.</span></div>
+        <div class="stage">
+          <!-- BIG PICTURE SVG -->
+          <svg viewBox="0 0 900 340" role="img" aria-label="A consultant uploads client data, the platform checks it, and returns a report.">
+            <defs>
+              <marker id="ah" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto">
+                <path d="M0,0 L7,3 L0,6 Z" fill="var(--gold-deep)"/>
+              </marker>
+              <linearGradient id="gCard" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" stop-color="var(--card)"/><stop offset="1" stop-color="var(--paper-2)"/>
+              </linearGradient>
+            </defs>
+
+            <!-- person -->
+            <g transform="translate(40,110)">
+              <circle cx="45" cy="45" r="45" fill="var(--navy)"/>
+              <circle cx="45" cy="34" r="14" fill="var(--gold)"/>
+              <path d="M20 74 a25 22 0 0 1 50 0Z" fill="var(--gold)"/>
+              <text x="45" y="118" text-anchor="middle" font-family="var(--sans)" font-size="14" font-weight="700" fill="var(--ink)">Our consultant</text>
+              <text x="45" y="136" text-anchor="middle" font-family="var(--sans)" font-size="12" fill="var(--muted)">has the client's data</text>
+            </g>
+
+            <!-- arrow 1 -->
+            <path d="M155 155 H255" stroke="var(--gold-deep)" stroke-width="2.4" fill="none" marker-end="url(#ah)" class="flow-dash"/>
+            <text x="205" y="142" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">uploads files</text>
+
+            <!-- platform box -->
+            <g transform="translate(265,55)">
+              <rect x="0" y="0" width="370" height="200" rx="20" fill="url(#gCard)" stroke="var(--line-2)" stroke-width="1.5"/>
+              <rect x="0" y="0" width="370" height="44" rx="20" fill="var(--navy)"/>
+              <rect x="0" y="24" width="370" height="20" fill="var(--navy)"/>
+              <text x="185" y="29" text-anchor="middle" font-family="var(--serif)" font-size="16" font-weight="600" fill="#fff">The Platform</text>
+              <!-- 3 mini steps -->
+              <g transform="translate(24,66)">
+                <rect x="0" y="0" width="100" height="58" rx="12" fill="var(--blue-tint)"/>
+                <text x="50" y="26" text-anchor="middle" font-size="20">📥</text>
+                <text x="50" y="46" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="700" fill="var(--ink)">Read &amp; check</text>
+              </g>
+              <path d="M128 95 H146" stroke="var(--gold-deep)" stroke-width="2" marker-end="url(#ah)"/>
+              <g transform="translate(150,66)">
+                <rect x="0" y="0" width="100" height="58" rx="12" fill="var(--gold-tint)"/>
+                <text x="50" y="26" text-anchor="middle" font-size="20">⚙️</text>
+                <text x="50" y="46" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="700" fill="var(--ink)">Analyse</text>
+              </g>
+              <path d="M254 95 H272" stroke="var(--gold-deep)" stroke-width="2" marker-end="url(#ah)"/>
+              <g transform="translate(276,66)">
+                <rect x="0" y="0" width="80" height="58" rx="12" fill="var(--green-tint)"/>
+                <text x="40" y="26" text-anchor="middle" font-size="20">📊</text>
+                <text x="40" y="46" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="700" fill="var(--ink)">Build report</text>
+              </g>
+              <text x="185" y="175" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">All the hard work happens safely in here</text>
+            </g>
+
+            <!-- arrow 2 -->
+            <path d="M645 155 H745" stroke="var(--gold-deep)" stroke-width="2.4" fill="none" marker-end="url(#ah)" class="flow-dash"/>
+            <text x="695" y="142" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">hands back</text>
+
+            <!-- report -->
+            <g transform="translate(755,95)">
+              <rect x="0" y="0" width="96" height="120" rx="10" fill="var(--card)" stroke="var(--green)" stroke-width="2"/>
+              <rect x="0" y="0" width="96" height="26" rx="10" fill="var(--green)"/>
+              <rect x="0" y="16" width="96" height="10" fill="var(--green)"/>
+              <text x="48" y="18" text-anchor="middle" font-family="var(--sans)" font-size="11" font-weight="800" fill="#fff">REPORT</text>
+              <g stroke="var(--line-2)" stroke-width="6" stroke-linecap="round">
+                <line x1="16" y1="46" x2="80" y2="46"/><line x1="16" y1="62" x2="80" y2="62"/>
+                <line x1="16" y1="78" x2="80" y2="78"/><line x1="16" y1="94" x2="58" y2="94"/>
+              </g>
+              <text x="48" y="150" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Excel report</text>
+              <text x="48" y="168" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">ready for the client</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <p class="kick" style="margin-bottom:30px">That's the whole idea. The rest of this tour zooms in: first on how a request travels through the platform, then on each of the four tools one at a time.</p>
+
+      <h2 class="sec">The four tools</h2>
+      <p class="kick">Each tool does one job well. Click any card to see how it works.</p>
+      <div class="toolgrid">
+        <a class="toolcard" data-goto="sod">
+          <span class="rail-accent" style="background:var(--amber)"></span>
+          <div class="tc-badge t-amber">🛡️</div>
+          <h4>Conflict &amp; Access Check</h4>
+          <p>Finds people who can do two things they shouldn't be able to do together — and flags overly powerful access.</p>
+          <span class="go">See how it works →</span>
+        </a>
+        <a class="toolcard" data-goto="ruleset">
+          <span class="rail-accent" style="background:var(--violet)"></span>
+          <div class="tc-badge t-violet">🧩</div>
+          <h4>Rulebook Matcher</h4>
+          <p>Lines up a client's rulebook against EY's standard rulebook and shows where they agree and differ.</p>
+          <span class="go">See how it works →</span>
+        </a>
+        <a class="toolcard" data-goto="oracle">
+          <span class="rail-accent" style="background:var(--green)"></span>
+          <div class="tc-badge t-green">🔍</div>
+          <h4>Environment Compare</h4>
+          <p>Compares two copies of a system (like a test and a live version) and lists exactly what's different.</p>
+          <span class="go">See how it works →</span>
+        </a>
+        <a class="toolcard" data-goto="bot">
+          <span class="rail-accent" style="background:var(--blue)"></span>
+          <div class="tc-badge t-blue">📸</div>
+          <h4>Screen Capture Bot</h4>
+          <p>Logs into a system like a person would and photographs every screen — proof of what a role can actually see.</p>
+          <span class="go">See how it works →</span>
+        </a>
+      </div>
+
+      <div class="pager">
+        <span></span>
+        <a class="pgbtn next" data-goto="how"><span class="d">Next</span><span class="t">How it all works →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: HOW IT WORKS
+       ============================================================ -->
+  <section class="page" id="page-how">
+    <div class="wrap">
+      <span class="eyebrow">How it all works</span>
+      <h1 class="big">Follow one request from start to finish.</h1>
+      <p class="lead">Three of the four tools work the same way. Once you understand this one journey, you understand most of the platform. Here it is, step by step — think of it like dropping a document at a service desk and getting a finished report back.</p>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">The journey</span><span class="txt">What happens between "upload" and "download".</span></div>
+        <div class="stage">
+          <!-- JOURNEY SVG - 5 stations -->
+          <svg viewBox="0 0 900 300" role="img" aria-label="Five stops: choose options, upload files, the platform checks and processes, you watch progress, and you download the report.">
+            <defs>
+              <marker id="ah2" markerWidth="11" markerHeight="11" refX="7" refY="3.2" orient="auto">
+                <path d="M0,0 L7.5,3.2 L0,6.4 Z" fill="var(--gold-deep)"/>
+              </marker>
+            </defs>
+            <!-- connecting road -->
+            <path d="M95 90 H805" stroke="var(--line-2)" stroke-width="3" fill="none"/>
+            <path d="M95 90 H805" stroke="var(--gold)" stroke-width="3" fill="none" class="flow-dash" opacity=".8"/>
+
+            <!-- station template -->
+            <!-- 1 -->
+            <g transform="translate(50,40)">
+              <circle cx="45" cy="50" r="44" fill="var(--card)" stroke="var(--amber)" stroke-width="2.5"/>
+              <text x="45" y="60" text-anchor="middle" font-size="30">🎛️</text>
+              <circle cx="45" cy="8" r="14" fill="var(--amber)"/>
+              <text x="45" y="13" text-anchor="middle" font-family="var(--serif)" font-size="14" font-weight="700" fill="#fff">1</text>
+              <text x="45" y="120" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Choose options</text>
+              <text x="45" y="138" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--muted)">what to check</text>
+            </g>
+            <!-- 2 -->
+            <g transform="translate(220,40)">
+              <circle cx="45" cy="50" r="44" fill="var(--card)" stroke="var(--blue)" stroke-width="2.5"/>
+              <text x="45" y="60" text-anchor="middle" font-size="30">📤</text>
+              <circle cx="45" cy="8" r="14" fill="var(--blue)"/>
+              <text x="45" y="13" text-anchor="middle" font-family="var(--serif)" font-size="14" font-weight="700" fill="#fff">2</text>
+              <text x="45" y="120" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Upload files</text>
+              <text x="45" y="138" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--muted)">drag &amp; drop</text>
+            </g>
+            <!-- 3 -->
+            <g transform="translate(390,40)">
+              <circle cx="45" cy="50" r="44" fill="var(--navy)" stroke="var(--gold)" stroke-width="2.5"/>
+              <text x="45" y="60" text-anchor="middle" font-size="30">⚙️</text>
+              <circle cx="45" cy="8" r="14" fill="var(--gold)"/>
+              <text x="45" y="13" text-anchor="middle" font-family="var(--serif)" font-size="14" font-weight="700" fill="var(--navy)">3</text>
+              <text x="45" y="120" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">The work happens</text>
+              <text x="45" y="138" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--muted)">checks + analysis</text>
+            </g>
+            <!-- 4 -->
+            <g transform="translate(560,40)">
+              <circle cx="45" cy="50" r="44" fill="var(--card)" stroke="var(--gold-deep)" stroke-width="2.5"/>
+              <text x="45" y="60" text-anchor="middle" font-size="30">📶</text>
+              <circle cx="45" cy="8" r="14" fill="var(--gold-deep)"/>
+              <text x="45" y="13" text-anchor="middle" font-family="var(--serif)" font-size="14" font-weight="700" fill="#fff">4</text>
+              <text x="45" y="120" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Watch progress</text>
+              <text x="45" y="138" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--muted)">a live bar</text>
+            </g>
+            <!-- 5 -->
+            <g transform="translate(730,40)">
+              <circle cx="45" cy="50" r="44" fill="var(--card)" stroke="var(--green)" stroke-width="2.5"/>
+              <text x="45" y="60" text-anchor="middle" font-size="30">📥</text>
+              <circle cx="45" cy="8" r="14" fill="var(--green)"/>
+              <text x="45" y="13" text-anchor="middle" font-family="var(--serif)" font-size="14" font-weight="700" fill="#fff">5</text>
+              <text x="45" y="120" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Download report</text>
+              <text x="45" y="138" text-anchor="middle" font-family="var(--sans)" font-size="11" fill="var(--muted)">the Excel file</text>
+            </g>
+
+            <!-- arrows between -->
+            <g stroke="var(--gold-deep)" stroke-width="2.4" marker-end="url(#ah2)">
+              <path d="M150 90 H205"/><path d="M320 90 H375"/><path d="M490 90 H545"/><path d="M660 90 H715"/>
+            </g>
+
+            <!-- preview & results annotation under 3-5 -->
+            <g transform="translate(360,205)">
+              <rect x="0" y="0" width="490" height="70" rx="14" fill="var(--paper-2)" stroke="var(--line-2)"/>
+              <text x="22" y="30" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Before you download, you get a preview</text>
+              <text x="22" y="52" font-family="var(--sans)" font-size="12.5" fill="var(--muted)">A live, searchable table on screen lets you check the results look right first.</text>
+              <text x="455" y="45" text-anchor="middle" font-size="26">🔎</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div><h4>Choose what to check</h4><p>The consultant picks the options that fit the job — for example, whether to check at the level of roles, individual people, or both.</p></div></div>
+        <div class="step"><div class="num">2</div><div><h4>Upload the client's files</h4><p>They drag in the spreadsheets. The moment a file arrives, the platform checks it's the right shape. If anything's missing, it lists <em>every</em> problem at once, in plain terms, so it can be fixed in one go — not one error at a time.</p></div></div>
+        <div class="step"><div class="num">3</div><div><h4>The platform does the work</h4><p>The heavy checking runs on our servers, not the consultant's laptop. It reads the data, runs the analysis, and assembles a formatted Excel report — all behind the scenes.</p></div></div>
+        <div class="step"><div class="num">4</div><div><h4>A live progress bar</h4><p>Because a big job can take a few minutes, the screen shows a real progress bar and a checklist of stages — so the consultant always knows where things stand.</p></div></div>
+        <div class="step"><div class="num">5</div><div><h4>Preview, then download</h4><p>The results appear in a searchable table to review first. When it looks right, one click downloads the finished Excel report to hand to the client.</p></div></div>
+      </div>
+
+      <div class="callout">
+        <div class="ic">🔒</div>
+        <div><h4>Nothing lingers</h4><p>Uploaded files and results live in the platform's memory only for the length of the session, then are cleared automatically after about an hour. Sensitive client data isn't left sitting around.</p></div>
+      </div>
+
+      <hr class="divider">
+
+      <h2 class="sec">Two halves that talk to each other</h2>
+      <p class="kick">Under the hood, the platform has two sides. You never see the split — but it explains why things feel fast and reliable.</p>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">Front &amp; back</span><span class="txt">The screen you see, and the engine room behind it.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 880 300" role="img" aria-label="The screen the user sees talks to the engine room behind it, which does the analysis and returns results.">
+            <defs>
+              <marker id="ah3" markerWidth="11" markerHeight="11" refX="7" refY="3.2" orient="auto"><path d="M0,0 L7.5,3.2 L0,6.4 Z" fill="var(--gold-deep)"/></marker>
+              <marker id="ah3b" markerWidth="11" markerHeight="11" refX="1" refY="3.2" orient="auto"><path d="M7.5,0 L0,3.2 L7.5,6.4 Z" fill="var(--green)"/></marker>
+            </defs>
+
+            <!-- FRONT -->
+            <g transform="translate(40,50)">
+              <rect x="0" y="0" width="320" height="210" rx="18" fill="var(--card)" stroke="var(--line-2)" stroke-width="1.5"/>
+              <text x="20" y="34" font-family="var(--serif)" font-size="18" font-weight="700" fill="var(--ink)">The screen you see</text>
+              <text x="20" y="56" font-family="var(--sans)" font-size="12.5" fill="var(--muted)">Buttons, uploads, tables, the report button</text>
+              <!-- mock window -->
+              <rect x="20" y="74" width="280" height="118" rx="10" fill="var(--paper-2)" stroke="var(--line)"/>
+              <circle cx="36" cy="90" r="4" fill="var(--stop)"/><circle cx="50" cy="90" r="4" fill="var(--warn)"/><circle cx="64" cy="90" r="4" fill="var(--good)"/>
+              <rect x="34" y="106" width="120" height="14" rx="5" fill="var(--navy)"/>
+              <rect x="34" y="130" width="252" height="10" rx="4" fill="var(--line-2)"/>
+              <rect x="34" y="148" width="220" height="10" rx="4" fill="var(--line-2)"/>
+              <rect x="200" y="168" width="86" height="18" rx="6" fill="var(--gold)"/>
+            </g>
+
+            <!-- BACK -->
+            <g transform="translate(520,50)">
+              <rect x="0" y="0" width="320" height="210" rx="18" fill="var(--navy)" stroke="var(--navy-2)" stroke-width="1.5"/>
+              <text x="20" y="34" font-family="var(--serif)" font-size="18" font-weight="700" fill="#fff">The engine room</text>
+              <text x="20" y="56" font-family="var(--sans)" font-size="12.5" fill="#AEB9CE">Where the real checking &amp; number-crunching runs</text>
+              <g transform="translate(20,74)">
+                <rect x="0" y="0" width="130" height="52" rx="10" fill="#20304F"/>
+                <text x="65" y="24" text-anchor="middle" font-size="18">🧮</text>
+                <text x="65" y="42" text-anchor="middle" font-family="var(--sans)" font-size="11" font-weight="700" fill="#fff">The analysers</text>
+                <rect x="150" y="0" width="130" height="52" rx="10" fill="#20304F"/>
+                <text x="215" y="24" text-anchor="middle" font-size="18">🗂️</text>
+                <text x="215" y="42" text-anchor="middle" font-family="var(--sans)" font-size="11" font-weight="700" fill="#fff">Job tracker</text>
+                <rect x="0" y="64" width="280" height="52" rx="10" fill="#20304F"/>
+                <text x="30" y="94" text-anchor="middle" font-size="18">👷</text>
+                <text x="165" y="88" text-anchor="middle" font-family="var(--sans)" font-size="11" font-weight="700" fill="#fff">A team of workers handles several jobs at once</text>
+                <text x="165" y="104" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="#AEB9CE">so one big job never blocks everyone else</text>
+              </g>
+            </g>
+
+            <!-- arrows between -->
+            <path d="M366 128 H514" stroke="var(--gold-deep)" stroke-width="2.6" fill="none" marker-end="url(#ah3)" class="flow-dash"/>
+            <text x="440" y="118" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--muted)">"please run this"</text>
+            <path d="M514 168 H366" stroke="var(--green)" stroke-width="2.6" fill="none" marker-end="url(#ah3b)" class="flow-dash"/>
+            <text x="440" y="190" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--muted)">"here are the results"</text>
+          </svg>
+        </div>
+        <div class="legend">
+          <span class="lg"><span class="dot" style="background:var(--gold)"></span>Request going out — "run this job"</span>
+          <span class="lg"><span class="dot" style="background:var(--green)"></span>Answer coming back — progress &amp; results</span>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div class="card pad"><h3 class="sub">The screen you see</h3><p class="kick">This is the friendly part — the pages, buttons, upload boxes, and result tables. It's quick and responsive, and it keeps asking the engine room "are we done yet?" every second and a half, so the progress bar stays live.</p></div>
+        <div class="card pad"><h3 class="sub">The engine room</h3><p class="kick">This is the powerhouse. It does the actual reading, checking, and calculating, and it can run several people's jobs side by side. Keeping it separate is why one large analysis never freezes the platform for everyone else.</p></div>
+      </div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="home"><span class="d">Back</span><span class="t">← Welcome</span></a>
+        <a class="pgbtn next" data-goto="sod"><span class="d">Next — Tool 01</span><span class="t">Conflict &amp; Access Check →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: SOD  (Tool 1)
+       ============================================================ -->
+  <section class="page" id="page-sod">
+    <div class="wrap">
+      <div class="toolhead">
+        <div class="badge t-amber">🛡️</div>
+        <div>
+          <div class="kv">Tool 01 · the flagship</div>
+          <h1 class="big" style="margin:2px 0 0">Conflict &amp; Access Check</h1>
+        </div>
+      </div>
+      <p class="lead">This is our most important tool. It answers a question every auditor asks: <span class="hl">is anyone able to do two jobs that should never be in the same hands?</span> — and separately, <span class="hl">does anyone hold access that's simply too powerful?</span></p>
+
+      <div class="callout">
+        <div class="ic">💭</div>
+        <div><h4>A everyday example</h4><p>The person who <strong>creates a new supplier</strong> should not also be the person who <strong>pays that supplier</strong> — together, those two abilities let one person invent a fake supplier and pay them. That combination is called a "conflict of duties," and it's exactly what this tool hunts for.</p></div>
+      </div>
+
+      <h2 class="sec">How it finds a conflict</h2>
+      <p class="kick">The tool is given the client's list of who holds which access. It looks for anyone who holds <em>both</em> halves of a risky pair at the same time.</p>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">The core idea</span><span class="txt">Two risky abilities in one pair of hands = a flag.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 820 300" role="img" aria-label="A person holding both 'create supplier' and 'pay supplier' is flagged as a conflict; holding only one is fine.">
+            <defs><marker id="ahs" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--gold-deep)"/></marker></defs>
+
+            <!-- person A - conflict -->
+            <g transform="translate(40,40)">
+              <text x="120" y="0" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Person A</text>
+              <circle cx="30" cy="40" r="24" fill="var(--navy)"/><circle cx="30" cy="33" r="8" fill="var(--gold)"/><path d="M16 56 a15 13 0 0 1 28 0Z" fill="var(--gold)"/>
+              <!-- two abilities -->
+              <g transform="translate(78,16)">
+                <rect x="0" y="0" width="150" height="46" rx="12" fill="var(--amber-tint)" stroke="var(--amber)"/>
+                <text x="14" y="28" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">✍️ Create supplier</text>
+              </g>
+              <g transform="translate(78,66)">
+                <rect x="0" y="0" width="150" height="46" rx="12" fill="var(--amber-tint)" stroke="var(--amber)"/>
+                <text x="14" y="28" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">💳 Pay supplier</text>
+              </g>
+              <!-- result -->
+              <g transform="translate(250,44)">
+                <path d="M-20 20 H0" stroke="var(--stop)" stroke-width="2.4" marker-end="url(#ahs)"/>
+                <rect x="8" y="0" width="180" height="46" rx="12" fill="var(--stop-tint)" stroke="var(--stop)" stroke-width="1.5"/>
+                <text x="98" y="28" text-anchor="middle" font-family="var(--sans)" font-size="13.5" font-weight="800" fill="var(--stop)">⚠️ FLAGGED — conflict</text>
+              </g>
+            </g>
+
+            <line x1="40" y1="170" x2="780" y2="170" stroke="var(--line)" stroke-dasharray="4 5"/>
+
+            <!-- person B - fine -->
+            <g transform="translate(40,190)">
+              <text x="120" y="0" text-anchor="middle" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">Person B</text>
+              <circle cx="30" cy="40" r="24" fill="var(--navy)"/><circle cx="30" cy="33" r="8" fill="var(--gold)"/><path d="M16 56 a15 13 0 0 1 28 0Z" fill="var(--gold)"/>
+              <g transform="translate(78,17)">
+                <rect x="0" y="0" width="150" height="46" rx="12" fill="var(--amber-tint)" stroke="var(--amber)"/>
+                <text x="14" y="28" font-family="var(--sans)" font-size="13" font-weight="700" fill="var(--ink)">✍️ Create supplier</text>
+              </g>
+              <text x="90" y="92" font-family="var(--sans)" font-size="12.5" fill="var(--muted)">(only one of the pair)</text>
+              <g transform="translate(250,17)">
+                <path d="M-20 23 H0" stroke="var(--good)" stroke-width="2.4" marker-end="url(#ahs)"/>
+                <rect x="8" y="0" width="180" height="46" rx="12" fill="var(--good-tint)" stroke="var(--good)" stroke-width="1.5"/>
+                <text x="98" y="28" text-anchor="middle" font-family="var(--sans)" font-size="13.5" font-weight="800" fill="var(--good)">✓ Fine — no conflict</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <h2 class="sec">The clever part: filtering out false alarms</h2>
+      <p class="kick">A raw check would flag thousands of "conflicts" that aren't real problems — the client may already have controls in place, or the access may be harmless in practice. Chasing those wastes days. So this tool has an optional three-stage filter that quietly sets the false alarms aside, leaving only the genuine issues.</p>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">The filter</span><span class="txt">A big pile of flags becomes a short list of real ones.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 860 260" role="img" aria-label="Many raw flags pass through three filters and come out as a small number of genuine conflicts.">
+            <defs><marker id="ahf" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--gold-deep)"/></marker></defs>
+
+            <!-- big pile -->
+            <g transform="translate(20,70)">
+              <rect x="0" y="0" width="120" height="120" rx="14" fill="var(--stop-tint)" stroke="var(--stop)"/>
+              <text x="60" y="52" text-anchor="middle" font-family="var(--serif)" font-size="30" font-weight="700" fill="var(--stop)">1,000s</text>
+              <text x="60" y="78" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="700" fill="var(--ink)">raw flags</text>
+              <text x="60" y="140" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">most are noise</text>
+            </g>
+
+            <!-- 3 funnels -->
+            <g transform="translate(175,60)">
+              <path d="M-20 70 H-2" stroke="var(--gold-deep)" stroke-width="2.2" marker-end="url(#ahf)"/>
+              <rect x="8" y="0" width="150" height="140" rx="14" fill="var(--card)" stroke="var(--line-2)"/>
+              <text x="83" y="30" text-anchor="middle" font-size="24">🧹</text>
+              <text x="83" y="56" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="800" fill="var(--ink)">Filter 1</text>
+              <text x="83" y="80" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">Access the client</text>
+              <text x="83" y="96" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">already marked</text>
+              <text x="83" y="112" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">as safe</text>
+            </g>
+            <g transform="translate(345,60)">
+              <path d="M-20 70 H-2" stroke="var(--gold-deep)" stroke-width="2.2" marker-end="url(#ahf)"/>
+              <rect x="8" y="0" width="150" height="140" rx="14" fill="var(--card)" stroke="var(--line-2)"/>
+              <text x="83" y="30" text-anchor="middle" font-size="24">📍</text>
+              <text x="83" y="56" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="800" fill="var(--ink)">Filter 2</text>
+              <text x="83" y="80" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">Access limited to</text>
+              <text x="83" y="96" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">a harmless area</text>
+              <text x="83" y="112" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">of the business</text>
+            </g>
+            <g transform="translate(515,60)">
+              <path d="M-20 70 H-2" stroke="var(--gold-deep)" stroke-width="2.2" marker-end="url(#ahf)"/>
+              <rect x="8" y="0" width="150" height="140" rx="14" fill="var(--card)" stroke="var(--line-2)"/>
+              <text x="83" y="30" text-anchor="middle" font-size="24">⚖️</text>
+              <text x="83" y="56" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="800" fill="var(--ink)">Filter 3</text>
+              <text x="83" y="80" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">Confirms the ones</text>
+              <text x="83" y="96" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">that truly do</text>
+              <text x="83" y="112" text-anchor="middle" font-family="var(--sans)" font-size="11.5" fill="var(--muted)">conflict</text>
+            </g>
+
+            <!-- small pile -->
+            <g transform="translate(700,80)">
+              <path d="M-20 50 H-2" stroke="var(--gold-deep)" stroke-width="2.2" marker-end="url(#ahf)"/>
+              <rect x="8" y="0" width="130" height="100" rx="14" fill="var(--good-tint)" stroke="var(--good)"/>
+              <text x="73" y="46" text-anchor="middle" font-family="var(--serif)" font-size="28" font-weight="700" fill="var(--good)">the few</text>
+              <text x="73" y="70" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--ink)">real issues</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <h2 class="sec">Step by step</h2>
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div><h4>Configure</h4><p>The consultant chooses whether to check by role, by individual person, or both — and whether to switch on the false-alarm filter.</p></div></div>
+        <div class="step"><div class="num">2</div><div><h4>Upload</h4><p>They provide the access lists and the rulebook of risky pairs. The platform checks every file is complete before letting the analysis start.</p></div></div>
+        <div class="step"><div class="num">3</div><div><h4>Analyse</h4><p>It cross-references everyone's access against every risky pair, then runs the false-alarm filter if it was switched on.</p></div></div>
+        <div class="step"><div class="num">4</div><div><h4>Report</h4><p>Out comes a multi-tab Excel workbook: a summary, then detailed lists of every genuine conflict and every piece of over-powered access.</p></div></div>
+      </div>
+
+      <div class="callout value"><div class="ic">💡</div><div><h4>Why it matters</h4><p>This is the difference between a consultant spending a week combing spreadsheets by hand — and getting a defensible, filtered list of real risks in a few minutes. Fewer false alarms means the client's team fixes what actually matters.</p></div></div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="how"><span class="d">Back</span><span class="t">← How it all works</span></a>
+        <a class="pgbtn next" data-goto="ruleset"><span class="d">Next — Tool 02</span><span class="t">Rulebook Matcher →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: RULESET (Tool 2)
+       ============================================================ -->
+  <section class="page" id="page-ruleset">
+    <div class="wrap">
+      <div class="toolhead">
+        <div class="badge t-violet">🧩</div>
+        <div><div class="kv">Tool 02</div><h1 class="big" style="margin:2px 0 0">Rulebook Matcher</h1></div>
+      </div>
+      <p class="lead">Every client has their own rulebook of what counts as risky access. EY has a polished standard rulebook too. This tool lines the two up side by side and shows, control by control, <span class="hl">where they agree, where they differ, and what the client is missing.</span></p>
+
+      <div class="callout"><div class="ic">💭</div><div><h4>Think of it like…</h4><p>…comparing a client's homemade safety checklist against the industry-standard one. You want to know: which items match, which are worded differently but mean the same thing, and which standard items the client forgot entirely.</p></div></div>
+
+      <h2 class="sec">Matching in both directions</h2>
+      <p class="kick">It doesn't just check the client against EY — it also checks EY against the client, so gaps show up from both angles. For each item it gives a <span class="hl">confidence score</span>: how sure it is that two entries are really the same thing.</p>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">Side by side</span><span class="txt">Client rulebook meets EY's standard rulebook.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 840 320" role="img" aria-label="Client rulebook items matched to EY rulebook items with confidence, plus items that don't match.">
+            <defs><marker id="ahr" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--violet)"/></marker></defs>
+
+            <!-- client column -->
+            <text x="130" y="28" text-anchor="middle" font-family="var(--serif)" font-size="17" font-weight="700" fill="var(--ink)">Client rulebook</text>
+            <g font-family="var(--sans)" font-size="13" font-weight="600">
+              <g transform="translate(30,44)"><rect width="200" height="44" rx="11" fill="var(--violet-tint)" stroke="var(--violet)"/><text x="16" y="27" fill="var(--ink)">Approve big payments</text></g>
+              <g transform="translate(30,102)"><rect width="200" height="44" rx="11" fill="var(--violet-tint)" stroke="var(--violet)"/><text x="16" y="27" fill="var(--ink)">Edit customer bank details</text></g>
+              <g transform="translate(30,160)"><rect width="200" height="44" rx="11" fill="var(--violet-tint)" stroke="var(--violet)"/><text x="16" y="27" fill="var(--ink)">Change tax settings</text></g>
+            </g>
+
+            <!-- EY column -->
+            <text x="710" y="28" text-anchor="middle" font-family="var(--serif)" font-size="17" font-weight="700" fill="var(--ink)">EY standard rulebook</text>
+            <g font-family="var(--sans)" font-size="13" font-weight="600">
+              <g transform="translate(610,44)"><rect width="200" height="44" rx="11" fill="var(--gold-tint)" stroke="var(--gold-deep)"/><text x="16" y="27" fill="var(--ink)">Authorise high-value pay</text></g>
+              <g transform="translate(610,102)"><rect width="200" height="44" rx="11" fill="var(--gold-tint)" stroke="var(--gold-deep)"/><text x="16" y="27" fill="var(--ink)">Amend customer bank data</text></g>
+              <g transform="translate(610,220)"><rect width="200" height="44" rx="11" fill="var(--gold-tint)" stroke="var(--gold-deep)"/><text x="16" y="27" fill="var(--ink)">Manage user passwords</text></g>
+            </g>
+
+            <!-- match lines with confidence -->
+            <path d="M232 66 C400 66 440 66 608 66" stroke="var(--good)" stroke-width="2.4" fill="none" marker-end="url(#ahr)"/>
+            <g transform="translate(360,50)"><rect width="120" height="26" rx="13" fill="var(--good-tint)" stroke="var(--good)"/><text x="60" y="17" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="800" fill="var(--good)">match · 95%</text></g>
+
+            <path d="M232 124 C400 124 440 124 608 124" stroke="var(--good)" stroke-width="2.4" fill="none" marker-end="url(#ahr)"/>
+            <g transform="translate(360,108)"><rect width="120" height="26" rx="13" fill="var(--good-tint)" stroke="var(--good)"/><text x="60" y="17" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="800" fill="var(--good)">match · 88%</text></g>
+
+            <!-- client item with no match -->
+            <path d="M232 182 H360" stroke="var(--stop)" stroke-width="2.4" fill="none" stroke-dasharray="5 5"/>
+            <g transform="translate(300,190)"><rect width="230" height="30" rx="13" fill="var(--stop-tint)" stroke="var(--stop)"/><text x="115" y="20" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="800" fill="var(--stop)">no equivalent in EY's list</text></g>
+
+            <!-- EY item missing in client -->
+            <g transform="translate(300,232)"><rect width="230" height="30" rx="13" fill="var(--warn-tint)" stroke="var(--warn)"/><text x="115" y="20" text-anchor="middle" font-family="var(--sans)" font-size="11.5" font-weight="800" fill="var(--warn)">client is missing this control</text></g>
+            <path d="M530 247 H608" stroke="var(--warn)" stroke-width="2.4" fill="none" stroke-dasharray="5 5"/>
+          </svg>
+        </div>
+        <div class="legend">
+          <span class="lg"><span class="dot" style="background:var(--good)"></span>Confident match</span>
+          <span class="lg"><span class="dot" style="background:var(--stop)"></span>Client has it, EY doesn't</span>
+          <span class="lg"><span class="dot" style="background:var(--warn)"></span>EY has it, client is missing it</span>
+        </div>
+      </div>
+
+      <h2 class="sec">Step by step</h2>
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div><h4>Upload two rulebooks</h4><p>The client's and EY's, each as a spreadsheet. The platform checks both are complete.</p></div></div>
+        <div class="step"><div class="num">2</div><div><h4>Match everything, both ways</h4><p>It compares every control and every access item, in both directions, scoring how sure it is about each match.</p></div></div>
+        <div class="step"><div class="num">3</div><div><h4>Spot the gaps</h4><p>It lists what the client has that EY doesn't, what EY has that the client is missing, and where access is only partly covered.</p></div></div>
+        <div class="step"><div class="num">4</div><div><h4>Report</h4><p>A workbook where every tab even carries a plain-English note explaining what it shows — so the client can read it without a translator.</p></div></div>
+      </div>
+
+      <div class="callout value"><div class="ic">💡</div><div><h4>Why it matters</h4><p>Reconciling two rulebooks by hand is painstaking and subjective. This gives a scored, consistent, two-way comparison that instantly shows a client how their controls stack up against the EY standard — and exactly where to improve.</p></div></div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="sod"><span class="d">Back — Tool 01</span><span class="t">← Conflict &amp; Access Check</span></a>
+        <a class="pgbtn next" data-goto="oracle"><span class="d">Next — Tool 03</span><span class="t">Environment Compare →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: ORACLE (Tool 3)
+       ============================================================ -->
+  <section class="page" id="page-oracle">
+    <div class="wrap">
+      <div class="toolhead">
+        <div class="badge t-green">🔍</div>
+        <div><div class="kv">Tool 03</div><h1 class="big" style="margin:2px 0 0">Environment Compare</h1></div>
+      </div>
+      <p class="lead">Big companies keep more than one copy of a system — for example a "test" copy and the real "live" copy. They should match. This tool takes the same export from both copies and lists, precisely, <span class="hl">what exists in one but is missing from the other.</span></p>
+
+      <div class="callout"><div class="ic">💭</div><div><h4>Think of it like…</h4><p>…comparing two editions of the same rulebook to spot every line that was added, removed, or changed between them — except it does it across tens of thousands of lines in seconds, and never misses one.</p></div></div>
+
+      <h2 class="sec">Spot-the-difference, at scale</h2>
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">Two copies</span><span class="txt">What's in one but not the other — in both directions.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 840 300" role="img" aria-label="Test and live copies compared; the tool lists what exists in one but is missing in the other.">
+            <defs><marker id="aho" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--green)"/></marker></defs>
+
+            <!-- copy A -->
+            <g transform="translate(30,40)">
+              <rect width="200" height="220" rx="16" fill="var(--card)" stroke="var(--green)" stroke-width="2"/>
+              <rect width="200" height="40" rx="16" fill="var(--green)"/><rect y="22" width="200" height="18" fill="var(--green)"/>
+              <text x="100" y="27" text-anchor="middle" font-family="var(--serif)" font-size="15" font-weight="700" fill="#fff">TEST copy</text>
+              <g font-family="var(--sans)" font-size="12.5" fill="var(--ink)">
+                <rect x="16" y="56" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="73">Access item A</text>
+                <rect x="16" y="90" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="107">Access item B</text>
+                <rect x="16" y="124" width="168" height="26" rx="7" fill="var(--green-tint)" stroke="var(--green)"/><text x="26" y="141" font-weight="700">Access item C</text>
+                <rect x="16" y="158" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="175">Access item D</text>
+              </g>
+            </g>
+
+            <!-- copy B -->
+            <g transform="translate(610,40)">
+              <rect width="200" height="220" rx="16" fill="var(--card)" stroke="var(--navy-2)" stroke-width="2"/>
+              <rect width="200" height="40" rx="16" fill="var(--navy)"/><rect y="22" width="200" height="18" fill="var(--navy)"/>
+              <text x="100" y="27" text-anchor="middle" font-family="var(--serif)" font-size="15" font-weight="700" fill="#fff">LIVE copy</text>
+              <g font-family="var(--sans)" font-size="12.5" fill="var(--ink)">
+                <rect x="16" y="56" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="73">Access item A</text>
+                <rect x="16" y="90" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="107">Access item B</text>
+                <rect x="16" y="124" width="168" height="26" rx="7" fill="var(--paper-2)"/><text x="26" y="141">Access item D</text>
+                <rect x="16" y="158" width="168" height="26" rx="7" fill="var(--warn-tint)" stroke="var(--warn)"/><text x="26" y="175" font-weight="700">Access item E</text>
+              </g>
+            </g>
+
+            <!-- middle verdict -->
+            <g transform="translate(300,70)">
+              <rect width="240" height="160" rx="16" fill="var(--paper-2)" stroke="var(--line-2)"/>
+              <text x="120" y="34" text-anchor="middle" font-family="var(--serif)" font-size="15" font-weight="700" fill="var(--ink)">The differences</text>
+              <g transform="translate(20,52)">
+                <rect width="200" height="42" rx="10" fill="var(--green-tint)" stroke="var(--green)"/>
+                <text x="14" y="19" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--ink)">Item C</text>
+                <text x="14" y="35" font-family="var(--sans)" font-size="11" fill="var(--muted)">in TEST, missing from LIVE</text>
+              </g>
+              <g transform="translate(20,102)">
+                <rect width="200" height="42" rx="10" fill="var(--warn-tint)" stroke="var(--warn)"/>
+                <text x="14" y="19" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--ink)">Item E</text>
+                <text x="14" y="35" font-family="var(--sans)" font-size="11" fill="var(--muted)">in LIVE, missing from TEST</text>
+              </g>
+            </g>
+
+            <path d="M232 150 H298" stroke="var(--green)" stroke-width="2.2" marker-end="url(#aho)"/>
+            <path d="M608 150 H542" stroke="var(--green)" stroke-width="2.2" marker-end="url(#aho)"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="steps">
+        <div class="step"><div class="num">1</div><div><h4>Name the two copies</h4><p>The consultant labels them — say "Test" and "Live" — and picks what kind of access to compare.</p></div></div>
+        <div class="step"><div class="num">2</div><div><h4>Upload one export from each</h4><p>Two matching files, one per copy.</p></div></div>
+        <div class="step"><div class="num">3</div><div><h4>Compare both ways</h4><p>It finds everything in the first that's missing from the second, and everything in the second that's missing from the first.</p></div></div>
+        <div class="step"><div class="num">4</div><div><h4>Report</h4><p>A workbook with a summary and a clear list of every difference, in both directions.</p></div></div>
+      </div>
+
+      <div class="callout value"><div class="ic">💡</div><div><h4>Why it matters</h4><p>Systems drift apart over time, and a mismatch between test and live can hide a real security gap. Catching those differences by eye is nearly impossible at scale — here it's instant and complete.</p></div></div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="ruleset"><span class="d">Back — Tool 02</span><span class="t">← Rulebook Matcher</span></a>
+        <a class="pgbtn next" data-goto="bot"><span class="d">Next — Tool 04</span><span class="t">Screen Capture Bot →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: BOT (Tool 4)
+       ============================================================ -->
+  <section class="page" id="page-bot">
+    <div class="wrap">
+      <div class="toolhead">
+        <div class="badge t-blue">📸</div>
+        <div><div class="kv">Tool 04 · a different kind of tool</div><h1 class="big" style="margin:2px 0 0">Screen Capture Bot</h1></div>
+      </div>
+      <p class="lead">The other three tools read spreadsheets. This one is different: it's a robot assistant that <span class="hl">actually logs into a system, clicks through every screen a person could reach, and takes a photo of each one</span> — hard evidence of what a given login can really see and do.</p>
+
+      <div class="callout"><div class="ic">💭</div><div><h4>Think of it like…</h4><p>…hiring a very fast, very thorough intern to log in, open every single menu, screenshot each page, and hand you a neat photo album — except it does in minutes what would take a person hours, and never skips a page.</p></div></div>
+
+      <h2 class="sec">What the robot does</h2>
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">The robot's rounds</span><span class="txt">Log in, walk every area, photograph each, hand back an album.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 860 250" role="img" aria-label="The bot logs in, opens the menu, walks each area photographing it, and returns a zip album of screenshots.">
+            <defs><marker id="ahb" markerWidth="10" markerHeight="10" refX="7" refY="3" orient="auto"><path d="M0,0 L7,3 L0,6 Z" fill="var(--blue)"/></marker></defs>
+
+            <g transform="translate(20,70)">
+              <rect width="130" height="110" rx="14" fill="var(--blue-tint)" stroke="var(--blue)"/>
+              <text x="65" y="46" text-anchor="middle" font-size="30">🔑</text>
+              <text x="65" y="74" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="700" fill="var(--ink)">Logs in</text>
+              <text x="65" y="92" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">with the details given</text>
+            </g>
+            <path d="M158 125 H188" stroke="var(--blue)" stroke-width="2.2" marker-end="url(#ahb)"/>
+
+            <g transform="translate(196,70)">
+              <rect width="130" height="110" rx="14" fill="var(--card)" stroke="var(--line-2)"/>
+              <text x="65" y="46" text-anchor="middle" font-size="30">🗺️</text>
+              <text x="65" y="74" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="700" fill="var(--ink)">Opens the menu</text>
+              <text x="65" y="92" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">lists every area</text>
+            </g>
+            <path d="M334 125 H364" stroke="var(--blue)" stroke-width="2.2" marker-end="url(#ahb)"/>
+
+            <g transform="translate(372,55)">
+              <rect width="150" height="140" rx="14" fill="var(--card)" stroke="var(--blue)" stroke-width="1.6"/>
+              <text x="75" y="42" text-anchor="middle" font-size="28">🖥️📸</text>
+              <text x="75" y="72" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="700" fill="var(--ink)">Visits each area</text>
+              <text x="75" y="90" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">and photographs it</text>
+              <!-- loop arrow -->
+              <path d="M20 118 q55 26 110 0" stroke="var(--blue)" stroke-width="2" fill="none" marker-end="url(#ahb)"/>
+              <text x="75" y="132" text-anchor="middle" font-family="var(--sans)" font-size="10" fill="var(--blue)">repeats for all</text>
+            </g>
+            <path d="M530 125 H560" stroke="var(--blue)" stroke-width="2.2" marker-end="url(#ahb)"/>
+
+            <g transform="translate(568,70)">
+              <rect width="130" height="110" rx="14" fill="var(--card)" stroke="var(--line-2)"/>
+              <text x="65" y="46" text-anchor="middle" font-size="30">🖼️</text>
+              <text x="65" y="74" text-anchor="middle" font-family="var(--sans)" font-size="12.5" font-weight="700" fill="var(--ink)">Gallery on screen</text>
+              <text x="65" y="92" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">flip through them</text>
+            </g>
+            <path d="M706 125 H736" stroke="var(--blue)" stroke-width="2.2" marker-end="url(#ahb)"/>
+
+            <g transform="translate(744,70)">
+              <rect width="100" height="110" rx="14" fill="var(--good-tint)" stroke="var(--good)"/>
+              <text x="50" y="46" text-anchor="middle" font-size="30">🗜️</text>
+              <text x="50" y="74" text-anchor="middle" font-family="var(--sans)" font-size="12" font-weight="700" fill="var(--ink)">Album</text>
+              <text x="50" y="91" text-anchor="middle" font-family="var(--sans)" font-size="10.5" fill="var(--muted)">zip download</text>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="callout"><div class="ic">🔐</div><div><h4>About the login details</h4><p>The username and password are typed in fresh for each run, used only to log in during that run, and are never saved, written down, or shown anywhere. When the run ends, they're gone.</p></div></div>
+
+      <div class="callout value"><div class="ic">💡</div><div><h4>Why it matters</h4><p>Manually screenshotting every screen a role can reach is mind-numbing and error-prone — and people skip pages. The bot produces complete, consistent visual evidence in minutes, which is exactly what an audit trail needs. <span class="pill blue" style="background:var(--blue-tint);color:var(--blue)">In beta</span> — actively being refined.</p></div></div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="oracle"><span class="d">Back — Tool 03</span><span class="t">← Environment Compare</span></a>
+        <a class="pgbtn next" data-goto="value"><span class="d">Next</span><span class="t">Why it matters →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: VALUE
+       ============================================================ -->
+  <section class="page" id="page-value">
+    <div class="wrap">
+      <span class="eyebrow">Why it matters</span>
+      <h1 class="big">The business case, in one screen.</h1>
+      <p class="lead">All four tools point at the same outcome: turn slow, manual, error-prone checking into fast, consistent, defensible analysis — with a client-ready report at the end.</p>
+
+      <div class="grid3" style="margin:34px 0">
+        <div class="card pad"><div style="font-size:30px">⏱️</div><h3 class="sub" style="margin-top:10px">Days → minutes</h3><p class="kick">Checks that used to eat a consultant's week finish in a few minutes, freeing them for judgement work a machine can't do.</p></div>
+        <div class="card pad"><div style="font-size:30px">🎯</div><h3 class="sub" style="margin-top:10px">Fewer mistakes</h3><p class="kick">The platform never gets tired, never skips a row, and checks every file is complete before it starts — so results are consistent and defensible.</p></div>
+        <div class="card pad"><div style="font-size:30px">📑</div><h3 class="sub" style="margin-top:10px">Client-ready output</h3><p class="kick">Every run ends in a tidy, formatted Excel report — the exact deliverable a client expects, with no extra polishing.</p></div>
+      </div>
+
+      <div class="figwrap">
+        <div class="figcap"><span class="tag">Before vs after</span><span class="txt">The same job, the old way and the new way.</span></div>
+        <div class="stage">
+          <svg viewBox="0 0 840 240" role="img" aria-label="Before: slow manual work over many days. After: fast automated analysis in minutes.">
+            <!-- before -->
+            <g transform="translate(30,30)">
+              <rect width="360" height="180" rx="16" fill="var(--stop-tint)" stroke="var(--stop)"/>
+              <text x="24" y="38" font-family="var(--serif)" font-size="18" font-weight="700" fill="var(--ink)">The old way</text>
+              <text x="24" y="62" font-family="var(--sans)" font-size="12.5" fill="var(--muted)">By hand, in spreadsheets</text>
+              <g font-family="var(--sans)" font-size="13" fill="var(--ink)">
+                <text x="24" y="94">🗓️  Days of manual cross-checking</text>
+                <text x="24" y="122">😵  Easy to miss a row or make a slip</text>
+                <text x="24" y="150">🔁  Different people, different answers</text>
+              </g>
+            </g>
+            <text x="420" y="128" text-anchor="middle" font-size="26">→</text>
+            <!-- after -->
+            <g transform="translate(450,30)">
+              <rect width="360" height="180" rx="16" fill="var(--good-tint)" stroke="var(--good)"/>
+              <text x="24" y="38" font-family="var(--serif)" font-size="18" font-weight="700" fill="var(--ink)">The new way</text>
+              <text x="24" y="62" font-family="var(--sans)" font-size="12.5" fill="var(--muted)">With the platform</text>
+              <g font-family="var(--sans)" font-size="13" fill="var(--ink)">
+                <text x="24" y="94">⚡  Minutes, start to finish</text>
+                <text x="24" y="122">✅  Complete &amp; consistent every time</text>
+                <text x="24" y="150">📊  Same clean report, every run</text>
+              </g>
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div class="callout value"><div class="ic">🤝</div><div><h4>Built for a whole team</h4><p>Several consultants can run analyses at the same time without slowing each other down. As the practice grows, the platform grows with it — the same four tools, serving more engagements.</p></div></div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="bot"><span class="d">Back — Tool 04</span><span class="t">← Screen Capture Bot</span></a>
+        <a class="pgbtn next" data-goto="faq"><span class="d">Next</span><span class="t">Common questions →</span></a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================
+       PAGE: FAQ
+       ============================================================ -->
+  <section class="page" id="page-faq">
+    <div class="wrap">
+      <span class="eyebrow">Common questions</span>
+      <h1 class="big">The questions a manager usually asks.</h1>
+      <p class="lead">Short, plain answers — no technical background needed.</p>
+
+      <div style="margin-top:26px">
+        <div class="qrow"><h4>Is client data safe?</h4><p>Yes. Files and results live only in the platform's temporary memory for the length of a session, then clear automatically after about an hour. Nothing is stored long-term, and for the Screen Capture Bot, login details are used only during the run and never saved.</p></div>
+        <div class="qrow"><h4>Do our people need to be technical to use it?</h4><p>No. It's a point-and-click web tool: choose a few options, drag in the files, watch the progress bar, download the report. If a file is wrong, it explains exactly what to fix in plain language.</p></div>
+        <div class="qrow"><h4>What do we actually hand the client?</h4><p>A polished Excel workbook — the standard deliverable. Three of the tools produce a spreadsheet report; the Screen Capture Bot produces a downloadable album of screenshots instead.</p></div>
+        <div class="qrow"><h4>Can several people use it at once?</h4><p>Yes. The platform runs multiple jobs side by side, so one large analysis never blocks the rest of the team.</p></div>
+        <div class="qrow"><h4>What if a run takes a while?</h4><p>Larger jobs can take a few minutes. A live progress bar and a stage-by-stage checklist keep the consultant informed the whole time, and a run can be cancelled if needed.</p></div>
+        <div class="qrow"><h4>Is anything still in progress?</h4><p>Three tools are mature and in everyday use. The Screen Capture Bot is in beta — fully working, still being refined. There's also an internal dashboard for tracking usage that currently shows sample figures.</p></div>
+      </div>
+
+      <div class="callout" style="margin-top:34px"><div class="ic">📌</div><div><h4>The one-line summary</h4><p>Four focused tools that take the slow, careful checking off our consultants' plates and hand back clean, client-ready results in minutes — safely, consistently, and at the scale a modern engagement needs.</p></div></div>
+
+      <div class="foot">
+        <span>Access Governance Platform — a plain-English tour.</span>
+        <span>Prepared for a business audience · no technical background required.</span>
+      </div>
+
+      <div class="pager">
+        <a class="pgbtn" data-goto="value"><span class="d">Back</span><span class="t">← Why it matters</span></a>
+        <a class="pgbtn next" data-goto="home"><span class="d">Start over</span><span class="t">Back to Welcome →</span></a>
+      </div>
+    </div>
+  </section>
+
+  </div>
+</div>
+
+<script>
+(function(){
+  var pages = ["home","how","sod","ruleset","oracle","bot","value","faq"];
+  function go(id){
+    if(pages.indexOf(id)===-1) id="home";
+    document.querySelectorAll(".page").forEach(function(p){p.classList.remove("show")});
+    var pg=document.getElementById("page-"+id); if(pg) pg.classList.add("show");
+    document.querySelectorAll(".nav-link").forEach(function(a){
+      a.classList.toggle("active", a.getAttribute("data-goto")===id);
+    });
+    var main=document.querySelector(".main"); if(main) main.scrollTop=0;
+    window.scrollTo(0,0);
+    if(history.replaceState) history.replaceState(null,"","#"+id);
+  }
+  document.addEventListener("click",function(e){
+    var t=e.target.closest("[data-goto]");
+    if(t){ e.preventDefault(); go(t.getAttribute("data-goto")); }
+  });
+  // theme toggle
+  var root=document.documentElement, btn=document.getElementById("themeToggle"),
+      icon=document.getElementById("themeIcon"), label=document.getElementById("themeLabel");
+  function apply(mode){
+    root.setAttribute("data-theme",mode);
+    var dark = mode==="dark";
+    icon.textContent = dark ? "☀️" : "🌙";
+    label.textContent = dark ? "Light mode" : "Dark mode";
+  }
+  // Default to light mode for everyone (the warm-paper look this doc was designed
+  // around), regardless of the viewer's OS setting. The toggle still switches to dark.
+  apply("light");
+  btn.addEventListener("click",function(){
+    apply(root.getAttribute("data-theme")==="dark" ? "light" : "dark");
+  });
+  // deep link
+  var h=(location.hash||"").replace("#",""); if(h) go(h);
+})();
+</script>
