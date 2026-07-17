@@ -3,7 +3,7 @@
 Responsibilities:
 - CORS configuration for the Vite dev server
 - Request ID middleware (UUID per request, echoed in response headers)
-- Request size limit middleware (200 MB hard cap)
+- Request size limit middleware (hard cap from config.MAX_UPLOAD_SIZE_BYTES)
 - Global GovernanceError exception handler → structured JSON
 - Lifespan: creates temp/ and logs/ on startup, cancels cleanup task on shutdown
 - Background TTL cleanup task (runs every 5 minutes)
@@ -72,16 +72,29 @@ class RequestSizeLimitMiddleware(BaseHTTPMiddleware):
 
     async def dispatch(self, request: Request, call_next) -> Response:
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > self.max_bytes:
-            return JSONResponse(
-                status_code=413,
-                content={
-                    "error": True,
-                    "message": "File exceeds maximum size of 200 MB.",
-                    "code": "FILE_TOO_LARGE",
-                    "details": [],
-                },
-            )
+        if content_length is not None:
+            try:
+                declared = int(content_length)
+            except ValueError:
+                return JSONResponse(
+                    status_code=400,
+                    content={
+                        "error": True,
+                        "message": "Invalid Content-Length header.",
+                        "code": "INVALID_CONTENT_LENGTH",
+                        "details": [],
+                    },
+                )
+            if declared > self.max_bytes:
+                return JSONResponse(
+                    status_code=413,
+                    content={
+                        "error": True,
+                        "message": f"File exceeds maximum size of {self.max_bytes // (1024 * 1024)} MB.",
+                        "code": "FILE_TOO_LARGE",
+                        "details": [],
+                    },
+                )
         return await call_next(request)
 
 

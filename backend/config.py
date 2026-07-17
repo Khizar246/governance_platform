@@ -29,7 +29,7 @@ POLARS_THREADS_PER_WORKER = int(
     os.getenv("POLARS_THREADS_PER_WORKER", str(max(2, (os.cpu_count() or 8) // 3)))
 )
 
-# ── Role Testing Bot (Tool 4) ─────────────────────────────────────────────────
+# ── Role Testing Bot ──────────────────────────────────────────────────────────
 # Per-job screenshot folders live under TEMP_DIR/role-testing/{job_id}.
 ROLE_TESTING_SHOTS_DIR = TEMP_DIR / "role-testing"
 

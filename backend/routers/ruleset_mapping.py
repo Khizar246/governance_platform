@@ -1,4 +1,4 @@
-"""Ruleset Mapping API router (Tool 5).
+"""Ruleset Mapping API router.
 
 Endpoints:
   POST   /api/ruleset-mapping/upload              — upload client + EY ruleset files
@@ -10,18 +10,20 @@ Endpoints:
   DELETE /api/ruleset-mapping/job/{job_id}
 """
 
-import io
 import threading
 
 import pandas as pd
 import polars as pl
 from fastapi import APIRouter, Request, UploadFile, File
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, output_filename
+from exceptions import JobNotFoundError
 from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStatus, FilePreview
 from services.job_manager import job_manager
+from shared.download import stream_job_output
 from shared.file_io import load_excel_to_pandas, get_excel_sheet_names
+from shared.query_filters import apply_column_filters
 from shared.validators import validate_upload, validate_dataframe_schema
 from shared.logger import get_logger
 from engines.ruleset_mapping_engine import run_ruleset_mapping
@@ -88,14 +90,32 @@ def _find_sheet(sheet_names: list[str], target: str) -> str | None:
 
 
 def _build_preview(df: pd.DataFrame, filename: str) -> FilePreview:
-    preview = df.head(5).fillna("").to_dict(orient="records")
     return FilePreview(
         filename=filename,
         rows=len(df),
         columns=list(df.columns),
-        preview=preview,
-        duplicates=int(df.duplicated().sum()),
     )
+
+
+def _step_for_progress(pct: int, msg: str) -> int:
+    """Map an engine progress message onto the frontend checklist step ids.
+
+    The engine runs Client→EY over pct 1–48 and EY→Client over 48–92; the
+    SoD/SA messages carry no direction label, so direction comes from pct.
+    Returns 0 when the message doesn't mark a new step (keep the current one).
+    """
+    first_direction = pct < 48
+    if "running entitlement mapping" in msg:
+        return 2 if first_direction else 5
+    if msg.startswith("SoD"):
+        return 3 if first_direction else 6
+    if msg.startswith("SA"):
+        return 4 if first_direction else 7
+    if msg.startswith("Building summary"):
+        return 8
+    if msg.startswith("Generating Excel report"):
+        return 9
+    return 0
 
 
 def _run_thread(
@@ -109,7 +129,16 @@ def _run_thread(
 ) -> None:
     try:
         logger.info(f"[{job_id}] Starting Ruleset Mapping: client_sod={client_sod_df.shape[0]} rows, client_sa={client_sa_df.shape[0]} rows, client_e2p={client_e2p_df.shape[0]} rows, ey_sod={ey_sod_df.shape[0]} rows, ey_sa={ey_sa_df.shape[0]} rows, ey_e2p={ey_e2p_df.shape[0]} rows")
-        cb = job_manager.make_progress_callback(job_id)
+        raw_cb = job_manager.make_progress_callback(job_id)
+
+        def cb(pct: int, msg: str) -> None:
+            step = _step_for_progress(pct, msg)
+            if step:
+                job_manager.set_step(job_id, step)
+            raw_cb(pct, msg)
+
+        job_manager.set_step(job_id, 1)
+        raw_cb(1, "Loading rulesets…")
         result = run_ruleset_mapping(
             client_sod_df, client_sa_df, client_e2p_df,
             ey_sod_df,     ey_sa_df,     ey_e2p_df,
@@ -141,6 +170,14 @@ def _run_thread(
                 "missing_priv": pl.from_pandas(d["missing_priv_df"].fillna("")),
             }
 
+        # Cancelled mid-run: the job is gone, so caching results here would
+        # orphan them (DELETE's cache purge has already run).
+        try:
+            job_manager.get_job(job_id)
+        except JobNotFoundError:
+            logger.info(f"[{job_id}] Job deleted while running; discarding results")
+            return
+
         _result_dfs[job_id] = {
             "c2e": _dir_cache(c2e),
             "e2c": _dir_cache(e2c),
@@ -149,6 +186,13 @@ def _run_thread(
         output_file = output_filename("Ruleset_Mapping")
         logger.info(f"[{job_id}] Ruleset Mapping complete. Output file: {output_file}")
         job_manager.complete_job(job_id, summary, excel_buf, output_file)
+
+        # If DELETE raced the two lines above, its cache purge may have run
+        # before our insert — an orphaned entry would never be TTL-purged.
+        try:
+            job_manager.get_job(job_id)
+        except JobNotFoundError:
+            _result_dfs.pop(job_id, None)
 
     except Exception as exc:
         logger.error(f"[{job_id}] Ruleset Mapping failed with exception", exc_info=True)
@@ -309,6 +353,15 @@ async def run(job_id: str):
             },
         )
 
+    # Atomically claim the job right before spawning the thread. The early check
+    # above is the fast path; this compare-and-set closes the check-then-act race
+    # where two simultaneous POSTs both pass and start duplicate threads.
+    if not job_manager.try_begin_run(job_id):
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
     logger.info(f"[{job_id}] Starting mapping thread")
     threading.Thread(
         target=_run_thread,
@@ -320,7 +373,7 @@ async def run(job_id: str):
         daemon=True,
     ).start()
 
-    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING, summary={})
+    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING)
 
 
 @router.get("/status/{job_id}", response_model=JobResponse)
@@ -330,26 +383,7 @@ async def status(job_id: str):
 
 @router.get("/download/{job_id}")
 async def download(job_id: str):
-    job = job_manager.get_job(job_id)
-
-    if job.status != JobStatus.COMPLETE:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": "Analysis is not complete yet.", "code": "NOT_READY", "details": []},
-        )
-    if job.output_buffer is None:
-        return JSONResponse(
-            status_code=404,
-            content={"error": True, "message": "Download not available.", "code": "NOT_FOUND", "details": []},
-        )
-
-    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
-    # other (each seek(0) rewinds the stream the other is mid-way through).
-    return StreamingResponse(
-        io.BytesIO(job.output_buffer.getvalue()),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
-    )
+    return stream_job_output(job_id)
 
 
 @router.get("/filter-options/{job_id}")
@@ -368,12 +402,12 @@ async def filter_options(request: Request, job_id: str, column: str, tab: str = 
         )
 
     df: pl.DataFrame = _result_dfs[job_id][direction][tab]
-    _reserved = {"column", "tab", "direction"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col != column and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+    df = apply_column_filters(
+        df,
+        dict(request.query_params),
+        reserved={"column", "tab", "direction"},
+        exclude_column=column,
+    )
 
     if column not in df.columns:
         return {"values": []}
@@ -408,19 +442,18 @@ async def results_page(
 
     df: pl.DataFrame = _result_dfs[job_id][direction][tab]
 
-    _reserved = {"page", "page_size", "tab", "direction"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+    df = apply_column_filters(
+        df, dict(request.query_params), reserved={"page", "page_size", "tab", "direction"}
+    )
 
     sort_col = _resolve_sort_col(df, tab)
     if sort_col:
         df = df.sort(sort_col)
 
     total     = df.height
-    page_size = max(1, page_size)
+    # Upper bound guards the server from serialising an entire sheet in one
+    # response (frontend's largest page is 200).
+    page_size = min(max(1, page_size), 500)
     page      = max(1, page)
     start     = (page - 1) * page_size
     return {"data": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size}

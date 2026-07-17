@@ -1,4 +1,4 @@
-"""Role Testing Bot API router (Tool 4).
+"""Role Testing Bot API router.
 
 Drives headless Chrome through Oracle Fusion Cloud and captures a screenshot of
 every Navigator work area. Unlike the other three tools there is NO file upload —
@@ -26,14 +26,16 @@ import zipfile
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import JSONResponse, StreamingResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse
 
 from config import ROLE_TESTING_SHOTS_DIR, output_filename
+from exceptions import JobNotFoundError
 from models.common import AnalysisResponse, JobResponse, JobStatus
 from models.role_testing import (
     RoleTestingRunConfig, CapturedScreenshot, RoleTestingSummary,
 )
 from services.job_manager import job_manager
+from shared.download import stream_job_output
 from shared.logger import get_logger
 from engines.role_testing_engine import run as run_bot
 
@@ -126,7 +128,16 @@ def _run_thread(
             failed=data["failed"],
             skipped=data["skipped"],
             screenshots=screenshots,
+            warnings=list(result.warnings),
         )
+
+        # Cancelled mid-run: the job (and its screenshot dir) are already gone, so
+        # caching results here would orphan them (DELETE's purge has already run).
+        try:
+            job_manager.get_job(job_id)
+        except JobNotFoundError:
+            logger.info(f"[{job_id}] Job deleted while running; discarding results")
+            return
 
         for w in result.warnings:
             job_manager.add_warning(job_id, w)
@@ -139,6 +150,16 @@ def _run_thread(
         logger.info(f"[{job_id}] Complete: {summary.captured} captured, "
                     f"{summary.failed} failed, {summary.skipped} skipped. Output: {fname}")
         job_manager.complete_job(job_id, summary.model_dump(), zip_buf, fname)
+
+        # If DELETE raced the lines above, its cache purge may have run before our
+        # insert — an orphaned entry would never be TTL-purged. Clean it up (and
+        # the screenshot dir, which DELETE's rmtree may have missed).
+        try:
+            job_manager.get_job(job_id)
+        except JobNotFoundError:
+            _result_data.pop(job_id, None)
+            if shot_path.exists():
+                shutil.rmtree(shot_path, ignore_errors=True)
 
     except Exception as exc:  # noqa: BLE001
         logger.error(f"[{job_id}] Role Testing Bot crashed", exc_info=True)
@@ -181,7 +202,7 @@ async def run(config: RoleTestingRunConfig):
     ).start()
 
     logger.info(f"[{job.id}] Role Testing Bot run thread started")
-    return AnalysisResponse(job_id=job.id, status=JobStatus.RUNNING, summary={})
+    return AnalysisResponse(job_id=job.id, status=JobStatus.RUNNING)
 
 
 @router.get("/status/{job_id}", response_model=JobResponse)
@@ -229,26 +250,7 @@ async def image(job_id: str, filename: str):
 
 @router.get("/download/{job_id}")
 async def download(job_id: str):
-    job = job_manager.get_job(job_id)
-    if job.status != JobStatus.COMPLETE:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": "Run is not complete yet.",
-                     "code": "NOT_READY", "details": []},
-        )
-    if job.output_buffer is None:
-        return JSONResponse(
-            status_code=404,
-            content={"error": True, "message": "Download not available.",
-                     "code": "NOT_FOUND", "details": []},
-        )
-    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
-    # other (each seek(0) rewinds the stream the other is mid-way through).
-    return StreamingResponse(
-        io.BytesIO(job.output_buffer.getvalue()),
-        media_type="application/zip",
-        headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
-    )
+    return stream_job_output(job_id, media_type="application/zip")
 
 
 @router.delete("/job/{job_id}")

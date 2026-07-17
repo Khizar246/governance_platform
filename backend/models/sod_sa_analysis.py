@@ -1,4 +1,4 @@
-"""Pydantic models for the SOD & SA Analysis tool (Tool 4)."""
+"""Pydantic models for the SOD & SA Analysis tool."""
 
 from typing import Literal
 

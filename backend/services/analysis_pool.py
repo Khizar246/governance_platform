@@ -88,17 +88,30 @@ class AnalysisPool:
         try:
             future = self._executor.submit(fn, job_id, self._queue, *args)
         except BrokenProcessPool:
-            # A crashed worker (e.g. OOM) poisons the whole executor; rebuild
-            # once so one bad job doesn't take the pool down for good.
+            # A crashed worker (e.g. OOM) poisons the whole executor; rebuild once
+            # so one bad job doesn't take the pool down for good.
             logger.error("Analysis pool broken — restarting executor", exc_info=True)
+            broken = self._executor
             with self._lock:
-                self._executor.shutdown(wait=False, cancel_futures=True)
-                self._executor = ProcessPoolExecutor(
-                    max_workers=ANALYSIS_POOL_WORKERS,
-                    initializer=worker_init,
-                    initargs=(POLARS_THREADS_PER_WORKER,),
-                )
-            future = self._executor.submit(fn, job_id, self._queue, *args)
+                # Only rebuild if no other thread already replaced this broken
+                # executor. Otherwise the second thread here would shut down the
+                # first thread's fresh executor (cancelling its in-flight future).
+                if self._executor is broken:
+                    broken.shutdown(wait=False, cancel_futures=True)
+                    self._executor = ProcessPoolExecutor(
+                        max_workers=ANALYSIS_POOL_WORKERS,
+                        initializer=worker_init,
+                        initargs=(POLARS_THREADS_PER_WORKER,),
+                    )
+                executor = self._executor
+            try:
+                future = executor.submit(fn, job_id, self._queue, *args)
+            except Exception:
+                # A second failure would otherwise leave the job stuck RUNNING
+                # forever (no future → no done-callback → no fail_job).
+                logger.error(f"[{job_id}] Resubmit after pool restart failed", exc_info=True)
+                job_manager.fail_job(job_id, ["The analysis service is temporarily unavailable. Please try again."])
+                raise
         future.add_done_callback(on_done)
         return future
 

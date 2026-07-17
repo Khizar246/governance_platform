@@ -1,21 +1,19 @@
-"""Oracle Comparator API router (Tool 3).
+"""Oracle Comparator API router.
 
 Endpoints:
   POST   /api/oracle-comparator/upload
   POST   /api/oracle-comparator/run/{job_id}
   GET    /api/oracle-comparator/status/{job_id}
-  GET    /api/oracle-comparator/summary/{job_id}
   GET    /api/oracle-comparator/results/{job_id}
   GET    /api/oracle-comparator/download/{job_id}
   DELETE /api/oracle-comparator/job/{job_id}
 """
 
-import io
 from typing import Optional
 
 import polars as pl
 from fastapi import APIRouter, Request, UploadFile, File, Form, Query
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS
 from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStatus, FilePreview
@@ -23,7 +21,9 @@ from models.oracle_comparator import OracleRunConfig
 from services.job_manager import job_manager
 from services.analysis_pool import analysis_pool, make_done_callback
 from services.analysis_workers import run_oracle_comparator_job
+from shared.download import stream_job_output
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
+from shared.query_filters import apply_column_filters
 from shared.validators import validate_upload, validate_dataframe_schema
 from shared.logger import get_logger
 from engines.oracle_comparator_engine import FILE_CONFIGS
@@ -42,8 +42,6 @@ def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
         filename=filename,
         rows=df.height,
         columns=df.columns,
-        preview=df.head(5).to_dicts(),
-        duplicates=df.height - df.unique().height,
     )
 
 
@@ -168,7 +166,7 @@ async def upload(
 
 
 @router.post("/run/{job_id}", response_model=AnalysisResponse)
-async def run(job_id: str, config: OracleRunConfig):
+async def run(job_id: str, config: OracleRunConfig):  # noqa: ARG001 — body accepted for API compat; run reads job.config, not this
     job = job_manager.get_job(job_id)
 
     if job.status == JobStatus.RUNNING:
@@ -184,18 +182,42 @@ async def run(job_id: str, config: OracleRunConfig):
             content={"error": True, "message": "Files not found. Please upload again.", "code": "FILES_NOT_FOUND", "details": []},
         )
 
-    logger.info(f"[{job_id}] Queueing analysis: analysis_type={config.analysis_type}")
+    # The files were uploaded and schema-validated against the config captured at
+    # /upload — that config is authoritative. Trusting the client-resent
+    # analysis_type/env names (which SOD & SA never does) would let a mismatched
+    # analysis_type run against the wrong files (e.g. RBAC files, "dsp" resent →
+    # worker KeyError on dsp_file1).
+    analysis_type = job.config.get("analysis_type")
+    env1_name = job.config.get("env1_name")
+    env2_name = job.config.get("env2_name")
+    if not analysis_type or not env1_name or not env2_name:
+        logger.error(f"[{job_id}] Run requested but job config is missing — re-upload required")
+        return JSONResponse(
+            status_code=400,
+            content={"error": True, "message": "Upload configuration was not found. Please upload again.", "code": "FILES_NOT_FOUND", "details": []},
+        )
+
+    # Atomically claim the job right before dispatch. The early check above is the
+    # fast path; this compare-and-set closes the check-then-act race where two
+    # simultaneous POSTs both pass the early check and spawn duplicate work.
+    if not job_manager.try_begin_run(job_id):
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
+    logger.info(f"[{job_id}] Queueing analysis: analysis_type={analysis_type}")
     analysis_pool.submit(
         job_id,
         run_oracle_comparator_job,
         dict(job.files),
-        config.analysis_type,
-        config.env1_name,
-        config.env2_name,
+        analysis_type,
+        env1_name,
+        env2_name,
         on_done=make_done_callback(job_id, _result_data, logger),
     )
 
-    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING, summary={})
+    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING)
 
 
 @router.get("/status/{job_id}", response_model=JobResponse)
@@ -205,37 +227,7 @@ async def status(job_id: str):
 
 @router.get("/download/{job_id}")
 async def download(job_id: str):
-    job = job_manager.get_job(job_id)
-
-    if job.status != JobStatus.COMPLETE:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": "Analysis is not complete yet.", "code": "NOT_READY", "details": []},
-        )
-    if job.output_buffer is None:
-        return JSONResponse(
-            status_code=404,
-            content={"error": True, "message": "Download not available.", "code": "NOT_FOUND", "details": []},
-        )
-
-    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
-    # other (each seek(0) rewinds the stream the other is mid-way through).
-    return StreamingResponse(
-        io.BytesIO(job.output_buffer.getvalue()),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
-    )
-
-
-@router.get("/summary/{job_id}")
-async def summary(job_id: str):
-    job = job_manager.get_job(job_id)
-    if job.status != JobStatus.COMPLETE:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": "Analysis not complete.", "code": "NOT_READY", "details": []},
-        )
-    return job.results
+    return stream_job_output(job_id)
 
 
 @router.get("/filter-options/{job_id}")
@@ -248,16 +240,17 @@ async def filter_options(
 ):
     """Distinct values for one column after applying all other active column filters."""
     if job_id not in _result_data:
-        return JSONResponse(status_code=404, content={"error": True, "message": "Results not found.", "code": "NOT_FOUND", "details": []})
+        job_manager.get_job(job_id)  # raises 404 if the job is gone entirely
+        return JSONResponse(status_code=400, content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []})
     df: pl.DataFrame = _result_data[job_id].get(direction, {}).get(comparison_type, pl.DataFrame())
     if df.height == 0 or column not in df.columns:
         return {"values": []}
-    _reserved = {"column", "direction", "comparison_type"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col != column and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+    df = apply_column_filters(
+        df,
+        dict(request.query_params),
+        reserved={"column", "direction", "comparison_type"},
+        exclude_column=column,
+    )
     return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
 
 
@@ -273,9 +266,10 @@ async def results_page(
     search: Optional[str] = Query(None, description="Text search across all columns"),
 ):
     if job_id not in _result_data:
+        job_manager.get_job(job_id)  # raises 404 if the job is gone entirely
         return JSONResponse(
-            status_code=404,
-            content={"error": True, "message": "Results not found. The job may have expired.", "code": "NOT_FOUND", "details": []},
+            status_code=400,
+            content={"error": True, "message": "Results not ready.", "code": "NOT_READY", "details": []},
         )
     if direction not in ("1to2", "2to1"):
         return JSONResponse(
@@ -288,12 +282,11 @@ async def results_page(
     if df.height == 0:
         return {"rows": [], "total": 0, "page": page, "page_size": page_size}
 
-    _reserved = {"direction", "comparison_type", "page", "page_size", "status_filter", "search"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).is_in(_vals))
+    df = apply_column_filters(
+        df,
+        dict(request.query_params),
+        reserved={"direction", "comparison_type", "page", "page_size", "status_filter", "search"},
+    )
 
     if status_filter and "Status" in df.columns:
         sf = status_filter.lower()
@@ -312,7 +305,9 @@ async def results_page(
         df = df.sort("Status")
 
     total = df.height
-    page_size = max(1, page_size)
+    # Upper bound guards the server from serialising an entire sheet in one
+    # response (frontend's largest page is 200).
+    page_size = min(max(1, page_size), 500)
     page = max(1, page)
     start = (page - 1) * page_size
     return {"rows": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size}

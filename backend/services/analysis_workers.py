@@ -89,10 +89,22 @@ def run_sod_sa_job(
             else:  # "user"
                 selected_analyses = ["user_sod", "user_sa"]
 
+        # The bar and checklist are monotonic: sub-phase callbacks emit local
+        # percents/step ids (e.g. a leg's "…complete" message lacks the "SA"
+        # marker, and export restarts its own low percent), so without a floor
+        # the display would visibly step backwards (5→4, 97→82). Latch the
+        # highest values seen and never emit anything lower.
+        _floor = {"pct": 0, "step": 0}
+
         def callback(pct: int, msg: str) -> None:
+            pct = max(pct, _floor["pct"])
+            _floor["pct"] = pct
             progress_queue.put(("progress", job_id, pct, msg))
 
         def _set_step(n: int) -> None:
+            if n <= _floor["step"]:
+                return
+            _floor["step"] = n
             progress_queue.put(("step", job_id, n))
 
         def _step(n: int, pct: int, msg: str) -> None:
@@ -109,24 +121,27 @@ def run_sod_sa_job(
         if user_role_df is not None and analysis_type in ("user", "both"):
             user_to_group_map, group_mapping_export = compute_user_groups(user_role_df)
 
+        # Analysis phase fills 0→80%; export owns 82→100. Keeping the two bands
+        # from overlapping is what stops the bar dropping (e.g. 97→82) when the
+        # run moves from analysis into export.
         if analysis_type == "both":
             def role_callback(pct: int, msg: str) -> None:
                 _set_step(5 if "SA violations" in msg else 4)
-                callback(pct // 2, msg)
+                callback(pct * 40 // 100, msg)
 
             def user_callback(pct: int, msg: str) -> None:
                 _set_step(7 if "SA violations" in msg else 6)
-                callback(50 + pct // 2, msg)
+                callback(40 + pct * 40 // 100, msg)
         elif analysis_type == "role":
             def role_callback(pct: int, msg: str) -> None:
                 _set_step(5 if "SA violations" in msg else 4)
-                callback(pct, msg)
+                callback(pct * 80 // 100, msg)
             user_callback = None
         else:  # "user"
             role_callback = None
             def user_callback(pct: int, msg: str) -> None:
                 _set_step(7 if "SA violations" in msg else 6)
-                callback(pct, msg)
+                callback(pct * 80 // 100, msg)
 
         role_sod = pl.DataFrame()
         role_sa = pl.DataFrame()
@@ -349,7 +364,23 @@ def run_oracle_comparator_job(
         def callback(pct: int, msg: str) -> None:
             progress_queue.put(("progress", job_id, pct, msg))
 
-        result = run_analysis(files, analysis_type, env1_name, env2_name, progress_callback=callback)
+        def _set_step(n: int) -> None:
+            progress_queue.put(("step", job_id, n))
+
+        # Map engine progress messages onto the frontend checklist step ids
+        # (1=load, 2=duty roles, 3=privileges, 4=DSP, 5=summary, 6=Excel).
+        def cb(pct: int, msg: str) -> None:
+            if msg.startswith("Loading environment files"):
+                _set_step(1)
+            elif "Comparing Duty Role" in msg:
+                _set_step(2)
+            elif "Comparing Privilege" in msg:
+                _set_step(3)
+            elif "Comparing Dsp" in msg:
+                _set_step(4)
+            callback(pct, msg)
+
+        result = run_analysis(files, analysis_type, env1_name, env2_name, progress_callback=cb)
 
         if not result.success:
             logger.error(f"[{job_id}] Oracle Comparator analysis failed: {result.errors}")
@@ -362,11 +393,8 @@ def run_oracle_comparator_job(
             "2to1": {ct: df for ct, df in results_2to1.items() if df is not None},
         }
 
-        report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
-        if not report_result.success:
-            logger.error(f"[{job_id}] Report generation failed: {report_result.errors}")
-            raise AnalysisJobError(report_result.errors)
-
+        _set_step(5)
+        callback(95, "Building comparison summary…")
         comparisons = []
         for direction, results in [
             (f"{env1_name} → {env2_name}", results_1to2),
@@ -394,6 +422,13 @@ def run_oracle_comparator_job(
             env2_name=env2_name,
             comparisons=comparisons,
         ).model_dump()
+
+        _set_step(6)
+        callback(97, "Writing Excel report…")
+        report_result = generate_report(results_1to2, results_2to1, env1_name, env2_name)
+        if not report_result.success:
+            logger.error(f"[{job_id}] Report generation failed: {report_result.errors}")
+            raise AnalysisJobError(report_result.errors)
 
         fname = output_filename("Oracle_Comparison", f"{env1_name}_vs_{env2_name}")
         logger.info(f"[{job_id}] Oracle Comparator complete. Output file: {fname}")

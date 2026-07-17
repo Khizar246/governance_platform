@@ -1,4 +1,4 @@
-"""Pydantic models for the Oracle Comparator tool (Tool 3)."""
+"""Pydantic models for the Oracle Comparator tool."""
 
 from typing import Literal
 

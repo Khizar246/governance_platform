@@ -105,6 +105,21 @@ class JobManager:
                 if message:
                     job.progress_message = message
 
+    def try_begin_run(self, job_id: str) -> bool:
+        """Atomically claim a job for execution (compare-and-set on RUNNING).
+
+        Returns True and flips the job to RUNNING iff it exists and is not already
+        RUNNING. Returns False if the job is missing or already RUNNING. Replaces
+        the routers' check-then-act 409 guard so two simultaneous /run POSTs can't
+        both pass and spawn duplicate work.
+        """
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None or job.status == JobStatus.RUNNING:
+                return False
+            job.status = JobStatus.RUNNING
+            return True
+
     def store_files(self, job_id: str, files: dict[str, Any]) -> None:
         """Store loaded DataFrames in the job. Called after validation passes."""
         with self._lock:
@@ -199,12 +214,10 @@ class JobManager:
         with self._lock:
             return JobResponse(
                 job_id=job.id,
-                tool=job.tool,
                 status=job.status,
                 progress=job.progress,
                 progress_message=job.progress_message,
                 step=job.step,
-                created_at=job.created_at,
                 errors=list(job.errors),
                 warnings=list(job.warnings),
                 results=dict(job.results),

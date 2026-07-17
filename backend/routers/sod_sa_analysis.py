@@ -1,4 +1,4 @@
-"""SOD & SA Analysis API router (Tool 4).
+"""SOD & SA Analysis API router.
 
 Endpoints:
   POST /api/sod-sa/upload
@@ -17,7 +17,7 @@ from typing import Optional
 import pandas as pd
 import polars as pl
 from fastapi import APIRouter, Request, UploadFile, File, Form
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 
 from config import MAX_UPLOAD_SIZE_BYTES, ALLOWED_EXTENSIONS
 from models.common import UploadResponse, AnalysisResponse, JobResponse, JobStatus, FilePreview
@@ -25,7 +25,9 @@ from models.sod_sa_analysis import SODSARunConfig
 from services.job_manager import job_manager
 from services.analysis_pool import analysis_pool, make_done_callback
 from services.analysis_workers import run_sod_sa_job, SHEET_COLS as _SHEET_COLS
+from shared.download import stream_job_output
 from shared.file_io import load_csv_to_polars, load_excel_to_polars
+from shared.query_filters import apply_column_filters
 from shared.validators import validate_upload
 from shared.logger import get_logger
 from engines.sod_sa_engine import (
@@ -56,7 +58,9 @@ job_manager.register_result_cache(_result_dfs)
 
 # ── Comprehensive upfront schema validation ─────────────────────────────────
 # Required headers exactly as they appear in the user's file (case-insensitive).
-_CSV_HEADER_ENCODINGS = ("utf-8-sig", "utf-8", "latin1", "cp1252", "iso-8859-1")
+# cp1252 before latin1: latin1 decodes any byte sequence, so anything after it
+# is unreachable (same ordering as shared.file_io._CSV_ENCODINGS).
+_CSV_HEADER_ENCODINGS = ("utf-8-sig", "utf-8", "cp1252", "latin1")
 
 _RH_REQUIRED_COLS = [
     "TOP_ROLE_CODE", "TOP_ROLE_NAME", "ROLE_CODE", "ROLE_NAME",
@@ -159,8 +163,11 @@ def _validate_module_required(ruleset_bytes: bytes, ruleset_name: str) -> list[s
     """A Procurement Agent upload makes Module(s) mandatory in both ruleset sheets."""
     try:
         sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
-    except Exception:
-        return []  # unreadable ruleset already reported by the hard validation
+    except Exception as exc:
+        # Unreadable ruleset already reported by the hard validation — log so a
+        # skipped Module(s) gate on a corrupt file leaves a trace, then defer.
+        logger.warning(f"_validate_module_required: could not read '{ruleset_name}' sheets: {exc}")
+        return []
     norm_to_actual = {_norm(s): s for s in sheet_names}
     errors: list[str] = []
     for sheet in ("SoD Ruleset", "SA Ruleset"):
@@ -169,7 +176,8 @@ def _validate_module_required(ruleset_bytes: bytes, ruleset_name: str) -> list[s
             continue  # missing sheet already reported by the hard validation
         try:
             cols = _read_header_columns(ruleset_bytes, ruleset_name, actual)
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"_validate_module_required: could not read '{sheet}' header in '{ruleset_name}': {exc}")
             continue
         if _norm("Module(s)") not in {_norm(c) for c in cols}:
             errors.append(
@@ -212,7 +220,8 @@ def _inspect_observation_inputs(ruleset_bytes: bytes, ruleset_name: str) -> tupl
     """
     try:
         sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"_inspect_observation_inputs: could not read '{ruleset_name}' sheets: {exc}")
         return False, False
     norm_to_actual = {_norm(s): s for s in sheet_names}
     has_bucket_details = _norm("Bucket Details") in norm_to_actual
@@ -223,8 +232,8 @@ def _inspect_observation_inputs(ruleset_bytes: bytes, ruleset_name: str) -> tupl
         try:
             cols = _read_header_columns(ruleset_bytes, ruleset_name, sod_actual)
             has_control_bucket = _norm("Control Bucket") in {_norm(c) for c in cols}
-        except Exception:
-            pass
+        except Exception as exc:
+            logger.warning(f"_inspect_observation_inputs: could not read 'SoD Ruleset' header in '{ruleset_name}': {exc}")
     return has_control_bucket, has_bucket_details
 
 
@@ -237,7 +246,8 @@ def _scan_recommended_columns(ruleset_bytes: bytes, ruleset_name: str) -> list[s
     """
     try:
         sheet_names = pd.ExcelFile(io.BytesIO(ruleset_bytes)).sheet_names
-    except Exception:
+    except Exception as exc:
+        logger.warning(f"_scan_recommended_columns: could not read '{ruleset_name}' sheets: {exc}")
         return []  # hard validation already reported the unreadable file
 
     norm_to_actual = {_norm(s): s for s in sheet_names}
@@ -249,7 +259,8 @@ def _scan_recommended_columns(ruleset_bytes: bytes, ruleset_name: str) -> list[s
             continue
         try:
             cols = _read_header_columns(ruleset_bytes, ruleset_name, actual)
-        except Exception:
+        except Exception as exc:
+            logger.warning(f"_scan_recommended_columns: could not read '{sheet}' header in '{ruleset_name}': {exc}")
             continue
         present = {_norm(c) for c in cols}
         missing = [c for c in recommended_cols if _norm(c) not in present]
@@ -263,8 +274,6 @@ def _build_preview(df: pl.DataFrame, filename: str) -> FilePreview:
         filename=filename,
         rows=df.height,
         columns=df.columns,
-        preview=df.head(5).to_dicts(),
-        duplicates=df.height - df.unique().height,
     )
 
 
@@ -310,7 +319,10 @@ def _validate_3leg_conditions(sod_df: pl.DataFrame) -> tuple[list[str], list[str
                 f"{label} uses only OR conditions — any ONE of its entitlements "
                 f"alone will flag a violation. Verify this is intended."
             )
-    return errors, warnings
+    # Sorted for deterministic presentation: the ruleset dedup upstream returns
+    # rows in arbitrary (hash) order, which would shuffle these lists between
+    # identical uploads. Analysis is unaffected either way.
+    return sorted(errors), sorted(warnings)
 
 
 def _check_missing_entitlement_mappings(
@@ -712,6 +724,17 @@ async def upload(
         if _df is not None and _df.height == 0:
             all_errors.append(f"{_label}: contains no data rows after loading.")
 
+    # FP DB: either sheet may legitimately be header-only, but a database with
+    # zero rows in BOTH sheets means FP analysis would silently do nothing.
+    if (
+        no_action_df is not None and work_area_df is not None
+        and no_action_df.height == 0 and work_area_df.height == 0
+    ):
+        all_errors.append(
+            "FP Database: both sheets (No_action_Privileges, WorkArea_Privileges) "
+            "contain no data rows after loading."
+        )
+
     # If any errors collected, return them all at once
     if all_errors:
         logger.error(f"SOD & SA upload failed with {len(all_errors)} error(s): {all_errors}")
@@ -742,6 +765,12 @@ async def upload(
     # fixes the mapping before they can reach the Run step. See
     # _check_shared_privileges_in_controls for the full rationale.
     integrity_items = _check_shared_privileges_in_controls(sod_df, mapping_df, three_leg=with_3leg)
+    # Sorted for deterministic presentation (see _validate_3leg_conditions note).
+    integrity_items = sorted(integrity_items, key=lambda it: it["control"])
+    for _it in integrity_items:
+        _it["privileges"] = sorted(_it["privileges"])
+        if "entitlements" in _it:
+            _it["entitlements"] = sorted(_it["entitlements"])
     if integrity_items:
         integrity_errors = []
         for it in integrity_items:
@@ -953,6 +982,15 @@ async def run(job_id: str, config: SODSARunConfig):
                     },
                 )
 
+    # Atomically claim the job right before dispatch. The early check at the top
+    # is the fast path; this compare-and-set closes the check-then-act race where
+    # two simultaneous POSTs both pass the early check and spawn duplicate work.
+    if not job_manager.try_begin_run(job_id):
+        return JSONResponse(
+            status_code=409,
+            content={"error": True, "message": "Analysis is already running for this job.", "code": "ALREADY_RUNNING", "details": []},
+        )
+
     logger.info(f"[{job_id}] Queueing analysis: analysis_type={config.analysis_type}, with_fp={has_fp_db}, selected_analyses={config.selected_analyses}")
 
     analysis_pool.submit(
@@ -975,7 +1013,7 @@ async def run(job_id: str, config: SODSARunConfig):
         on_done=make_done_callback(job_id, _result_dfs, logger),
     )
 
-    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING, summary={})
+    return AnalysisResponse(job_id=job_id, status=JobStatus.RUNNING)
 
 
 @router.get("/status/{job_id}", response_model=JobResponse)
@@ -985,26 +1023,7 @@ async def status(job_id: str):
 
 @router.get("/download/{job_id}")
 async def download(job_id: str):
-    job = job_manager.get_job(job_id)
-
-    if job.status != JobStatus.COMPLETE:
-        return JSONResponse(
-            status_code=400,
-            content={"error": True, "message": "Analysis is not complete yet.", "code": "NOT_READY", "details": []},
-        )
-    if job.output_buffer is None:
-        return JSONResponse(
-            status_code=404,
-            content={"error": True, "message": "Download not available.", "code": "NOT_FOUND", "details": []},
-        )
-
-    # Copy per request: concurrent downloads sharing one BytesIO corrupt each
-    # other (each seek(0) rewinds the stream the other is mid-way through).
-    return StreamingResponse(
-        io.BytesIO(job.output_buffer.getvalue()),
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{job.output_filename}"'},
-    )
+    return stream_job_output(job_id)
 
 
 @router.get("/summary/{job_id}")
@@ -1070,12 +1089,9 @@ async def filter_options(request: Request, job_id: str, column: str, sheet: str)
     if sheet not in cache:
         return {"values": []}
     df: pl.DataFrame = cache[sheet]
-    _reserved = {"column", "sheet"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col != column and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).cast(pl.Utf8).is_in(_vals))
+    df = apply_column_filters(
+        df, dict(request.query_params), reserved={"column", "sheet"}, exclude_column=column
+    )
     if column not in df.columns:
         return {"values": []}
     return {"values": df.select(column).drop_nulls().unique().sort(column).to_series().cast(pl.Utf8).to_list()}
@@ -1107,12 +1123,9 @@ async def results_page(
 
     df: pl.DataFrame = cache[sheet]
 
-    _reserved = {"sheet", "page", "page_size", "search"}
-    for _col, _val in dict(request.query_params).items():
-        if _col not in _reserved and _col in df.columns and _val:
-            _vals = [v.strip() for v in _val.split(",") if v.strip()]
-            if _vals:
-                df = df.filter(pl.col(_col).cast(pl.Utf8).is_in(_vals))
+    df = apply_column_filters(
+        df, dict(request.query_params), reserved={"sheet", "page", "page_size", "search"}
+    )
 
     if search:
         q = search.lower()
@@ -1129,7 +1142,9 @@ async def results_page(
     df = df.sort([c for c in sort_cols if c in df.columns])
 
     total = df.height
-    page_size = max(1, page_size)
+    # Upper bound guards the server from serialising an entire sheet in one
+    # response (frontend's largest page is 200).
+    page_size = min(max(1, page_size), 500)
     page = max(1, page)
     start = (page - 1) * page_size
     return {"data": df.slice(start, page_size).to_dicts(), "total": total, "page": page, "page_size": page_size, "sheet": sheet}
