@@ -6,12 +6,10 @@ export type JobStatus = 'pending' | 'uploading' | 'validating' | 'running' | 'co
 
 export interface JobResponse {
   job_id: string
-  tool: string
   status: JobStatus
   progress: number
   progress_message: string
   step: number
-  created_at: string
   errors: string[]
   warnings: string[]
   results: Record<string, unknown>
@@ -21,16 +19,12 @@ export interface FilePreview {
   filename: string
   rows: number
   columns: string[]
-  preview: Record<string, unknown>[]
-  duplicates: number
-  warnings: string[]
 }
 
 export interface UploadResponse {
   job_id: string
   files: Record<string, FilePreview>
   status: JobStatus
-  errors: string[]
   warnings: string[]
   entitlement_warnings?: { entitlement: string; controls: string[] }[]
 }
@@ -38,9 +32,6 @@ export interface UploadResponse {
 export interface AnalysisResponse {
   job_id: string
   status: JobStatus
-  summary: Record<string, unknown>
-  errors: string[]
-  warnings: string[]
 }
 
 // ── Tool-specific summary types ───────────────────────────────────────────────
@@ -120,4 +111,6 @@ export interface RoleTestingSummary {
   failed: number
   skipped: number
   screenshots: CapturedScreenshot[]
+  // e.g. "Run timeout reached after N work areas; M remaining were skipped."
+  warnings?: string[]
 }

@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { toast } from 'sonner'
-import { Info, Lock, Camera, AlertTriangle, ImageOff, RotateCcw } from 'lucide-react'
+import { Info, Lock, Camera, AlertTriangle, ImageOff, RotateCcw, X } from 'lucide-react'
 
 import PageHeader from '../components/layout/PageHeader'
 import StepIndicator from '../components/common/StepIndicator'
 import DownloadButton from '../components/common/DownloadButton'
+import ConfirmDialog from '../components/common/ConfirmDialog'
 import HelpAccordion, { HelpStep } from '../components/common/HelpAccordion'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
@@ -20,8 +21,6 @@ const STEP_INDEX: Record<Step, number> = { config: 0, running: 1, results: 2, er
 const STATUS_STYLE: Record<string, { cls: string; label: string }> = {
   captured:         { cls: 'bg-green-100 text-green-600', label: 'Captured' },
   captured_no_task: { cls: 'bg-amber-100 text-amber-700', label: 'No task panel' },
-  skipped:          { cls: 'bg-slate-200 text-slate-600', label: 'Skipped' },
-  error:            { cls: 'bg-red-100 text-red-600', label: 'Error' },
 }
 
 export default function RoleTestingBot() {
@@ -47,24 +46,35 @@ export default function RoleTestingBot() {
   const [summary, setSummary] = useState<RoleTestingSummary | null>(null)
   const [errors, setErrors] = useState<string[]>([])
 
-  const canStart = url.trim() !== '' && username.trim() !== '' && password !== ''
+  const [isStarting, setIsStarting] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
+
+  const canStart =
+    url.trim() !== '' && username.trim() !== '' && password !== '' && !isStarting
 
   // ── Poll /status while running ──
   useEffect(() => {
     if (step !== 'running' || !jobId) return
+    // Ignore responses that resolve after the user cancels (which changes `step`
+    // and runs this cleanup) — otherwise a late completion would flip the page to
+    // results for a job that was just deleted.
+    let cancelled = false
     const interval = setInterval(async () => {
       try {
         const s = await getStatus(jobId)
+        if (cancelled) return
         setProgress(s.progress)
         setProgressMessage(s.progress_message)
         if (s.status === 'complete') {
           clearInterval(interval)
           try {
             const res = await getResults(jobId)
+            if (cancelled) return
             setSummary(res)
             setStep('results')
             toast.success('Screenshots captured.')
           } catch {
+            if (cancelled) return
             setErrors(['Run completed but results could not be loaded.'])
             setStep('error')
           }
@@ -74,15 +84,25 @@ export default function RoleTestingBot() {
           setStep('error')
           toast.error(s.errors[0] || 'The bot run failed.')
         }
-      } catch {
-        /* transient — keep polling */
+      } catch (e) {
+        if (cancelled) return
+        if ((e as { response?: { status?: number } })?.response?.status === 404) {
+          // Job TTL-purged or backend restarted — polling can never recover.
+          clearInterval(interval)
+          toast.error('Session expired — please start a new run.')
+          handleReset()
+        }
+        /* otherwise transient — keep polling */
       }
     }, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [step, jobId])
 
   const handleStart = useCallback(async () => {
     if (!canStart) return
+    // Guard against double-clicks: a second POST would spawn a second
+    // server-side Chrome job and orphan the first one.
+    setIsStarting(true)
     try {
       const maxEl = maxElements.trim() ? parseInt(maxElements, 10) : null
       const timeoutSec = timeoutMin.trim() ? Math.round(parseFloat(timeoutMin) * 60) : null
@@ -103,6 +123,8 @@ export default function RoleTestingBot() {
     } catch (e: unknown) {
       const msg = (e as { response?: { data?: { message?: string } } })?.response?.data?.message
       toast.error(msg || 'Could not start the bot.')
+    } finally {
+      setIsStarting(false)
     }
   }, [canStart, url, username, password, maxElements, timeoutMin, headless, captureTasks])
 
@@ -161,7 +183,7 @@ export default function RoleTestingBot() {
       )}
 
       {step === 'running' && (
-        <RunningCard progress={progress} message={progressMessage} />
+        <RunningCard progress={progress} message={progressMessage} onCancel={() => setConfirmCancel(true)} />
       )}
 
       {step === 'results' && summary && (
@@ -176,6 +198,17 @@ export default function RoleTestingBot() {
       {step === 'error' && (
         <ErrorCard errors={errors} onRetry={handleReset} />
       )}
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel Run?"
+        message="This will stop the running bot and permanently delete the screenshots captured so far. This cannot be undone."
+        confirmLabel="Yes, Cancel"
+        cancelLabel="Keep Running"
+        destructive
+        onConfirm={() => { setConfirmCancel(false); handleReset() }}
+        onCancel={() => setConfirmCancel(false)}
+      />
     </div>
   )
 }
@@ -283,10 +316,14 @@ function ConfigCard(p: ConfigProps) {
 
 // ── Running ────────────────────────────────────────────────────────────────
 
-function RunningCard({ progress, message }: { progress: number; message: string }) {
+function RunningCard({ progress, message, onCancel }: {
+  progress: number
+  message: string
+  onCancel: () => void
+}) {
   const pct = Math.min(100, Math.round(progress))
   return (
-    <div className="flex justify-center py-6">
+    <div className="flex flex-col items-center py-6">
       <div className="w-full max-w-[520px] bg-white border border-slate-200 rounded-lg overflow-hidden">
         <div className="h-1 bg-blue-500" />
         <div className="p-6 flex flex-col gap-4">
@@ -305,11 +342,19 @@ function RunningCard({ progress, message }: { progress: number; message: string 
           </div>
           <div className="relative h-2 bg-slate-200 rounded-full overflow-hidden">
             <div
-              className="h-full w-[var(--w)] bg-blue-500 rounded-full transition-[width] duration-300 ease-[ease]"
+              className="h-full w-[var(--w)] bg-blue-500 rounded-full transition-[width] duration-300"
               style={{ '--w': `${pct}%` } as React.CSSProperties}
             />
           </div>
         </div>
+      </div>
+      <div className="flex justify-center mt-2">
+        <button
+          className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-bg"
+          onClick={onCancel}
+        >
+          <X size={14} /> Cancel Run
+        </button>
       </div>
     </div>
   )
@@ -338,9 +383,24 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
   )
 
   const [lightbox, setLightbox] = useState<CapturedScreenshot | null>(null)
+  const warnings = summary.warnings ?? []
 
   return (
     <div>
+      {warnings.length > 0 && (
+        <div className="flex items-start gap-2.5 mb-[14px] px-4 py-3 rounded-lg bg-amber-50 border border-amber-300">
+          <AlertTriangle size={16} className="text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <span className="block text-[13px] font-semibold text-amber-800">
+              Run incomplete — not every work area was tested
+            </span>
+            {warnings.map((w, i) => (
+              <span key={i} className="block text-[12.5px] text-amber-700 leading-[1.5] mt-0.5">{w}</span>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Stat strip + actions */}
       <div className="flex items-center gap-3 mb-[18px] flex-wrap">
         {stats.map(s => (
@@ -378,7 +438,7 @@ function Gallery({ summary, jobId, onDownload, onReset }: {
 }
 
 function ShotCard({ shot, jobId, onOpen }: { shot: CapturedScreenshot; jobId: string; onOpen: () => void }) {
-  const st = STATUS_STYLE[shot.status] ?? STATUS_STYLE.error
+  const st = STATUS_STYLE[shot.status]
   return (
     <div
       onClick={onOpen}
@@ -463,8 +523,11 @@ function ErrorCard({ errors, onRetry }: { errors: string[]; onRetry: () => void 
           <li key={i} className="text-[13px] text-red-700 leading-[1.6]">{e}</li>
         ))}
       </ul>
+      {/* Credentials (incl. the password) are dropped from memory on submit, so
+          the run cannot be re-fired in place — this returns to the form. The
+          label says so honestly rather than over-promising a retry. */}
       <button onClick={onRetry} className="px-[18px] py-[9px] rounded border-none bg-navy text-ey-yellow text-[13px] font-semibold cursor-pointer">
-        Try again
+        ← Start Over
       </button>
     </div>
   )

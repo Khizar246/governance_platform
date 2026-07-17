@@ -10,6 +10,7 @@ import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
 import DataTable from '../components/common/DataTable'
+import ResultsErrorPanel from '../components/common/ResultsErrorPanel'
 import LoadingOverlay, { type ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import ConfirmDialog from '../components/common/ConfirmDialog'
@@ -217,6 +218,7 @@ export default function SODSAAnalysis() {
   const [uploadBlocked, setUploadBlocked] = useState(false)
   const [seededSizes, setSeededSizes] = useState<{ ruleset: number; fpDb: number }>({ ruleset: 0, fpDb: 0 })
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
 
   // Results step state
   const [sodSaSummaryData, setSodSaSummaryData] = useState<SODSASummaryData | null>(null)
@@ -227,7 +229,10 @@ export default function SODSAAnalysis() {
   const [total, setTotal] = useState(0)
   const [dataLoading, setDataLoading] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
-  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
+  const hasActiveFilters = Object.keys(activeFilters).length > 0
+  // A failed rows fetch must render as an error + retry, never as "No violations found".
+  const [resultsError, setResultsError] = useState(false)
+  const [resultsRetry, setResultsRetry] = useState(0)
 
   // Derive the role/user/both "type" from whichever analyses are ticked.
   const analysisType = useMemo<AnalysisType | null>(() => {
@@ -240,31 +245,31 @@ export default function SODSAAnalysis() {
   }, [selectedAnalyses])
 
   const progressSteps = useMemo((): ProgressStep[] => {
-    const hasRole = selectedAnalyses.some(a => a.startsWith('role_'))
-    const hasUser = selectedAnalyses.some(a => a.startsWith('user_')) && analysisType !== 'role'
+    // Each step id must match a milestone the backend actually emits, or its
+    // checklist row never leaves "pending". The backend emits per-leg and
+    // per-sheet steps only for the specific analyses that were ticked — so
+    // gate on those exact selections, not on a broad "any role analysis".
+    const roleSod = selectedAnalyses.includes('role_sod')
+    const roleSa = selectedAnalyses.includes('role_sa')
+    const userSod = selectedAnalyses.includes('user_sod')
+    const userSa = selectedAnalyses.includes('user_sa')
+    const hasRole = roleSod || roleSa
+    const hasUser = userSod || userSa
     const steps: ProgressStep[] = [
       { step: 1,  label: 'Importing files',                    phase: 1 },
       { step: 2,  label: 'Validating sheets and columns',      phase: 1 },
       { step: 3,  label: 'Initiating SOD SA Analysis',         phase: 2 },
     ]
-    if (hasRole) {
-      steps.push({ step: 4, label: 'Performing role SOD analysis', phase: 2 })
-      steps.push({ step: 5, label: 'Performing role SA analysis',  phase: 2 })
-    }
-    if (hasUser) {
-      steps.push({ step: 6, label: 'Performing user SOD analysis', phase: 2 })
-      steps.push({ step: 7, label: 'Performing user SA analysis',  phase: 2 })
-    }
+    if (roleSod) steps.push({ step: 4, label: 'Performing role SOD analysis', phase: 2 })
+    if (roleSa)  steps.push({ step: 5, label: 'Performing role SA analysis',  phase: 2 })
+    if (userSod) steps.push({ step: 6, label: 'Performing user SOD analysis', phase: 2 })
+    if (userSa)  steps.push({ step: 7, label: 'Performing user SA analysis',  phase: 2 })
     if (withFp) {
       steps.push({ step: 8,  label: 'Initiating False Positive Analysis', phase: 3 })
-      if (hasRole) {
-        steps.push({ step: 9,  label: 'FP analysis on role SOD', phase: 3 })
-        steps.push({ step: 10, label: 'FP analysis on role SA',  phase: 3 })
-      }
-      if (hasUser) {
-        steps.push({ step: 11, label: 'FP analysis on user SOD', phase: 3 })
-        steps.push({ step: 12, label: 'FP analysis on user SA',  phase: 3 })
-      }
+      if (roleSod) steps.push({ step: 9,  label: 'FP analysis on role SOD', phase: 3 })
+      if (roleSa)  steps.push({ step: 10, label: 'FP analysis on role SA',  phase: 3 })
+      if (userSod) steps.push({ step: 11, label: 'FP analysis on user SOD', phase: 3 })
+      if (userSa)  steps.push({ step: 12, label: 'FP analysis on user SA',  phase: 3 })
     }
     steps.push({ step: 13, label: 'Preparing Excel export',   phase: 4 })
     steps.push({ step: 14, label: 'Building Excel report',    phase: 4 })
@@ -272,20 +277,16 @@ export default function SODSAAnalysis() {
     if (hasUser) {
       steps.push({ step: 16, label: 'Writing user group mapping sheet', phase: 4 })
     }
-    if (hasRole) {
-      steps.push({ step: 17, label: 'Writing role SOD sheet', phase: 4 })
-      steps.push({ step: 18, label: 'Writing role SA sheet',  phase: 4 })
-    }
-    if (hasUser) {
-      steps.push({ step: 19, label: 'Writing user SOD sheet', phase: 4 })
-      steps.push({ step: 20, label: 'Writing user SA sheet',  phase: 4 })
-    }
+    if (roleSod) steps.push({ step: 17, label: 'Writing role SOD sheet', phase: 4 })
+    if (roleSa)  steps.push({ step: 18, label: 'Writing role SA sheet',  phase: 4 })
+    if (userSod) steps.push({ step: 19, label: 'Writing user SOD sheet', phase: 4 })
+    if (userSa)  steps.push({ step: 20, label: 'Writing user SA sheet',  phase: 4 })
     if (withObservation && hasRole) {
       steps.push({ step: 21, label: 'Writing observation tab', phase: 4 })
     }
     steps.push({ step: 22, label: 'Finalising workbook',       phase: 4 })
     return steps
-  }, [selectedAnalyses, analysisType, withFp, withObservation])
+  }, [selectedAnalyses, withFp, withObservation])
 
   const needsUserRole = analysisType === 'user' || analysisType === 'both'
 
@@ -299,9 +300,14 @@ export default function SODSAAnalysis() {
   // ── Poll for job completion ──────────────────────────────────────────────────
   useEffect(() => {
     if (step !== 'running' || !jobId) return
+    // Ignore a status response that resolves after the user cancels/resets (which
+    // changes `step` and runs this cleanup) — otherwise it would flip the page to
+    // results for a job that was just deleted.
+    let cancelled = false
     const interval = setInterval(async () => {
       try {
         const status = await getStatus(jobId)
+        if (cancelled) return
         setProgress(status.progress)
         setProgressMessage(status.progress_message)
         setCurrentStep(status.step ?? 0)
@@ -316,9 +322,18 @@ export default function SODSAAnalysis() {
           setStep('error')
           toast.error(status.errors[0] || 'Analysis failed.')
         }
-      } catch { /* keep polling */ }
+      } catch (e) {
+        if (cancelled) return
+        if ((e as { response?: { status?: number } })?.response?.status === 404) {
+          // Job TTL-purged or backend restarted — polling can never recover.
+          clearInterval(interval)
+          toast.error('Session expired — please start a new analysis.')
+          handleReset()
+        }
+        /* otherwise transient — keep polling */
+      }
     }, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [step, jobId])
 
   // Real byte sizes for the bundled seeded files (shown in the upload cards).
@@ -354,6 +369,7 @@ export default function SODSAAnalysis() {
         if (!cancelled) {
           setPageRows(res.data as SODRow[])
           setTotal(res.total)
+          setResultsError(false)
           setDataLoading(false)
         }
       })
@@ -361,11 +377,12 @@ export default function SODSAAnalysis() {
         if (!cancelled) {
           setPageRows([])
           setTotal(0)
+          setResultsError(true)
           setDataLoading(false)
         }
       })
     return () => { cancelled = true }
-  }, [step, jobId, activeTab, page, pageSize, activeFilters])
+  }, [step, jobId, activeTab, page, pageSize, activeFilters, resultsRetry])
 
   // ── Derived ──────────────────────────────────────────────────────────────────
   const analyzedSheetIds = useMemo(() => {
@@ -454,12 +471,6 @@ export default function SODSAAnalysis() {
       const paFile = withFp && needsUserRole ? procurementFile : null
       const seedFp = withFp && fpDbSeeded
       const resp = await uploadFiles(roleHierarchyFile, rulesetFile, urFile, fpFile, paFile, rulesetSeeded, seedFp, with3Leg)
-      if (resp.errors?.length) {
-        setUploadError(resp.errors[0])
-        setUploadBlocked(true)
-        setStep('upload')
-        return
-      }
       const entWarnings = resp.entitlement_warnings ?? []
       setEntitlementWarnings(entWarnings)
       const recommended = (resp.warnings ?? []).filter((w) => w.includes('Missing recommended column'))
@@ -556,6 +567,7 @@ export default function SODSAAnalysis() {
     setRulesetFile(null)
     setUserRoleFile(null)
     setFpDbFile(null)
+    setProcurementFile(null)
     setRulesetSeeded(false)
     setFpDbSeeded(false)
     setIsUploading(false)
@@ -574,6 +586,9 @@ export default function SODSAAnalysis() {
     setConfirmReset(false)
     setSodSaSummaryData(null)
     setActiveTab('')
+    setActiveFilters({})
+    setResultsError(false)
+    setResultsRetry(0)
     setPageRows([])
     setPage(1)
     setPageSize(50)
@@ -770,7 +785,7 @@ export default function SODSAAnalysis() {
               withFp && needsUserRole ? 'grid-cols-2' : withFp || needsUserRole ? 'grid-cols-3' : 'grid-cols-2',
             )}>
               <div>
-                <p className="label-uppercase mb-2">Role Hierarchy Report</p>
+                <p className="label-caps mb-2">Role Hierarchy Report</p>
                 <FileUpload
                   label="Role Hierarchy CSV / XLSX"
                   hint="Columns: TOP_ROLE_CODE, ROLE_CODE, PRIVILEGE_CODE"
@@ -782,7 +797,7 @@ export default function SODSAAnalysis() {
               </div>
               {needsUserRole && (
                 <div>
-                  <p className="label-uppercase mb-2">User Role Membership</p>
+                  <p className="label-caps mb-2">User Role Membership</p>
                   <FileUpload
                     label="User Role CSV / XLSX"
                     hint="Columns: User Name, Assigned Role Name"
@@ -794,7 +809,7 @@ export default function SODSAAnalysis() {
                 </div>
               )}
               <div>
-                <p className="label-uppercase mb-2">SOD SA Ruleset</p>
+                <p className="label-caps mb-2">SOD SA Ruleset</p>
                 <FileUpload
                   label="Ruleset XLSX"
                   accept=".xlsx,.xls"
@@ -820,7 +835,7 @@ export default function SODSAAnalysis() {
               </div>
               {withFp && (
                 <div>
-                  <p className="label-uppercase mb-2">FP Database</p>
+                  <p className="label-caps mb-2">FP Database</p>
                   <FileUpload
                     label="FP Database XLSX"
                     accept=".xlsx,.xls"
@@ -847,7 +862,7 @@ export default function SODSAAnalysis() {
               )}
               {withFp && needsUserRole && (
                 <div className="col-span-2">
-                  <p className="label-uppercase mb-2">
+                  <p className="label-caps mb-2">
                     Procurement Agent
                     <span className="ml-2 text-[11px] text-slate-500 normal-case font-normal">(optional)</span>
                   </p>
@@ -1010,7 +1025,7 @@ export default function SODSAAnalysis() {
               <div className="flex justify-center mt-2">
                 <button
                   className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-bg"
-                  onClick={handleCancelRun}
+                  onClick={() => setConfirmCancel(true)}
                 >
                   <X size={14} /> Cancel Analysis
                 </button>
@@ -1105,6 +1120,9 @@ export default function SODSAAnalysis() {
 
                 {/* Table */}
                 <div className="p-4">
+                  {resultsError ? (
+                    <ResultsErrorPanel onRetry={() => setResultsRetry(n => n + 1)} />
+                  ) : (
                   <DataTable
                     data={pageRows}
                     columns={(() => {
@@ -1134,13 +1152,22 @@ export default function SODSAAnalysis() {
                     }}
                     serverSideFilters={{
                       values: activeFilters,
-                      onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                      onChange: (colId, vals) => {
+                        setActiveFilters(prev => {
+                          const next = { ...prev }
+                          if (vals === null) delete next[colId]
+                          else next[colId] = vals
+                          return next
+                        })
+                        setPage(1)
+                      },
                       onFetchOptions: (colId) => {
                         const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
                         return getFilterOptions(jobId!, activeTab, colId, others)
                       },
                     }}
                   />
+                  )}
                 </div>
               </div>
             )}
@@ -1196,6 +1223,17 @@ export default function SODSAAnalysis() {
         destructive
         onConfirm={handleReset}
         onCancel={() => setConfirmReset(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel Analysis?"
+        message="This will stop the running analysis and discard its progress. Your uploaded files are kept so you can adjust and run again."
+        confirmLabel="Yes, Cancel"
+        cancelLabel="Keep Running"
+        destructive
+        onConfirm={() => { setConfirmCancel(false); handleCancelRun() }}
+        onCancel={() => setConfirmCancel(false)}
       />
     </div>
   )

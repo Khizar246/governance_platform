@@ -88,7 +88,7 @@ export default function HelpAccordion({ title, icon, children }: HelpAccordionPr
         <span className="text-[13px] font-semibold text-navy flex-1 text-left">{title}</span>
         <ChevronDown
           size={16}
-          className={`text-slate-500 shrink-0 transition-transform duration-[220ms] ${open ? 'rotate-180' : 'rotate-0'}`}
+          className={`text-slate-500 shrink-0 transition-transform [transition-duration:220ms] ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (

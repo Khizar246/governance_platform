@@ -10,6 +10,7 @@ import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
 import StepIndicator from '../components/common/StepIndicator'
 import DataTable from '../components/common/DataTable'
+import ResultsErrorPanel from '../components/common/ResultsErrorPanel'
 import LoadingOverlay from '../components/common/LoadingOverlay'
 import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
@@ -26,16 +27,25 @@ type AnalysisType = 'rbac' | 'dsp' | 'both'
 type OracleRow = Record<string, unknown>
 
 const STEPS = ['Analysis Type', 'Upload Files', 'Results']
-const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 1, results: 2, error: 0 }
+// error keeps the tracker on the same step as running (matches SOD & SA), so a
+// failure reads as "the analysis step failed" rather than resetting to step 0.
+const STEP_INDEX: Record<Step, number> = { type: 0, upload: 1, running: 1, results: 2, error: 1 }
 
-const PROGRESS_STEPS: ProgressStep[] = [
-  { step: 1, label: 'Loading environment files',      phase: 1 },
-  { step: 2, label: 'Validating schema',              phase: 1 },
-  { step: 3, label: 'Comparing duty roles',           phase: 2 },
-  { step: 4, label: 'Comparing privileges',           phase: 2 },
-  { step: 5, label: 'Building comparison summary',    phase: 3 },
-  { step: 6, label: 'Writing Excel report',           phase: 4 },
-]
+// Step ids match the backend worker's set_step milestones; the list varies
+// with analysis type (RBAC runs steps 2–3, DSP runs step 4).
+function progressStepsFor(type: AnalysisType): ProgressStep[] {
+  const steps: ProgressStep[] = [{ step: 1, label: 'Loading environment files', phase: 1 }]
+  if (type === 'rbac' || type === 'both') {
+    steps.push({ step: 2, label: 'Comparing duty roles', phase: 2 })
+    steps.push({ step: 3, label: 'Comparing privileges', phase: 2 })
+  }
+  if (type === 'dsp' || type === 'both') {
+    steps.push({ step: 4, label: 'Comparing data security policies', phase: 2 })
+  }
+  steps.push({ step: 5, label: 'Building comparison summary', phase: 4 })
+  steps.push({ step: 6, label: 'Writing Excel report', phase: 4 })
+  return steps
+}
 
 const COMP_TYPE_LABELS: Record<string, string> = {
   duty_role: 'Duty Roles',
@@ -126,7 +136,9 @@ export default function OracleComparator() {
   const [summary, setSummary] = useState<OracleComparatorSummary | null>(null)
   const [errors, setErrors] = useState<string[]>([])
   const [uploadError, setUploadError] = useState('')
+  const [uploadErrorDetails, setUploadErrorDetails] = useState<string[]>([])
   const [confirmReset, setConfirmReset] = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
 
   // Results detail table state
   const [selectedDir, setSelectedDir] = useState<'1to2' | '2to1'>('1to2')
@@ -137,7 +149,10 @@ export default function OracleComparator() {
   const [total, setTotal] = useState(0)
   const [detailLoading, setDetailLoading] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
-  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
+  const hasActiveFilters = Object.keys(activeFilters).length > 0
+  // A failed rows fetch must render as an error + retry, never as "No records".
+  const [resultsError, setResultsError] = useState(false)
+  const [resultsRetry, setResultsRetry] = useState(0)
 
   const needsRbac = analysisType === 'rbac' || analysisType === 'both'
   const needsDsp  = analysisType === 'dsp'  || analysisType === 'both'
@@ -152,15 +167,29 @@ export default function OracleComparator() {
   // Poll for analysis completion
   useEffect(() => {
     if (step !== 'running' || !jobId) return
+    // A status response can resolve AFTER the user cancels/resets (which changes
+    // `step` and runs this cleanup). Without this flag it would flip the page to
+    // results for a job that was just deleted (whose download then 404s).
+    let cancelled = false
     const interval = setInterval(async () => {
       try {
         const s = await getStatus(jobId)
+        if (cancelled) return
         setProgress(s.progress)
         setProgressMessage(s.progress_message)
         setCurrentStep(s.step ?? 0)
         if (s.status === 'complete') {
           clearInterval(interval)
           const result = s.results as unknown as OracleComparatorSummary
+          // Guard the cast: a malformed summary must fail visibly here — an
+          // uncaught TypeError would fall into the catch below and silently
+          // keep polling at 100% forever.
+          if (!Array.isArray(result?.comparisons)) {
+            setErrors(['The comparison finished but returned an unreadable summary. Please try again.'])
+            setStep('error')
+            toast.error('Comparison returned an unreadable summary.')
+            return
+          }
           setSummary(result)
           const firstType = Array.from(new Set(result.comparisons.map(c => c.comp_type)))[0] ?? ''
           setSelectedType(firstType)
@@ -173,9 +202,18 @@ export default function OracleComparator() {
           setStep('error')
           toast.error(s.errors[0] || 'Analysis failed.')
         }
-      } catch { /* keep polling */ }
+      } catch (e) {
+        if (cancelled) return
+        if ((e as { response?: { status?: number } })?.response?.status === 404) {
+          // Job TTL-purged or backend restarted — polling can never recover.
+          clearInterval(interval)
+          toast.error('Session expired — please start a new analysis.')
+          handleReset()
+        }
+        /* otherwise transient — keep polling */
+      }
     }, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [step, jobId])
 
   // Fetch current page on demand
@@ -188,6 +226,7 @@ export default function OracleComparator() {
         if (!cancelled) {
           setDetailRows(res.rows)
           setTotal(res.total)
+          setResultsError(false)
           setDetailLoading(false)
         }
       })
@@ -195,11 +234,12 @@ export default function OracleComparator() {
         if (!cancelled) {
           setDetailRows([])
           setTotal(0)
+          setResultsError(true)
           setDetailLoading(false)
         }
       })
     return () => { cancelled = true }
-  }, [step, jobId, selectedDir, selectedType, page, pageSize, activeFilters])
+  }, [step, jobId, selectedDir, selectedType, page, pageSize, activeFilters, resultsRetry])
 
   const handleSelectType = useCallback((t: AnalysisType) => {
     setAnalysisType(t)
@@ -213,6 +253,7 @@ export default function OracleComparator() {
     setIsUploading(true)
     setUploadProgress(0)
     setUploadError('')
+    setUploadErrorDetails([])
     try {
       const resp = await uploadFiles(
         {
@@ -226,7 +267,6 @@ export default function OracleComparator() {
         },
         setUploadProgress,
       )
-      if (resp.errors?.length) { setUploadError(resp.errors[0]); return }
       const id = resp.job_id
       setJobId(id)
       await runAnalysis(id, {
@@ -236,10 +276,12 @@ export default function OracleComparator() {
       })
       setStep('running')
       setProgress(0)
+      setCurrentStep(0)
       setProgressMessage('Starting comparison…')
     } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to start comparison.'
-      setUploadError(msg)
+      const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
+      setUploadError(data?.message || 'Failed to start comparison.')
+      setUploadErrorDetails(Array.isArray(data?.details) ? data.details : [])
     } finally {
       setIsUploading(false)
     }
@@ -255,6 +297,7 @@ export default function OracleComparator() {
       })
       setStep('running')
       setProgress(0)
+      setCurrentStep(0)
       setProgressMessage('Retrying comparison…')
     } catch (err: unknown) {
       toast.error(
@@ -262,6 +305,17 @@ export default function OracleComparator() {
       )
     }
   }, [jobId, analysisType, env1Name, env2Name])
+
+  // Cancel a running comparison: delete the job server-side and drop back to
+  // the Upload step with files intact so the user can adjust and re-run.
+  const handleCancelRun = useCallback(async () => {
+    if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
+    setJobId(null)
+    setProgress(0)
+    setProgressMessage('')
+    setCurrentStep(0)
+    setStep('upload')
+  }, [jobId])
 
   const handleReset = useCallback(async () => {
     if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
@@ -280,6 +334,7 @@ export default function OracleComparator() {
     setSummary(null)
     setErrors([])
     setUploadError('')
+    setUploadErrorDetails([])
     setConfirmReset(false)
     setSelectedDir('1to2')
     setSelectedType('')
@@ -289,6 +344,8 @@ export default function OracleComparator() {
     setTotal(0)
     setDetailLoading(false)
     setActiveFilters({})
+    setResultsError(false)
+    setResultsRetry(0)
   }, [jobId])
 
   const availableCompTypes = useMemo(() => {
@@ -393,10 +450,10 @@ export default function OracleComparator() {
           <div className="slide-in space-y-5">
             {/* Environment names */}
             <div className="card">
-              <p className="label-uppercase mb-3">Environment Names</p>
+              <p className="label-caps mb-3">Environment Names</p>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="label-uppercase block mb-1.5">Environment 1</label>
+                  <label className="label-caps block mb-1.5">Environment 1</label>
                   <input
                     type="text"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
@@ -406,7 +463,7 @@ export default function OracleComparator() {
                   />
                 </div>
                 <div>
-                  <label className="label-uppercase block mb-1.5">Environment 2</label>
+                  <label className="label-caps block mb-1.5">Environment 2</label>
                   <input
                     type="text"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 bg-white focus:outline-none focus:border-ey-yellow focus:ring-1 focus:ring-ey-yellow/40 transition-colors"
@@ -426,7 +483,7 @@ export default function OracleComparator() {
             {/* RBAC files */}
             {needsRbac && (
               <div>
-                <p className="label-uppercase mb-2">RBAC Files</p>
+                <p className="label-caps mb-2">RBAC Files</p>
                 <div className="grid grid-cols-2 gap-4">
                   <FileUpload
                     label={`${env1Name || 'Environment 1'} RBAC`}
@@ -451,7 +508,7 @@ export default function OracleComparator() {
             {/* DSP files */}
             {needsDsp && (
               <div>
-                <p className="label-uppercase mb-2">DSP Files</p>
+                <p className="label-caps mb-2">DSP Files</p>
                 <div className="grid grid-cols-2 gap-4">
                   <FileUpload
                     label={`${env1Name || 'Environment 1'} DSP`}
@@ -505,8 +562,17 @@ export default function OracleComparator() {
             {uploadError && (
               <div className="flex items-start gap-2 p-3 bg-error-bg rounded border border-error/30 text-sm text-error">
                 <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <span className="flex-1">{uploadError}</span>
-                <button onClick={() => setUploadError('')} className="text-error/60 hover:text-error shrink-0">
+                <div className="flex-1 space-y-1.5">
+                  <span>{uploadError}</span>
+                  {uploadErrorDetails.length > 0 && (
+                    <ul className="list-disc pl-5 space-y-0.5">
+                      {uploadErrorDetails.map((d, i) => (
+                        <li key={i} className="break-words">{d}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                <button onClick={() => { setUploadError(''); setUploadErrorDetails([]) }} className="text-error/60 hover:text-error shrink-0">
                   <X size={14} />
                 </button>
               </div>
@@ -532,9 +598,19 @@ export default function OracleComparator() {
               message={progressMessage || 'Comparing environments…'}
               progress={progress}
               currentStep={currentStep}
-              steps={PROGRESS_STEPS}
+              steps={progressStepsFor(analysisType)}
               withFp={false}
             />
+            {jobId && (
+              <div className="flex justify-center mt-2">
+                <button
+                  className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-bg"
+                  onClick={() => setConfirmCancel(true)}
+                >
+                  <X size={14} /> Cancel Comparison
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -615,7 +691,7 @@ export default function OracleComparator() {
 
                 {/* Direction selector */}
                 <div className="flex items-center gap-2">
-                  <span className="label-uppercase text-slate-500 shrink-0">Direction:</span>
+                  <span className="label-caps text-slate-500 shrink-0">Direction:</span>
                   <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-[13px]">
                     <button
                       onClick={() => { setSelectedDir('1to2'); setPage(1); setActiveFilters({}) }}
@@ -644,7 +720,7 @@ export default function OracleComparator() {
 
                 {/* Type selector */}
                 <div className="flex items-center gap-2">
-                  <span className="label-uppercase text-slate-500 shrink-0">Type:</span>
+                  <span className="label-caps text-slate-500 shrink-0">Type:</span>
                   <div className="flex gap-1.5">
                     {availableCompTypes.map(ct => (
                       <button
@@ -675,6 +751,9 @@ export default function OracleComparator() {
 
               {/* DataTable */}
               <div className="p-4">
+                {resultsError ? (
+                  <ResultsErrorPanel onRetry={() => setResultsRetry(n => n + 1)} />
+                ) : (
                 <DataTable
                   data={detailRows}
                   columns={detailColumns}
@@ -690,13 +769,22 @@ export default function OracleComparator() {
                   }}
                   serverSideFilters={{
                     values: activeFilters,
-                    onChange: (colId, vals) => { setActiveFilters(prev => ({ ...prev, [colId]: vals })); setPage(1) },
+                    onChange: (colId, vals) => {
+                      setActiveFilters(prev => {
+                        const next = { ...prev }
+                        if (vals === null) delete next[colId]
+                        else next[colId] = vals
+                        return next
+                      })
+                      setPage(1)
+                    },
                     onFetchOptions: (colId) => {
                       const others = Object.fromEntries(Object.entries(activeFilters).filter(([k]) => k !== colId))
                       return getFilterOptions(jobId!, selectedDir, selectedType, colId, others)
                     },
                   }}
                 />
+                )}
               </div>
             </div>
 
@@ -751,6 +839,17 @@ export default function OracleComparator() {
         destructive
         onConfirm={handleReset}
         onCancel={() => setConfirmReset(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel Comparison?"
+        message="This will stop the running comparison and discard its progress. Your uploaded files are kept so you can adjust and run again."
+        confirmLabel="Yes, Cancel"
+        cancelLabel="Keep Running"
+        destructive
+        onConfirm={() => { setConfirmCancel(false); handleCancelRun() }}
+        onCancel={() => setConfirmCancel(false)}
       />
     </div>
   )

@@ -159,7 +159,7 @@ function TemplateRow({ file, accent }: { file: DownloadItem; accent: string }) {
     <a
       href={file.href}
       download={file.filename}
-      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-slate-200 no-underline bg-white transition-[background,border-color] duration-[120ms] hover:bg-amber-50 hover:border-ey-yellow"
+      className="flex items-center gap-[11px] px-3 py-[9px] rounded border border-slate-200 no-underline bg-white transition-[background,border-color] [transition-duration:120ms] hover:bg-amber-50 hover:border-ey-yellow"
     >
       <FileSpreadsheet size={16} className={`${accent} shrink-0`} />
       <div className="flex-1 min-w-0">
@@ -194,7 +194,7 @@ function TemplateAccordion({ group }: { group: ToolTemplateGroup }) {
         </span>
         <ChevronDown
           size={16}
-          className={`text-slate-500 transition-transform duration-[220ms] shrink-0 ${open ? 'rotate-180' : 'rotate-0'}`}
+          className={`text-slate-500 transition-transform [transition-duration:220ms] shrink-0 ${open ? 'rotate-180' : 'rotate-0'}`}
         />
       </button>
       {open && (
@@ -254,7 +254,7 @@ export default function Downloads() {
               <a
                 href={item.href}
                 download={item.filename}
-                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-navy text-ey-yellow text-[13px] font-semibold no-underline transition-colors duration-[130ms] hover:bg-navy-mid"
+                className="inline-flex items-center justify-center gap-2 px-[14px] py-[9px] rounded bg-navy text-ey-yellow text-[13px] font-semibold no-underline transition-colors [transition-duration:130ms] hover:bg-navy-mid"
               >
                 <IconDownload cls="text-ey-yellow" s={15} /> Download
               </a>

@@ -1,4 +1,4 @@
-import api, { uploadWithProgress, downloadFile } from './client'
+import api, { appendFilterParams, uploadWithProgress, downloadFile } from './client'
 import type { UploadResponse, AnalysisResponse, JobResponse } from '../types'
 
 export interface OracleUploadConfig {
@@ -76,9 +76,7 @@ export async function getResults(
   }
   if (statusFilter) params.status_filter = statusFilter
   if (search) params.search = search
-  for (const [col, vals] of Object.entries(filters)) {
-    if (vals.length > 0) params[col] = vals.join(',')
-  }
+  appendFilterParams(params, filters)
   const response = await api.get(`/api/oracle-comparator/results/${jobId}`, { params })
   return response.data
 }
@@ -91,9 +89,7 @@ export async function getFilterOptions(
   otherFilters: Record<string, string[]>,
 ): Promise<string[]> {
   const params: Record<string, string> = { column, direction, comparison_type: compType }
-  for (const [col, vals] of Object.entries(otherFilters)) {
-    if (vals.length > 0) params[col] = vals.join(',')
-  }
+  appendFilterParams(params, otherFilters)
   const response = await api.get(`/api/oracle-comparator/filter-options/${jobId}`, { params })
   return response.data.values
 }

@@ -1,4 +1,4 @@
-import api, { uploadWithProgress, downloadFile } from './client'
+import api, { appendFilterParams, uploadWithProgress, downloadFile } from './client'
 import type { UploadResponse, AnalysisResponse, JobResponse } from '../types'
 
 export interface SODSARunConfig {
@@ -86,9 +86,7 @@ export async function getSheetResults(
 ): Promise<SODSASheetPage> {
   const params: Record<string, string | number> = { sheet, page, page_size: pageSize }
   if (search) params.search = search
-  for (const [col, vals] of Object.entries(filters)) {
-    if (vals.length > 0) params[col] = vals.join(',')
-  }
+  appendFilterParams(params, filters)
   const response = await api.get(`/api/sod-sa/results/${jobId}`, { params })
   return response.data
 }
@@ -100,9 +98,7 @@ export async function getFilterOptions(
   otherFilters: Record<string, string[]>,
 ): Promise<string[]> {
   const params: Record<string, string> = { column, sheet }
-  for (const [col, vals] of Object.entries(otherFilters)) {
-    if (vals.length > 0) params[col] = vals.join(',')
-  }
+  appendFilterParams(params, otherFilters)
   const response = await api.get(`/api/sod-sa/filter-options/${jobId}`, { params })
   return response.data.values
 }

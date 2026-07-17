@@ -12,8 +12,19 @@ const api: AxiosInstance = axios.create({
 })
 
 // ── Request interceptor: attach tracing ID ───────────────────────────────────
+// crypto.randomUUID only exists in secure contexts (https / localhost); over
+// plain http on a LAN IP it is undefined and would throw on EVERY request.
+const newRequestId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+
 api.interceptors.request.use((config) => {
-  config.headers['X-Request-ID'] = crypto.randomUUID()
+  // Retries reuse the same config object — keep the original ID so all
+  // attempts of one request correlate in the backend logs.
+  if (!config.headers['X-Request-ID']) {
+    config.headers['X-Request-ID'] = newRequestId()
+  }
   return config
 })
 
@@ -57,6 +68,23 @@ api.interceptors.response.use(
   },
 )
 
+// ── Column-filter query encoding ──────────────────────────────────────────────
+
+/** Append active column filters to a request's query params.
+ *  Each filter is JSON-encoded (`col=["A","B, C",""]`) so empty strings (the
+ *  [Empty] option), commas inside values, and the empty exclude-all selection
+ *  (`[]`) all survive the round-trip. A column with no filter has no param —
+ *  that absence (not an empty array) is what means "don't filter this column".
+ *  Must stay in sync with backend/shared/query_filters.py. */
+export function appendFilterParams(
+  params: Record<string, string | number>,
+  filters: Record<string, string[]>,
+): void {
+  for (const [col, vals] of Object.entries(filters)) {
+    if (Array.isArray(vals)) params[col] = JSON.stringify(vals)
+  }
+}
+
 // ── Upload helper ─────────────────────────────────────────────────────────────
 
 /** POST FormData with real-time upload progress reporting. Default timeout 5 min
@@ -85,8 +113,18 @@ export async function uploadWithProgress(
  *  can be hundreds of MB, and buffering the whole response in memory (plus the
  *  extra Blob copy) stalls/OOMs the tab so nothing ever saves. The backend sends
  *  `Content-Disposition: attachment`, so the browser streams straight to disk
- *  with its own progress UI. */
-export function downloadFile(url: string, filename: string): Promise<void> {
+ *  with its own progress UI.
+ *
+ *  The anchor click itself yields no success/failure signal, so the job's
+ *  lightweight /status sibling is probed first (every tool's download URL is
+ *  `/api/{tool}/download/{job_id}`) — an expired/purged job rejects here
+ *  instead of flashing "Downloaded!" on a dead link. A failure between the
+ *  probe and the click is still invisible; that window is milliseconds. */
+export async function downloadFile(url: string, filename: string): Promise<void> {
+  const { data } = await api.get(url.replace('/download/', '/status/'))
+  if (data?.status !== 'complete') {
+    throw new Error('Results are no longer available for this run.')
+  }
   const base = import.meta.env.VITE_API_URL || ''
   const link = document.createElement('a')
   link.href = `${base}${url}`
@@ -95,7 +133,6 @@ export function downloadFile(url: string, filename: string): Promise<void> {
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)
-  return Promise.resolve()
 }
 
 export default api

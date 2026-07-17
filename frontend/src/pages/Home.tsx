@@ -201,7 +201,7 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; bg
         <svg width={size} height={size} role="img" aria-label="Hours saved per tool">
           {arcs.map((a, i) => (
             <path key={items[i].name} d={a.d} fill="none" stroke={items[i].color} strokeWidth={stroke}
-              opacity={active === null || active === i ? 1 : 0.35} className="transition-opacity duration-150 ease-[ease]"
+              opacity={active === null || active === i ? 1 : 0.35} className="transition-opacity duration-150"
               onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)} />
           ))}
         </svg>
@@ -215,7 +215,7 @@ function HoursDonut({ items, total }: { items: { name: string; color: string; bg
       <div className="flex flex-col gap-2 w-full">
         {items.map((it, i) => (
           <div key={it.name} onMouseEnter={() => setActive(i)} onMouseLeave={() => setActive(null)}
-            className={`flex items-center gap-1.5 transition-opacity duration-150 ease-[ease] ${active === null || active === i ? 'opacity-100' : 'opacity-[0.45]'}`}>
+            className={`flex items-center gap-1.5 transition-opacity duration-150 ${active === null || active === i ? 'opacity-100' : 'opacity-[0.45]'}`}>
             <span className={`w-2 h-2 rounded-full shrink-0 ${it.bgCls}`} />
             <span className="text-[11px] text-slate-700 flex-1 min-w-0 truncate">{it.name}</span>
             <span className="text-[11.5px] font-semibold text-slate-900 tabular-nums">{it.hours.toLocaleString()}h</span>
@@ -333,7 +333,7 @@ export default function Home() {
           <div className="flex bg-surface-panel rounded p-[3px]">
             {(['6M', '12M'] as const).map((r) => (
               <button key={r} onClick={() => setRange(r)}
-                className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold cursor-pointer border transition-all duration-150 ease-[ease] ${
+                className={`px-3 py-1 rounded-[6px] text-[12px] font-semibold cursor-pointer border transition-all duration-150 ${
                   range === r
                     ? 'border-slate-200 bg-white text-slate-900 shadow-[0_1px_2px_rgba(0,0,0,0.05)]'
                     : 'border-transparent bg-transparent text-slate-500 shadow-none'
@@ -343,7 +343,7 @@ export default function Home() {
             ))}
           </div>
           <button onClick={exportReport}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-slate-700 border border-slate-200 transition-colors duration-150 ease-[ease] hover:bg-slate-50">
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded text-[12.5px] font-medium cursor-pointer bg-white text-slate-700 border border-slate-200 transition-colors duration-150 hover:bg-slate-50">
             <Download size={13} strokeWidth={2} /> Export report
           </button>
         </div>
@@ -451,7 +451,7 @@ export default function Home() {
                   onMouseEnter={() => setHovHealth(t.route)} onMouseLeave={() => setHovHealth(null)}
                   role="link" tabIndex={0}
                   onKeyDown={(e) => { if (e.key === 'Enter') navigate(t.route) }}
-                  className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ease-[ease] ${isH ? 'bg-slate-50' : 'bg-transparent'}`}>
+                  className={`flex items-center gap-2.5 px-2 py-[5px] rounded cursor-pointer transition-colors duration-150 ${isH ? 'bg-slate-50' : 'bg-transparent'}`}>
                   <div className={`w-[26px] h-[26px] rounded-[7px] flex items-center justify-center shrink-0 ${t.tintCls}`}>
                     <Icon cls={t.textCls} s={13} />
                   </div>
@@ -462,7 +462,7 @@ export default function Home() {
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold shrink-0 ${badge.cls}`}>
                     ● {badge.label}
                   </span>
-                  <ChevronRight size={13} color={isH ? SEC : '#CBD5E1'} className="shrink-0 transition-colors duration-150 ease-[ease]" />
+                  <ChevronRight size={13} color={isH ? SEC : '#CBD5E1'} className="shrink-0 transition-colors duration-150" />
                 </div>
               )
             })}

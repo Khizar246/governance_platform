@@ -10,5 +10,8 @@ export const ROUTES = {
 } as const
 
 export const MAX_UPLOAD_SIZE_MB = 200
+// Typical uploads stay under ~30 MB; above this the file is accepted but the
+// upload card shows a non-blocking "unusually large" warning.
+export const LARGE_FILE_WARN_MB = 30
 export const ALLOWED_EXTENSIONS = ['.csv', '.xlsx', '.xls'] as const
 export const POLL_INTERVAL_MS = 1500

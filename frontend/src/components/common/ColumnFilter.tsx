@@ -10,9 +10,12 @@ interface ColumnFilterProps {
   isOpen: boolean
   onOpen: () => void
   onClose: () => void
-  selectedValues: string[]
+  /** Active selection for this column; null = no filter set (all rows pass). */
+  selectedValues: string[] | null
   fetchOptions: () => Promise<string[]>
+  /** Apply a selection. An empty array means "exclude every value" (show no rows). */
   onApply: (values: string[]) => void
+  /** Remove the filter entirely — the column goes back to unfiltered. */
   onClear: () => void
 }
 
@@ -41,10 +44,15 @@ export function ColumnFilter({
       return
     }
     if (btnRef.current) setAnchor(btnRef.current.getBoundingClientRect())
-    setPending(selectedValues)
+    setPending(selectedValues ?? [])
     setOptionsLoading(true)
     fetchOptions()
-      .then(setOptions)
+      .then((opts) => {
+        setOptions(opts)
+        // No active filter → Excel convention: every value starts checked, so
+        // unchecking is an explicit act and OK-without-changes stays a no-op.
+        if (selectedValues === null) setPending(opts)
+      })
       .catch(() => setOptions([]))
       .finally(() => setOptionsLoading(false))
   }, [isOpen]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -75,7 +83,16 @@ export function ColumnFilter({
     return () => document.removeEventListener('keydown', handle)
   }, [isOpen, onClose])
 
-  const isActive = selectedValues.length > 0
+  const isActive = selectedValues !== null
+
+  // Applying with every fetched value checked means "no restriction" — store no
+  // filter at all instead of a full-list snapshot that would go stale.
+  const applyPending = () => {
+    const allChecked = options.length > 0 && options.every(o => pending.includes(o))
+    if (allChecked) onClear()
+    else onApply(pending)
+    onClose()
+  }
 
   const visibleOptions = search
     ? options.filter(o => (o === '' ? '[Empty]' : o).toLowerCase().includes(search.toLowerCase()))
@@ -126,7 +143,7 @@ export function ColumnFilter({
         )}
       >
         <span className="truncate flex-1 text-left">
-          {isActive ? `${selectedValues.length} selected` : 'Filter…'}
+          {selectedValues === null ? 'Filter…' : `${selectedValues.length} selected`}
         </span>
         <Filter size={10} className="shrink-0" />
       </button>
@@ -206,8 +223,9 @@ export function ColumnFilter({
                 Clear Filter
               </button>
               <button
-                onClick={() => { onApply(pending); onClose() }}
-                className="text-[11px] font-semibold text-navy hover:text-navy-mid transition-colors"
+                onClick={applyPending}
+                disabled={optionsLoading || options.length === 0}
+                className="text-[11px] font-semibold text-navy hover:text-navy-mid transition-colors disabled:opacity-40 disabled:hover:text-navy"
               >
                 OK
               </button>

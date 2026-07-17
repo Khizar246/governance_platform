@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { ColumnDef } from '@tanstack/react-table'
 import { clsx } from 'clsx'
-import { GitMerge, AlertCircle, CheckCircle2, RefreshCw, X, Info } from 'lucide-react'
+import { GitMerge, AlertCircle, RefreshCw, X, Info } from 'lucide-react'
 import { toast } from 'sonner'
 import PageHeader from '../components/layout/PageHeader'
 import FileUpload from '../components/common/FileUpload'
@@ -11,6 +11,7 @@ import LoadingOverlay from '../components/common/LoadingOverlay'
 import type { ProgressStep } from '../components/common/LoadingOverlay'
 import DownloadButton from '../components/common/DownloadButton'
 import DataTable from '../components/common/DataTable'
+import ResultsErrorPanel from '../components/common/ResultsErrorPanel'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import HelpAccordion, { HelpStep, SchemaTable } from '../components/common/HelpAccordion'
 import {
@@ -18,7 +19,7 @@ import {
   getResults, getFilterOptions,
 } from '../api/rulesetMapping'
 import type { ResultTab, Direction } from '../api/rulesetMapping'
-import type { UploadResponse, RulesetMappingSummary } from '../types'
+import type { RulesetMappingSummary } from '../types'
 import { POLL_INTERVAL_MS } from '../utils/constants'
 import useScrollToTopOnChange from '../utils/useScrollToTopOnChange'
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip'
@@ -97,18 +98,25 @@ function buildColumns(rows: Record<string, unknown>[]): ColumnDef<Record<string,
 
 // ── Step / tab types ──────────────────────────────────────────────────────────
 
-type Step = 'upload' | 'preview' | 'running' | 'results' | 'error'
+type Step = 'upload' | 'running' | 'results' | 'error'
 
-const STEPS = ['Upload', 'Preview', 'Analysis', 'Results']
-const STEP_INDEX: Record<Step, number> = { upload: 0, preview: 1, running: 2, results: 3, error: 0 }
+const STEPS = ['Upload', 'Analysis', 'Results']
+// error keeps the tracker on the same step as running (matches SOD & SA), so a
+// failure reads as "the analysis step failed" rather than resetting to step 0.
+const STEP_INDEX: Record<Step, number> = { upload: 0, running: 1, results: 2, error: 1 }
 
+// Step ids match the backend's _step_for_progress mapping: the pipeline runs
+// the Client→EY direction first, then EY→Client, then summary + export.
 const PROGRESS_STEPS: ProgressStep[] = [
-  { step: 1, label: 'Loading rulesets',                phase: 1 },
-  { step: 2, label: 'Mapping entitlements',            phase: 2 },
-  { step: 3, label: 'Matching SoD controls',           phase: 2 },
-  { step: 4, label: 'Matching SA controls',            phase: 2 },
-  { step: 5, label: 'Building summary',                phase: 3 },
-  { step: 6, label: 'Writing Excel report',            phase: 4 },
+  { step: 1, label: 'Loading rulesets',                     phase: 1 },
+  { step: 2, label: 'Client → EY: mapping entitlements',    phase: 2 },
+  { step: 3, label: 'Client → EY: matching SoD controls',   phase: 2 },
+  { step: 4, label: 'Client → EY: matching SA controls',    phase: 2 },
+  { step: 5, label: 'EY → Client: mapping entitlements',    phase: 2 },
+  { step: 6, label: 'EY → Client: matching SoD controls',   phase: 2 },
+  { step: 7, label: 'EY → Client: matching SA controls',    phase: 2 },
+  { step: 8, label: 'Building summary',                     phase: 4 },
+  { step: 9, label: 'Writing Excel report',                 phase: 4 },
 ]
 
 const TABS: { id: ResultTab; label: string }[] = [
@@ -133,17 +141,6 @@ function tabLabel(id: ResultTab, label: string, direction: Direction): string {
   return label
 }
 
-// ── Preview cards config ──────────────────────────────────────────────────────
-
-const PREVIEW_CARDS: { key: string; label: string }[] = [
-  { key: 'client_sod', label: 'Client — SoD Ruleset' },
-  { key: 'client_sa',  label: 'Client — SA Ruleset' },
-  { key: 'client_e2p', label: 'Client — Entitlement to Privilege' },
-  { key: 'ey_sod',     label: 'EY — SoD Ruleset' },
-  { key: 'ey_sa',      label: 'EY — SA Ruleset' },
-  { key: 'ey_e2p',     label: 'EY — Entitlement to Privilege' },
-]
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function RulesetMapping() {
@@ -153,7 +150,6 @@ export default function RulesetMapping() {
   const [eyFile, setEyFile]               = useState<File | null>(null)
   const [uploadProgress, setUploadProgress] = useState(0)
   const [isUploading, setIsUploading]     = useState(false)
-  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(null)
   const [jobId, setJobId]                 = useState<string | null>(null)
   const [progress, setProgress]           = useState(0)
   const [progressMessage, setProgressMessage] = useState('')
@@ -165,6 +161,7 @@ export default function RulesetMapping() {
   const [activeTab, setActiveTab]         = useState<ResultTab>('sod')
   const [direction, setDirection]         = useState<Direction>('c2e')
   const [confirmReset, setConfirmReset]   = useState(false)
+  const [confirmCancel, setConfirmCancel] = useState(false)
   const [tableRows, setTableRows]         = useState<Record<string, unknown>[]>([])
   const [page, setPage]                   = useState(1)
   const [pageSize, setPageSize]           = useState(50)
@@ -172,15 +169,24 @@ export default function RulesetMapping() {
   const [isLoadingResults, setIsLoadingResults] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Record<string, string[]>>({})
 
-  const hasActiveFilters = Object.values(activeFilters).some(v => v.length > 0)
+  const hasActiveFilters = Object.keys(activeFilters).length > 0
+  // A failed rows fetch must render as an error + retry — never stale rows
+  // under a new tab label, and never an empty "no results" state.
+  const [resultsError, setResultsError] = useState(false)
+  const [resultsRetry, setResultsRetry] = useState(0)
   const columns = useMemo(() => buildColumns(tableRows), [tableRows])
 
   // Polling
   useEffect(() => {
     if (step !== 'running' || !jobId) return
+    // Ignore a status response that resolves after the user cancels/resets (which
+    // changes `step` and runs this cleanup) — otherwise it would flip the page to
+    // results for a job that was just deleted.
+    let cancelled = false
     const interval = setInterval(async () => {
       try {
         const s = await getStatus(jobId)
+        if (cancelled) return
         setProgress(s.progress)
         setProgressMessage(s.progress_message)
         setCurrentStep(s.step ?? 0)
@@ -195,11 +201,18 @@ export default function RulesetMapping() {
           setStep('error')
           toast.error(s.errors[0] || 'Analysis failed.')
         }
-      } catch {
-        // network hiccup — keep polling
+      } catch (e) {
+        if (cancelled) return
+        if ((e as { response?: { status?: number } })?.response?.status === 404) {
+          // Job TTL-purged or backend restarted — polling can never recover.
+          clearInterval(interval)
+          toast.error('Session expired — please start a new analysis.')
+          handleReset()
+        }
+        // otherwise a network hiccup — keep polling
       }
     }, POLL_INTERVAL_MS)
-    return () => clearInterval(interval)
+    return () => { cancelled = true; clearInterval(interval) }
   }, [step, jobId])
 
   // Fetch results page
@@ -212,17 +225,22 @@ export default function RulesetMapping() {
         if (!cancelled) {
           setTableRows(res.data)
           setTotal(res.total)
+          setResultsError(false)
           setIsLoadingResults(false)
         }
       })
       .catch(() => {
         if (!cancelled) {
-          toast.error('Failed to load results.')
+          // Clear the rows: keeping the previous tab's data rendered under the
+          // new tab label would be stale, mislabeled results.
+          setTableRows([])
+          setTotal(0)
+          setResultsError(true)
           setIsLoadingResults(false)
         }
       })
     return () => { cancelled = true }
-  }, [step, jobId, activeTab, direction, page, pageSize, activeFilters])
+  }, [step, jobId, activeTab, direction, page, pageSize, activeFilters, resultsRetry])
 
   const handleUpload = useCallback(async () => {
     if (!clientFile || !eyFile) return
@@ -232,14 +250,15 @@ export default function RulesetMapping() {
     setUploadErrorDetails([])
     try {
       const resp = await uploadFiles(clientFile, eyFile, setUploadProgress)
-      if (resp.errors?.length) {
-        setUploadError(resp.errors[0])
-        setUploadErrorDetails(resp.errors.slice(1))
-        return
-      }
-      setUploadResponse(resp)
       setJobId(resp.job_id)
-      setStep('preview')
+      // Upload validation passed — kick off the analysis immediately (no
+      // intermediate confirm screen); use resp.job_id since jobId state isn't
+      // updated yet within this callback.
+      await runAnalysis(resp.job_id)
+      setStep('running')
+      setProgress(0)
+      setCurrentStep(0)
+      setProgressMessage('Starting analysis…')
     } catch (err: unknown) {
       const data = (err as { response?: { data?: { message?: string; details?: string[] } } })?.response?.data
       setUploadError(data?.message || 'Upload failed.')
@@ -249,12 +268,27 @@ export default function RulesetMapping() {
     }
   }, [clientFile, eyFile])
 
-  const handleRun = useCallback(async () => {
+  // Cancel a running mapping: delete the job server-side and drop back to the
+  // Upload step with files intact so the user can adjust and re-upload.
+  const handleCancelRun = useCallback(async () => {
+    if (jobId) { try { await cancelJob(jobId) } catch { /* ignore */ } }
+    setJobId(null)
+    setProgress(0)
+    setProgressMessage('')
+    setCurrentStep(0)
+    setStep('upload')
+  }, [jobId])
+
+  // Re-run the analysis on the same job after a failure — the uploaded files are
+  // still cached server-side under jobId, so no re-upload is needed.
+  const handleRetry = useCallback(async () => {
     if (!jobId) return
     try {
       await runAnalysis(jobId)
       setStep('running')
       setProgress(0)
+      setCurrentStep(0)
+      setErrors([])
       setProgressMessage('Starting analysis…')
     } catch (err: unknown) {
       const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || 'Failed to start analysis.'
@@ -271,7 +305,6 @@ export default function RulesetMapping() {
     setEyFile(null)
     setUploadProgress(0)
     setIsUploading(false)
-    setUploadResponse(null)
     setJobId(null)
     setProgress(0)
     setProgressMessage('')
@@ -289,6 +322,8 @@ export default function RulesetMapping() {
     setTotal(0)
     setIsLoadingResults(false)
     setActiveFilters({})
+    setResultsError(false)
+    setResultsRetry(0)
   }, [jobId])
 
   const tabCounts = useMemo<Record<ResultTab, number>>(() => {
@@ -350,9 +385,10 @@ export default function RulesetMapping() {
           <div className="slide-in space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="label-uppercase mb-2">Client Ruleset (.xlsx)</p>
+                <p className="label-caps mb-2">Client Ruleset (.xlsx)</p>
                 <FileUpload
                   label="Client Ruleset XLSX"
+                  accept=".xlsx"
                   hint="3 sheets required: SoD Ruleset, SA Ruleset, Entitlement to Privilege"
                   status={clientFile ? 'success' : 'idle'}
                   fileInfo={clientFile ? { name: clientFile.name, size: clientFile.size } : null}
@@ -361,9 +397,10 @@ export default function RulesetMapping() {
                 />
               </div>
               <div>
-                <p className="label-uppercase mb-2">EY Ruleset (.xlsx)</p>
+                <p className="label-caps mb-2">EY Ruleset (.xlsx)</p>
                 <FileUpload
                   label="EY Ruleset XLSX"
+                  accept=".xlsx"
                   hint="3 sheets required: SoD Ruleset, SA Ruleset, Entitlement to Privilege"
                   status={eyFile ? 'success' : 'idle'}
                   fileInfo={eyFile ? { name: eyFile.name, size: eyFile.size } : null}
@@ -416,54 +453,8 @@ export default function RulesetMapping() {
                 disabled={!clientFile || !eyFile || isUploading}
                 onClick={handleUpload}
               >
-                {isUploading ? 'Uploading…' : 'Validate & Preview →'}
+                {isUploading ? 'Uploading…' : 'Run Mapping →'}
               </button>
-            </div>
-          </div>
-        )}
-
-        {/* ── Preview ────────────────────────────────────────────────────── */}
-        {step === 'preview' && uploadResponse && (
-          <div className="slide-in space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              {PREVIEW_CARDS.map(({ key, label }) => {
-                const info = uploadResponse.files[key]
-                if (!info) return null
-                return (
-                  <div key={key} className="card">
-                    <div className="flex items-center gap-2 mb-2">
-                      <CheckCircle2 size={14} className="text-success shrink-0" />
-                      <span className="text-xs font-semibold text-slate-700 truncate">{label}</span>
-                      {info.duplicates > 0 && (
-                        <span className="ml-auto text-[10px] font-medium text-warning bg-warning-bg border border-warning/20 px-1.5 py-0.5 rounded-full whitespace-nowrap">
-                          {info.duplicates} dupes
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[12px] text-slate-500 mb-2">
-                      <span className="font-medium text-slate-700">{info.rows.toLocaleString()}</span> rows ·{' '}
-                      <span>{info.columns.length}</span> cols
-                    </div>
-                    <div className="pt-2 border-t border-slate-100">
-                      <p className="text-[10px] text-slate-400 font-mono break-words line-clamp-2">
-                        {info.columns.join(', ')}
-                      </p>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-
-            {uploadResponse.warnings?.length > 0 && (
-              <div className="flex gap-2 p-3 bg-warning-bg rounded border border-warning/30 text-sm text-warning">
-                <AlertCircle size={16} className="shrink-0 mt-0.5" />
-                <div>{uploadResponse.warnings.join(' · ')}</div>
-              </div>
-            )}
-
-            <div className="flex items-center justify-between pt-2">
-              <button className="btn-secondary" onClick={handleReset}>← Back</button>
-              <button className="btn-gold" onClick={handleRun}>Run Mapping →</button>
             </div>
           </div>
         )}
@@ -478,6 +469,16 @@ export default function RulesetMapping() {
               steps={PROGRESS_STEPS}
               withFp={false}
             />
+            {jobId && (
+              <div className="flex justify-center mt-2">
+                <button
+                  className="inline-flex items-center gap-1.5 font-medium text-sm px-4 py-2 rounded border border-error/40 text-error bg-transparent transition-all duration-150 hover:bg-error-bg"
+                  onClick={() => setConfirmCancel(true)}
+                >
+                  <X size={14} /> Cancel Mapping
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -486,7 +487,7 @@ export default function RulesetMapping() {
           <div className="slide-in space-y-5">
             {/* Direction toggle — recomputes every report relative to the source ruleset */}
             <div className="flex items-center gap-3">
-              <span className="label-uppercase">Mapping Direction</span>
+              <span className="label-caps">Mapping Direction</span>
               <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
                 {DIRECTIONS.map(({ id, label }) => (
                   <button
@@ -559,6 +560,9 @@ export default function RulesetMapping() {
               </button>
             </div>
 
+            {resultsError ? (
+              <ResultsErrorPanel onRetry={() => setResultsRetry(n => n + 1)} />
+            ) : (
             <DataTable
               data={tableRows}
               columns={columns}
@@ -575,7 +579,12 @@ export default function RulesetMapping() {
               serverSideFilters={{
                 values: activeFilters,
                 onChange: (colId, vals) => {
-                  setActiveFilters(prev => ({ ...prev, [colId]: vals }))
+                  setActiveFilters(prev => {
+                    const next = { ...prev }
+                    if (vals === null) delete next[colId]
+                    else next[colId] = vals
+                    return next
+                  })
                   setPage(1)
                 },
                 onFetchOptions: (colId) => {
@@ -586,6 +595,7 @@ export default function RulesetMapping() {
                 },
               }}
             />
+            )}
 
             {/* Actions */}
             <div className="flex items-center justify-between pt-1">
@@ -621,7 +631,7 @@ export default function RulesetMapping() {
                 </div>
               </div>
               <div className="flex gap-3 mt-4">
-                <button className="btn-primary" onClick={handleRun}>Try Again</button>
+                <button className="btn-primary" onClick={handleRetry}>Try Again</button>
                 <button className="btn-secondary" onClick={handleReset}>← Start Over</button>
               </div>
             </div>
@@ -639,6 +649,17 @@ export default function RulesetMapping() {
         destructive
         onConfirm={handleReset}
         onCancel={() => setConfirmReset(false)}
+      />
+
+      <ConfirmDialog
+        open={confirmCancel}
+        title="Cancel Mapping?"
+        message="This will stop the running mapping and discard its progress. Your uploaded files are kept so you can adjust and run again."
+        confirmLabel="Yes, Cancel"
+        cancelLabel="Keep Running"
+        destructive
+        onConfirm={() => { setConfirmCancel(false); handleCancelRun() }}
+        onCancel={() => setConfirmCancel(false)}
       />
     </div>
   )

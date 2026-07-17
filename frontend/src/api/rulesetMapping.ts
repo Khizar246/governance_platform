@@ -1,4 +1,4 @@
-import api, { uploadWithProgress, downloadFile } from './client'
+import api, { appendFilterParams, uploadWithProgress, downloadFile } from './client'
 import type { UploadResponse, AnalysisResponse, JobResponse } from '../types'
 
 export async function uploadFiles(
@@ -57,9 +57,7 @@ export async function getResults(
     tab: params.tab,
     direction: params.direction,
   }
-  for (const [col, vals] of Object.entries(params.filters ?? {})) {
-    if (vals.length > 0) queryParams[col] = vals.join(',')
-  }
+  appendFilterParams(queryParams, params.filters ?? {})
   const response = await api.get(`/api/ruleset-mapping/results/${jobId}`, { params: queryParams })
   return response.data
 }
@@ -72,9 +70,7 @@ export async function getFilterOptions(
   otherFilters: Record<string, string[]>,
 ): Promise<string[]> {
   const params: Record<string, string> = { column, tab, direction }
-  for (const [col, vals] of Object.entries(otherFilters)) {
-    if (vals.length > 0) params[col] = vals.join(',')
-  }
+  appendFilterParams(params, otherFilters)
   const response = await api.get(`/api/ruleset-mapping/filter-options/${jobId}`, { params })
   return response.data.values
 }

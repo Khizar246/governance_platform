@@ -20,7 +20,7 @@ export default function StepIndicator({ steps, currentStep }: StepIndicatorProps
               {/* Circle */}
               <div
                 className={clsx(
-                  'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200 ease-[ease]',
+                  'w-8 h-8 rounded-full flex items-center justify-center transition-all duration-200',
                   isComplete
                     ? 'bg-green-600 border-none'
                     : isActive

@@ -1,9 +1,9 @@
-import { useCallback, useRef, type CSSProperties } from 'react'
-import { useDropzone } from 'react-dropzone'
-import { Upload, CheckCircle2, XCircle, X, FileText } from 'lucide-react'
+import { useCallback, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useDropzone, type FileRejection } from 'react-dropzone'
+import { Upload, CheckCircle2, XCircle, X, FileText, AlertCircle, AlertTriangle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { formatFileSize } from '../../utils/formatters'
-import { ALLOWED_EXTENSIONS, MAX_UPLOAD_SIZE_MB } from '../../utils/constants'
+import { ALLOWED_EXTENSIONS, LARGE_FILE_WARN_MB, MAX_UPLOAD_SIZE_MB } from '../../utils/constants'
 
 export type UploadStatus = 'idle' | 'uploading' | 'success' | 'error'
 
@@ -27,10 +27,28 @@ interface FileUploadProps {
   onRemove: () => void
 }
 
-const DROPZONE_ACCEPT = {
-  'text/csv': ['.csv'],
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
-  'application/vnd.ms-excel': ['.xls'],
+// MIME type for each supported extension, used to build react-dropzone's
+// `accept` map from the (per-slot) `accept` prop so the dropzone actually
+// enforces it — e.g. an xlsx-only slot rejects a .csv client-side instead of
+// letting it through to fail at the server.
+const EXT_MIME: Record<string, string> = {
+  '.csv': 'text/csv',
+  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  '.xls': 'application/vnd.ms-excel',
+}
+
+/** Build react-dropzone's { mime: [ext] } accept map from an "ext,ext" string. */
+function buildDropzoneAccept(acceptStr: string): Record<string, string[]> {
+  const exts = acceptStr
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter((e) => e in EXT_MIME)
+  const map: Record<string, string[]> = {}
+  for (const ext of exts) {
+    const mime = EXT_MIME[ext]
+    ;(map[mime] ??= []).push(ext)
+  }
+  return map
 }
 
 export default function FileUpload({
@@ -46,21 +64,75 @@ export default function FileUpload({
   onRemove,
 }: FileUploadProps) {
   const retryRef = useRef<HTMLInputElement>(null)
+  // Why a file was rejected by the dropzone (wrong type / too big) — without
+  // this, rejected drops give zero feedback and the box just does nothing.
+  const [rejectMsg, setRejectMsg] = useState<string | null>(null)
 
   const onDrop = useCallback(
-    (accepted: File[]) => { if (accepted[0]) onUpload(accepted[0]) },
+    (accepted: File[]) => {
+      if (accepted[0]) {
+        setRejectMsg(null)
+        onUpload(accepted[0])
+      }
+    },
     [onUpload],
+  )
+
+  const acceptMap = useMemo(() => buildDropzoneAccept(accept), [accept])
+  const allowedExtsText = useMemo(
+    () => Object.values(acceptMap).flat().join(', '),
+    [acceptMap],
+  )
+
+  const onDropRejected = useCallback(
+    (rejections: FileRejection[]) => {
+      const r = rejections[0]
+      if (!r) return
+      const code = r.errors[0]?.code
+      if (code === 'file-too-large') {
+        setRejectMsg(`"${r.file.name}" is too large — the limit is ${maxSizeMB} MB.`)
+      } else if (code === 'file-invalid-type') {
+        setRejectMsg(`"${r.file.name}" is not a supported file type — upload a ${allowedExtsText} file.`)
+      } else if (code === 'too-many-files') {
+        setRejectMsg('Only one file can be uploaded here — drop a single file.')
+      } else {
+        setRejectMsg(`"${r.file.name}" was rejected: ${r.errors[0]?.message ?? 'unknown error'}.`)
+      }
+    },
+    [maxSizeMB, allowedExtsText],
   )
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: DROPZONE_ACCEPT,
+    onDropRejected,
+    accept: acceptMap,
     maxSize: maxSizeMB * 1024 * 1024,
     multiple: false,
   })
 
+  // The Retry <input type="file"> bypasses the dropzone, so enforce the same
+  // size + type rules here (the browser's `accept` hint is not a guarantee).
+  const handleManualPick = useCallback(
+    (file: File) => {
+      const ext = ('.' + (file.name.split('.').pop() ?? '')).toLowerCase()
+      const allowed = Object.values(acceptMap).flat()
+      if (allowed.length > 0 && !allowed.includes(ext)) {
+        setRejectMsg(`"${file.name}" is not a supported file type — upload a ${allowedExtsText} file.`)
+        return
+      }
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        setRejectMsg(`"${file.name}" is too large — the limit is ${maxSizeMB} MB.`)
+        return
+      }
+      setRejectMsg(null)
+      onUpload(file)
+    },
+    [acceptMap, allowedExtsText, maxSizeMB, onUpload],
+  )
+
   /* ── SUCCESS ─────────────────────────────────────── */
   if (status === 'success' && fileInfo) {
+    const isLarge = fileInfo.size > LARGE_FILE_WARN_MB * 1024 * 1024
     return (
       <div className="fade-in border border-green-200 bg-green-50 rounded-lg p-4">
         <div className="flex items-start gap-3">
@@ -72,6 +144,16 @@ export default function FileUpload({
               {fileInfo.columns != null && `${fileInfo.columns} cols · `}
               {formatFileSize(fileInfo.size)}
             </p>
+            {isLarge && (
+              <p className="flex items-start gap-1.5 text-[12px] text-amber-700 mt-1.5">
+                <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                <span>
+                  This file is unusually large ({formatFileSize(fileInfo.size)}) — uploads are
+                  typically under {LARGE_FILE_WARN_MB} MB, so processing may be slow. Consider
+                  reducing it if possible.
+                </span>
+              </p>
+            )}
           </div>
           <button
             onClick={onRemove}
@@ -106,9 +188,15 @@ export default function FileUpload({
             type="file"
             accept={accept}
             className="hidden"
-            onChange={(e) => { if (e.target.files?.[0]) onUpload(e.target.files[0]) }}
+            onChange={(e) => { if (e.target.files?.[0]) handleManualPick(e.target.files[0]) }}
           />
         </div>
+        {rejectMsg && (
+          <p className="fade-in flex items-start gap-1.5 text-[12px] text-red-600 mt-2">
+            <AlertCircle size={13} className="shrink-0 mt-0.5" />
+            <span className="break-words min-w-0">{rejectMsg}</span>
+          </p>
+        )}
       </div>
     )
   }
@@ -139,13 +227,17 @@ export default function FileUpload({
 
   /* ── IDLE / DRAGGING ─────────────────────────────── */
   return (
+    <div>
     <div
       {...getRootProps()}
       className={clsx(
         'border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors duration-150 outline-none',
+        'focus-visible:ring-2 focus-visible:ring-ey-yellow focus-visible:ring-offset-2',
         isDragActive
           ? 'border-ey-yellow-hover bg-gold-light'
-          : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50',
+          : rejectMsg
+            ? 'border-red-300 hover:border-red-400 bg-white hover:bg-slate-50'
+            : 'border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50',
       )}
     >
       <input {...getInputProps()} />
@@ -175,6 +267,14 @@ export default function FileUpload({
           {hint && <p className="text-[12px] text-slate-400 mt-1">{hint}</p>}
         </>
       )}
+    </div>
+
+    {rejectMsg && (
+      <p className="fade-in flex items-start gap-1.5 text-[12px] text-red-600 mt-1.5">
+        <AlertCircle size={13} className="shrink-0 mt-0.5" />
+        <span className="break-words min-w-0">{rejectMsg}</span>
+      </p>
+    )}
     </div>
   )
 }

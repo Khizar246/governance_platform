@@ -1,5 +1,4 @@
-import { useState, useEffect, useRef, useMemo, type CSSProperties } from 'react'
-import { createPortal } from 'react-dom'
+import { useState, useEffect, useMemo, useRef, type CSSProperties, type ReactNode } from 'react'
 import {
   useReactTable,
   getCoreRowModel,
@@ -12,7 +11,7 @@ import {
   type ColumnFiltersState,
   type FilterFn,
 } from '@tanstack/react-table'
-import { ChevronUp, ChevronDown, ChevronsUpDown, Database, Filter, X } from 'lucide-react'
+import { ChevronUp, ChevronDown, ChevronsUpDown, Database } from 'lucide-react'
 import { clsx } from 'clsx'
 import { TableHead, TableRow, TableCell } from '@/components/ui/table'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
@@ -20,9 +19,35 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { ColumnFilter } from '@/components/common/ColumnFilter'
 
 const SKELETON_ROWS = 8
-const DROPDOWN_WIDTH = 224
-// Search box ~40px + max options list 208px + footer ~36px
-const DROPDOWN_MAX_HEIGHT = 290
+
+// ── Cell that reveals its full value in a tooltip only when actually clipped ──
+// Truncation is width-driven (max-w-[240px] + truncate), so a short value can be
+// cut off just as a long one is. Measure real overflow instead of guessing from
+// string length, so every clipped cell — long or "wide but short" — gets a tooltip.
+function TruncatedCell({ fullText, children }: { fullText: string; children: ReactNode }) {
+  const spanRef = useRef<HTMLSpanElement>(null)
+  const [isTruncated, setIsTruncated] = useState(false)
+
+  const measure = () => {
+    const el = spanRef.current
+    if (el) setIsTruncated(el.scrollWidth > el.clientWidth)
+  }
+
+  const content = (
+    <span ref={spanRef} onPointerEnter={measure} className="block truncate">
+      {children}
+    </span>
+  )
+
+  if (!isTruncated) return content
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>{content}</TooltipTrigger>
+      <TooltipContent className="max-w-xs break-words text-xs">{fullText}</TooltipContent>
+    </Tooltip>
+  )
+}
 
 // ── Multi-select filter fn (registered in useReactTable filterFns) ─────────────
 const multiSelectFilter: FilterFn<unknown> = (row, columnId, filterValue: string[] | undefined) => {
@@ -43,8 +68,10 @@ interface ServerSideProps {
 }
 
 interface ServerSideFilters {
+  /** Active filters only — a key exists iff that column is filtered ([] = exclude all). */
   values: Record<string, string[]>
-  onChange: (columnId: string, values: string[]) => void
+  /** values = [] means "exclude every value"; null means "remove this column's filter". */
+  onChange: (columnId: string, values: string[] | null) => void
   onFetchOptions: (columnId: string) => Promise<string[]>
 }
 
@@ -85,12 +112,8 @@ export default function DataTable<T>({
   const [sorting, setSorting] = useState<SortingState>(defaultSorting ?? [])
   const [columnFilters, setColumnFilters] = useState<ColumnFiltersState>([])
 
-  // Excel filter state
+  // Excel filter state — which column's ColumnFilter dropdown is open
   const [openFilterCol, setOpenFilterCol] = useState<string | null>(null)
-  const [filterSearch, setFilterSearch] = useState('')
-  const [dropdownAnchor, setDropdownAnchor] = useState<DOMRect | null>(null)
-  const [dropOpenUp, setDropOpenUp] = useState(false)
-  const dropdownRef = useRef<HTMLDivElement>(null)
 
   const table = useReactTable({
     data,
@@ -142,44 +165,11 @@ export default function DataTable<T>({
     return map
   }, [data, columns, serverSideFilters])
 
-  // ── Close dropdown on outside click (deferred so opener click doesn't close) ─
-  useEffect(() => {
-    if (!openFilterCol) return
-    let handler: ((e: MouseEvent) => void) | null = null
-    const t = setTimeout(() => {
-      if (!dropdownRef.current) return
-      handler = (e: MouseEvent) => {
-        if (!dropdownRef.current?.contains(e.target as Node)) {
-          setOpenFilterCol(null)
-          setFilterSearch('')
-        }
-      }
-      document.addEventListener('mousedown', handler)
-    }, 0)
-    return () => {
-      clearTimeout(t)
-      if (handler) document.removeEventListener('mousedown', handler)
-    }
-  }, [openFilterCol])
-
-  // ── Close on ESC ──────────────────────────────────────────────────────────
-  useEffect(() => {
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && openFilterCol) {
-        setOpenFilterCol(null)
-        setFilterSearch('')
-      }
-    }
-    document.addEventListener('keydown', handle)
-    return () => document.removeEventListener('keydown', handle)
-  }, [openFilterCol])
-
   // ── Clear all filters when reset key increments ───────────────────────────
   useEffect(() => {
     if (!filterResetKey) return
     setColumnFilters([])
     setOpenFilterCol(null)
-    setFilterSearch('')
   }, [filterResetKey])
 
   // ── Notify parent when filter activity changes ───────────────────────────
@@ -197,65 +187,26 @@ export default function DataTable<T>({
     return Array.isArray(f?.value) ? (f.value as string[]) : []
   }
 
-  const toggleClientValue = (colId: string, value: string) => {
-    const all = uniqueValues[colId] ?? []
-    const active = isColumnFilterActive(colId)
-    const current = getClientFilterValues(colId)
-    let updated: string[]
-    if (!active) {
-      // No active filter — all values implicitly shown. Unchecking excludes this value.
-      updated = all.filter(v => v !== value)
-    } else {
-      updated = current.includes(value)
-        ? current.filter(v => v !== value)
-        : [...current, value]
-    }
-    // Clear filter (show all) when all values re-included; [] means show nothing
-    table.getColumn(colId)?.setFilterValue(
-      updated.length >= all.length ? undefined : updated,
-    )
-  }
-
-  // ── Open filter dropdown ──────────────────────────────────────────────────
-  const openFilter = (colId: string, e: React.MouseEvent<HTMLButtonElement>) => {
-    e.stopPropagation()
-    if (openFilterCol === colId) {
-      setOpenFilterCol(null)
-      setFilterSearch('')
-      return
-    }
-    const rect = e.currentTarget.getBoundingClientRect()
-    const spaceBelow = window.innerHeight - rect.bottom
-    setDropOpenUp(spaceBelow < DROPDOWN_MAX_HEIGHT + 4)
-    setDropdownAnchor(rect)
-    setOpenFilterCol(colId)
-    setFilterSearch('')
-  }
-
   // ── Pagination helpers ────────────────────────────────────────────────────
   const clientPageIndex = table.getState().pagination.pageIndex
   const clientPageSize = table.getState().pagination.pageSize
   const clientTotal = table.getFilteredRowModel().rows.length
 
-  const effectivePageIndex = serverSide ? serverSide.page - 1 : clientPageIndex
   const effectivePageSize = serverSide ? serverSide.pageSize : clientPageSize
   const effectiveTotal = serverSide ? serverSide.total : clientTotal
   const effectivePageCount = serverSide ? Math.ceil(serverSide.total / serverSide.pageSize) : table.getPageCount()
-  const canPrev = serverSide ? serverSide.page > 1 : table.getCanPreviousPage()
-  const canNext = serverSide ? serverSide.page < effectivePageCount : table.getCanNextPage()
+  // Clamp the displayed page to the valid range. When a filter shrinks `total`
+  // before the parent resets `page`, an un-clamped stale page produces a blank
+  // grid and nonsense counts ("Showing 201–10 of 10 rows").
+  const lastPageIndex = Math.max(0, effectivePageCount - 1)
+  const effectivePageIndex = serverSide
+    ? Math.min(serverSide.page - 1, lastPageIndex)
+    : clientPageIndex
+  const canPrev = serverSide ? effectivePageIndex > 0 : table.getCanPreviousPage()
+  const canNext = serverSide ? effectivePageIndex < lastPageIndex : table.getCanNextPage()
 
   const start = effectiveTotal === 0 ? 0 : effectivePageIndex * effectivePageSize + 1
   const end = Math.min(start + effectivePageSize - 1, effectiveTotal)
-
-  // ── Dropdown position ─────────────────────────────────────────────────────
-  const dropLeft = dropdownAnchor
-    ? Math.min(dropdownAnchor.left, window.innerWidth - DROPDOWN_WIDTH - 8)
-    : 0
-  const dropTop = dropdownAnchor
-    ? dropOpenUp
-      ? Math.max(8, dropdownAnchor.top - DROPDOWN_MAX_HEIGHT - 4)
-      : dropdownAnchor.bottom + 4
-    : 0
 
   return (
     <TooltipProvider delayDuration={300}>
@@ -308,36 +259,29 @@ export default function DataTable<T>({
                           )}
                         </div>
 
-                        {/* ── Excel filter button (client-side columns) ── */}
+                        {/* ── Excel filter (client-side columns; shared ColumnFilter) ── */}
                         {isClientFilterCol && !isLoading && (
-                          <button
-                            onClick={(e) => openFilter(colId, e)}
-                            className={clsx(
-                              'flex items-center justify-between gap-1 w-full h-6 px-1.5 rounded border text-[11px] transition-colors',
-                              clientActive
-                                ? 'border-ey-yellow bg-yellow-50 text-slate-700'
-                                : 'border-slate-200 bg-white text-slate-400 hover:text-slate-600 hover:border-slate-300',
-                            )}
-                          >
-                            <span className="truncate flex-1 text-left">
-                              {clientActive
-                                ? `${getClientFilterValues(colId).length} selected`
-                                : 'Filter…'}
-                            </span>
-                            <Filter size={10} className="shrink-0" />
-                          </button>
-                        )}
-
-                        {/* ── Server-side Excel filter (ColumnFilter component) ── */}
-                        {serverSideFilters && !isLoading && (
                           <ColumnFilter
                             isOpen={openFilterCol === colId}
                             onOpen={() => setOpenFilterCol(colId)}
                             onClose={() => setOpenFilterCol(null)}
-                            selectedValues={serverSideFilters.values[colId] ?? []}
+                            selectedValues={clientActive ? getClientFilterValues(colId) : null}
+                            fetchOptions={() => Promise.resolve(uniqueValues[colId] ?? [])}
+                            onApply={(vals) => table.getColumn(colId)?.setFilterValue(vals)}
+                            onClear={() => table.getColumn(colId)?.setFilterValue(undefined)}
+                          />
+                        )}
+
+                        {/* ── Server-side Excel filter (ColumnFilter component) ── */}
+                        {serverSideFilters && header.column.getCanFilter() && !isLoading && (
+                          <ColumnFilter
+                            isOpen={openFilterCol === colId}
+                            onOpen={() => setOpenFilterCol(colId)}
+                            onClose={() => setOpenFilterCol(null)}
+                            selectedValues={serverSideFilters.values[colId] ?? null}
                             fetchOptions={() => serverSideFilters.onFetchOptions(colId)}
                             onApply={(vals) => serverSideFilters.onChange(colId, vals)}
-                            onClear={() => serverSideFilters.onChange(colId, [])}
+                            onClear={() => serverSideFilters.onChange(colId, null)}
                           />
                         )}
                       </TableHead>
@@ -372,19 +316,44 @@ export default function DataTable<T>({
                 ))}
 
               {/* Empty state */}
-              {!isLoading && table.getRowModel().rows.length === 0 && (
-                <TableRow className="hover:bg-transparent">
-                  <TableCell colSpan={columns.length} className="py-16 text-center">
-                    <div className="flex flex-col items-center gap-3">
-                      <Database size={36} strokeWidth={1.5} className="text-slate-300" />
-                      <div className="space-y-1">
-                        <p className="text-[13px] font-medium text-slate-500">{emptyMessage}</p>
-                        <p className="text-xs text-slate-400">Try adjusting the column filters above</p>
+              {!isLoading && table.getRowModel().rows.length === 0 && (() => {
+                const hasActiveFilters = serverSideFilters
+                  ? Object.keys(serverSideFilters.values).length > 0
+                  : columnFilters.length > 0
+                return (
+                  <TableRow className="hover:bg-transparent">
+                    <TableCell colSpan={columns.length} className="py-16 text-center">
+                      <div className="flex flex-col items-center gap-3">
+                        <Database size={36} strokeWidth={1.5} className="text-slate-300" />
+                        <div className="space-y-1">
+                          <p className="text-[13px] font-medium text-slate-500">{emptyMessage}</p>
+                          <p className="text-xs text-slate-400">
+                            {hasActiveFilters
+                              ? 'The active column filters exclude every row'
+                              : 'There are no rows in this dataset'}
+                          </p>
+                        </div>
+                        {hasActiveFilters && (
+                          <button
+                            onClick={() => {
+                              if (serverSideFilters) {
+                                for (const colId of Object.keys(serverSideFilters.values)) {
+                                  serverSideFilters.onChange(colId, null)
+                                }
+                              } else {
+                                table.resetColumnFilters()
+                              }
+                            }}
+                            className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-300 hover:border-slate-400 bg-white px-3 py-1.5 rounded transition-colors duration-150"
+                          >
+                            Clear all filters
+                          </button>
+                        )}
                       </div>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              )}
+                    </TableCell>
+                  </TableRow>
+                )
+              })()}
 
               {/* Data rows — zebra + hover */}
               {!isLoading &&
@@ -396,32 +365,16 @@ export default function DataTable<T>({
                       i % 2 === 0 ? 'bg-white hover:bg-slate-100' : 'bg-slate-50 hover:bg-slate-100',
                     )}
                   >
-                    {row.getVisibleCells().map((cell) => {
-                      const raw = String(cell.getValue() ?? '')
-                      return (
-                        <TableCell
-                          key={cell.id}
-                          className="px-3 py-2 text-[13px] text-slate-700 max-w-[240px]"
-                        >
-                          {raw.length > 30 ? (
-                            <Tooltip>
-                              <TooltipTrigger asChild>
-                                <span className="block truncate cursor-default">
-                                  {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                                </span>
-                              </TooltipTrigger>
-                              <TooltipContent className="max-w-xs break-words text-xs">
-                                {raw}
-                              </TooltipContent>
-                            </Tooltip>
-                          ) : (
-                            <span className="block truncate">
-                              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                            </span>
-                          )}
-                        </TableCell>
-                      )
-                    })}
+                    {row.getVisibleCells().map((cell) => (
+                      <TableCell
+                        key={cell.id}
+                        className="px-3 py-2 text-[13px] text-slate-700 max-w-[240px]"
+                      >
+                        <TruncatedCell fullText={String(cell.getValue() ?? '')}>
+                          {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                        </TruncatedCell>
+                      </TableCell>
+                    ))}
                   </TableRow>
                 ))}
 
@@ -473,114 +426,6 @@ export default function DataTable<T>({
         </div>
 
       </div>
-
-      {/* ── Excel filter dropdown (portaled to body, client-side mode only) ── */}
-      {!serverSideFilters && openFilterCol && dropdownAnchor && typeof document !== 'undefined' &&
-        createPortal(
-          <div
-            ref={dropdownRef}
-            style={{ '--dd-top': `${dropTop}px`, '--dd-left': `${dropLeft}px` } as CSSProperties}
-            className="fixed top-[var(--dd-top)] left-[var(--dd-left)] w-56 z-[9999] bg-white rounded-lg border border-slate-200 shadow-xl overflow-hidden"
-          >
-            {/* Search box */}
-            <div className="flex items-center gap-1.5 px-2.5 py-2 border-b border-slate-100">
-              <Filter size={11} className="text-slate-400 shrink-0" />
-              <input
-                autoFocus
-                value={filterSearch}
-                onChange={(e) => setFilterSearch(e.target.value)}
-                placeholder="Search values…"
-                className="flex-1 text-[12px] outline-none placeholder-slate-400 bg-transparent"
-              />
-              {filterSearch && (
-                <button onClick={() => setFilterSearch('')} className="text-slate-400 hover:text-slate-600">
-                  <X size={11} />
-                </button>
-              )}
-            </div>
-
-            {/* Options list */}
-            <div className="max-h-52 overflow-y-auto">
-
-              {/* ── Client-side: multi-select from computed unique values ── */}
-              {!serverSide && (() => {
-                const allVals = uniqueValues[openFilterCol] ?? []
-                const visible = filterSearch
-                  ? allVals.filter(v =>
-                      (v === '' ? '[Empty]' : v).toLowerCase().includes(filterSearch.toLowerCase()),
-                    )
-                  : allVals
-                const activeVals = getClientFilterValues(openFilterCol)
-                const isFilterActive = isColumnFilterActive(openFilterCol)
-                // Exclusion model: no filter = all implicitly selected; [] = none selected
-                const effectiveSelected = isFilterActive ? activeVals : allVals
-                const allChecked = !isFilterActive || (visible.length > 0 && visible.every(v => effectiveSelected.includes(v)))
-
-                if (visible.length === 0) {
-                  return (
-                    <p className="py-6 text-center text-[12px] text-slate-400">No matching values</p>
-                  )
-                }
-
-                return (
-                  <>
-                    {/* (Select All) — only when not searching */}
-                    {!filterSearch && (
-                      <label className="flex items-center gap-2.5 px-3 py-2 cursor-pointer hover:bg-slate-50 border-b border-slate-100">
-                        <input
-                          type="checkbox"
-                          checked={allChecked}
-                          onChange={() => table.getColumn(openFilterCol)?.setFilterValue(allChecked ? [] : undefined)}
-                          className="h-3.5 w-3.5 rounded accent-ey-yellow"
-                        />
-                        <span className="text-[12px] text-slate-500 italic">(Select All)</span>
-                      </label>
-                    )}
-                    {visible.map((val) => (
-                      <label
-                        key={val === '' ? '__empty__' : val}
-                        className="flex items-center gap-2.5 px-3 py-1.5 cursor-pointer hover:bg-slate-50"
-                      >
-                        <input
-                          type="checkbox"
-                          checked={effectiveSelected.includes(val)}
-                          onChange={() => toggleClientValue(openFilterCol, val)}
-                          className="h-3.5 w-3.5 rounded accent-ey-yellow"
-                        />
-                        <span className="text-[12px] text-slate-700 truncate" title={val || '[Empty]'}>
-                          {val === '' ? <em className="text-slate-400">[Empty]</em> : val}
-                        </span>
-                      </label>
-                    ))}
-                  </>
-                )
-              })()}
-
-
-            </div>
-
-            {/* Footer (client-side only — clear + done) */}
-            {!serverSide && (
-              <div className="flex items-center justify-between px-3 py-2 border-t border-slate-100 bg-slate-50">
-                <button
-                  onClick={() => {
-                    table.getColumn(openFilterCol)?.setFilterValue(undefined)
-                  }}
-                  className="text-[11px] text-slate-500 hover:text-slate-700 transition-colors"
-                >
-                  Clear
-                </button>
-                <button
-                  onClick={() => { setOpenFilterCol(null); setFilterSearch('') }}
-                  className="text-[11px] font-semibold text-navy hover:text-navy-mid transition-colors"
-                >
-                  Done
-                </button>
-              </div>
-            )}
-          </div>,
-          document.body,
-        )}
 
     </TooltipProvider>
   )

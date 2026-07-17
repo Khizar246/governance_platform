@@ -105,22 +105,6 @@ const config: Config = {
 
       transitionDuration: {
         DEFAULT: '150ms',
-        hover:   '200ms',
-      },
-
-      keyframes: {
-        shimmer: {
-          '0%':   { backgroundPosition: '-800px 0' },
-          '100%': { backgroundPosition: '800px 0' },
-        },
-        fadeUp: {
-          from: { opacity: '0', transform: 'translateY(8px)' },
-          to:   { opacity: '1', transform: 'translateY(0)' },
-        },
-      },
-      animation: {
-        shimmer:   'shimmer 1.6s infinite',
-        'fade-up': 'fadeUp 0.25s cubic-bezier(0.4,0,0.2,1) both',
       },
     },
   },

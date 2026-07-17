@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { SearchX } from 'lucide-react'
 import PageHeader from '../components/layout/PageHeader'
 
 // ── Data model ───────────────────────────────────────────────────────────────
@@ -21,6 +22,7 @@ const HOURS_SAVED_BY_TOOL: Record<string, number> = {
   'SOD & SA Analysis (with FP)': 18,
   'Ruleset Mapping': 5,
   'Oracle Comparator': 3,
+  'Role Testing Bot (Beta)': 2,
 }
 
 const RUNS: RunRecord[] = [
@@ -138,9 +140,8 @@ export default function AdminPanel() {
     })
     const dir = sortDir === 'asc' ? 1 : -1
     return [...filtered].sort((a, b) => {
-      let av: string | number = a[sortKey] as string | number
-      let bv: string | number = b[sortKey] as string | number
-      if (sortKey === 'revenue') { av = a.revenue; bv = b.revenue }
+      const av: string | number = a[sortKey] as string | number
+      const bv: string | number = b[sortKey] as string | number
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir
       return String(av).localeCompare(String(bv)) * dir
     })
@@ -249,7 +250,7 @@ export default function AdminPanel() {
                         href={`/api/admin/runs/${r.id}/download-zip`}
                         download={`run-${r.id}.zip`}
                         title={`Download ${r.files} file(s) as ZIP`}
-                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-slate-200 bg-white text-navy text-[11.5px] font-semibold no-underline transition-all duration-[130ms] hover:bg-navy hover:text-ey-yellow hover:border-navy"
+                        className="inline-flex items-center gap-1.5 px-[11px] py-1.5 rounded-[7px] border border-slate-200 bg-white text-navy text-[11.5px] font-semibold no-underline transition-all [transition-duration:130ms] hover:bg-navy hover:text-ey-yellow hover:border-navy"
                       >
                         <IconZip s={14} /> ZIP
                       </a>
@@ -259,8 +260,20 @@ export default function AdminPanel() {
               })}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-10 text-center text-slate-400 text-[13px]">
-                    No runs match your filters.
+                  <td colSpan={8} className="px-4 py-12 text-center">
+                    <div className="flex flex-col items-center gap-3">
+                      <SearchX size={32} strokeWidth={1.5} className="text-slate-300" />
+                      <div className="space-y-1">
+                        <p className="text-[13px] font-medium text-slate-500">No runs match your filters</p>
+                        <p className="text-xs text-slate-400">Adjust the search text or the tool/status filters above</p>
+                      </div>
+                      <button
+                        onClick={() => { setSearch(''); setToolFilter('All'); setStatusFilter('All') }}
+                        className="text-xs font-medium text-slate-600 hover:text-slate-900 border border-slate-300 hover:border-slate-400 bg-white px-3 py-1.5 rounded transition-colors duration-150"
+                      >
+                        Clear search &amp; filters
+                      </button>
+                    </div>
                   </td>
                 </tr>
               )}

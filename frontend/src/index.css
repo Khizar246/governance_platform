@@ -7,24 +7,10 @@
 @layer base {
   :root {
     /* ── Light palette ───────────────────────────────────────────────── */
-    --bg:          theme('colors.surface-page');
-    --surface-alt: theme('colors.surface-panel');
+    --bg: theme('colors.surface-page');
 
     /* ── Text ─────────────────────────────────────────────────────────── */
     --t0: theme('colors.slate.900');
-
-    /* ── Borders ──────────────────────────────────────────────────────── */
-    --border:       theme('colors.slate.200');
-
-    /* ── Semantic ─────────────────────────────────────────────────────── */
-    --success:    theme('colors.green.600');
-    --success-bg: theme('colors.green.100');
-    --warning:    theme('colors.amber.600');
-    --warning-bg: theme('colors.amber.100');
-    --error:      theme('colors.red.600');
-    --error-bg:   theme('colors.red.100');
-    --info:       theme('colors.blue.600');
-    --info-bg:    theme('colors.blue.100');
 
     /* ── shadcn CSS-variable system (light) ──────────────────────────── */
     --background:            42 43% 96%;
@@ -136,18 +122,6 @@
     letter-spacing: 0.08em;
   }
 
-  .label-uppercase {
-    font-size: 11px;
-    font-weight: 600;
-    color: theme('colors.slate.400');
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-  }
-
-  .mono {
-    font-family: 'DM Sans', sans-serif;
-  }
-
   /* Native select with custom caret arrow (Admin Panel filters) */
   .select-caret {
     appearance: none;
@@ -171,22 +145,4 @@
     to   { opacity: 1; transform: translateX(0); }
   }
   .slide-in { animation: slideIn 0.25s ease both; }
-
-  /* Shimmer for skeleton loaders */
-  @keyframes shimmer {
-    0%   { background-position: -800px 0; }
-    100% { background-position:  800px 0; }
-  }
-  .animate-shimmer {
-    background: linear-gradient(90deg, theme('colors.slate.100') 0, theme('colors.slate.200') 50%, theme('colors.slate.100') 100%);
-    background-size: 800px 100%;
-    animation: shimmer 1.6s infinite;
-  }
-
-  /* Fade-up */
-  @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .animate-fade-up { animation: fadeUp 0.25s cubic-bezier(0.4,0,0.2,1) both; }
 }

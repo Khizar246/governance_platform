@@ -13,7 +13,8 @@ export default function AppLayout() {
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <main className="flex-1 overflow-y-auto overflow-x-hidden bg-surface-page">
           <div className={`max-w-[1400px] mx-auto px-8 ${isHome ? 'py-3.5' : 'py-7'}`}>
-            <div className="fade-in">
+            {/* Keyed by route so the page-enter animation replays on navigation */}
+            <div key={location.pathname} className="fade-in">
               <Outlet />
             </div>
           </div>

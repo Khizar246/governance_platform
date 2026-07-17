@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { toast } from 'sonner'
 import { Download, Check, Loader2 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -29,6 +30,7 @@ export default function DownloadButton({
       await onClick()
       setState('success')
     } catch {
+      toast.error('Download failed — the results are no longer available. Please re-run the analysis.')
       setState('idle')
     }
   }
@@ -41,7 +43,7 @@ export default function DownloadButton({
       onClick={handleClick}
       disabled={disabled || isLoading}
       className={cn(
-        'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded text-[13px] font-semibold border-none transition-all duration-150 ease-[ease]',
+        'inline-flex items-center gap-1.5 px-[18px] py-[9px] rounded text-[13px] font-semibold border-none transition-all duration-150',
         disabled || isLoading ? 'cursor-not-allowed' : 'cursor-pointer',
         isSuccess ? 'bg-green-600 text-white' : disabled ? 'bg-slate-200 text-slate-400' : 'bg-navy text-ey-yellow',
         disabled && !isLoading ? 'opacity-60' : 'opacity-100',

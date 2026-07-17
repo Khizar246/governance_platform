@@ -64,7 +64,7 @@ function IconBot({ cls, s }: { cls: string; s: number }) {
 function IconChevron({ collapsed, cls }: { collapsed: boolean; cls: string }) {
   return (
     <svg width={14} height={14} viewBox="0 0 24 24" fill="none" aria-hidden
-      className={`${cls} transition-transform duration-[220ms] ${collapsed ? 'rotate-0' : 'rotate-180'}`}>
+      className={`${cls} transition-transform [transition-duration:220ms] ${collapsed ? 'rotate-0' : 'rotate-180'}`}>
       <path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
   )
@@ -115,7 +115,7 @@ function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]
             end={item.to === ROUTES.HOME}
             title={collapsed ? item.label : undefined}
             className={({ isActive }) => [
-              'flex items-center gap-[9px] rounded-[7px] border w-full cursor-pointer no-underline transition-all duration-[130ms] mb-0.5',
+              'flex items-center gap-[9px] rounded-[7px] border w-full cursor-pointer no-underline transition-all [transition-duration:130ms] mb-0.5',
               collapsed ? 'py-[7px] px-0 justify-center' : 'py-[7px] px-2 justify-start',
               isActive ? 'border-gold-muted bg-gold-light' : 'border-transparent bg-transparent',
             ].join(' ')}
@@ -123,7 +123,7 @@ function NavGroup({ title, items, collapsed }: { title: string; items: NavItem[]
             {({ isActive }) => (
               <>
                 <div
-                  className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 transition-colors duration-[130ms] ${isActive ? 'bg-ey-yellow-hover' : 'bg-surface-panel'}`}
+                  className={`w-7 h-7 rounded-[6px] flex items-center justify-center shrink-0 transition-colors [transition-duration:130ms] ${isActive ? 'bg-ey-yellow-hover' : 'bg-surface-panel'}`}
                 >
                   <IconComp s={14} cls={isActive ? 'text-white' : 'text-slate-500'} />
                 </div>
@@ -149,7 +149,7 @@ export default function Sidebar() {
 
   return (
     <aside
-      className={`h-full flex flex-col bg-white border-r border-slate-200 transition-[width,min-width] duration-[220ms] ease-[cubic-bezier(0.4,0,0.2,1)] overflow-hidden z-20 shrink-0 ${collapsed ? 'w-[60px] min-w-[60px]' : 'w-[232px] min-w-[232px]'}`}
+      className={`h-full flex flex-col bg-white border-r border-slate-200 transition-[width,min-width] [transition-duration:220ms] overflow-hidden z-20 shrink-0 ${collapsed ? 'w-[60px] min-w-[60px]' : 'w-[232px] min-w-[232px]'}`}
     >
       {/* ── Logo ── */}
       <div
@@ -216,7 +216,7 @@ export default function Sidebar() {
         {/* Collapse toggle */}
         <button
           onClick={() => setSidebarCollapsed(!collapsed)}
-          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors duration-[130ms] hover:bg-surface-panel ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
+          className={`flex items-center gap-[9px] rounded-[7px] border-none bg-transparent cursor-pointer w-full transition-colors [transition-duration:130ms] hover:bg-surface-panel ${collapsed ? 'py-2 px-0 justify-center' : 'py-2 px-2 justify-start'}`}
         >
           <IconChevron collapsed={collapsed} cls="text-slate-400" />
           {!collapsed && (
