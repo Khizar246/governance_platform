@@ -12,11 +12,18 @@ No FastAPI, no Pydantic, no HTTP.
 """
 
 import io
-from dataclasses import dataclass, field
-from typing import Any, Callable
+import logging
+from typing import Callable
 
 import pandas as pd
 import polars as pl
+
+from engines.result import EngineResult
+
+# Module logger (stdlib only — engines stay framework-free). Used to preserve the
+# traceback when an exception is converted into an EngineResult(success=False),
+# which otherwise loses it before the calling worker/router sees the failure.
+_log = logging.getLogger("governance.oracle_comparator_engine")
 
 # ── Constants (ported verbatim from Role Comparison/app.py) ──────────────────
 
@@ -42,17 +49,6 @@ FILE_CONFIGS = {
         "display_name": "DSP File",
     },
 }
-
-
-# ── Result type ───────────────────────────────────────────────────────────────
-
-@dataclass
-class EngineResult:
-    """Structured return type for all engine functions."""
-    success: bool
-    data: Any = None
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -199,6 +195,7 @@ def run_analysis(
         return EngineResult(success=True, data=(results_1to2, results_2to1))
 
     except Exception as exc:
+        _log.error("run_analysis failed", exc_info=True)
         return EngineResult(success=False, errors=[str(exc)])
 
 
@@ -227,8 +224,6 @@ def generate_report(
         ) as writer:
             wb = writer.book
             hdr_fmt   = wb.add_format({"bold": True, "bg_color": "#D7E4BC", "border": 1})
-            match_fmt = wb.add_format({"bg_color": "#d4edda"})
-            miss_fmt  = wb.add_format({"bg_color": "#f8d7da"})
 
             # ── Summary sheet ─────────────────────────────────────────────────
             summary_rows: list[dict] = []
@@ -291,15 +286,9 @@ def generate_report(
                         )
                         ws.set_column(ci, ci, min(max_len + 3, 50))
 
-                    if "Status" in pdf.columns:
-                        status_ci = list(pdf.columns).index("Status")
-                        for ri in range(len(pdf)):
-                            val = str(pdf.iloc[ri, status_ci])
-                            fmt = match_fmt if "Exists" in val else miss_fmt
-                            ws.write(ri + 1, status_ci, val, fmt)
-
         buf.seek(0)
         return EngineResult(success=True, data=buf.read())
 
     except Exception as exc:
+        _log.error("generate_report failed", exc_info=True)
         return EngineResult(success=False, errors=[f"Report generation failed: {exc}"])

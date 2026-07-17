@@ -1,4 +1,4 @@
-"""Ruleset Mapping Engine (Tool 5).
+"""Ruleset Mapping Engine.
 
 Maps SoD and SA ruleset controls between a Client ruleset and the EY ruleset in
 BOTH directions (Client→EY and EY→Client), using:
@@ -18,11 +18,17 @@ Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 """
 
 import io
+import logging
 from typing import Callable
 
 import pandas as pd
 
-from engines.entitlement_mapping_engine import run_mapping, EngineResult
+from engines.entitlement_mapping_engine import run_mapping
+from engines.result import EngineResult
+
+# stdlib-only module logger (engines stay framework-free); preserves the traceback
+# when an exception is converted into EngineResult(success=False).
+_log = logging.getLogger("governance.ruleset_mapping_engine")
 
 # Sentinel values the entitlement engine writes in the match column when there is
 # no usable mapping: "—" (no shared privilege) or "Not Mapped" (best candidate
@@ -675,4 +681,5 @@ def run_ruleset_mapping(
         )
 
     except Exception as exc:
+        _log.error("run_ruleset_mapping failed", exc_info=True)
         return EngineResult(success=False, errors=[str(exc)])

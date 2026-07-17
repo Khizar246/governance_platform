@@ -15,12 +15,13 @@ No FastAPI, no Pydantic, no HTTP.
 import io
 import logging
 import time
-from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import pandas as pd
 import polars as pl
 import xlsxwriter
+
+from engines.result import EngineResult
 
 # ── Constants (ported verbatim from SOD Tool/app.py) ─────────────────────────
 
@@ -169,14 +170,7 @@ def reorder_to_output_schema(df: pl.DataFrame, schema: list[str]) -> pl.DataFram
 
 
 # ── Result type ───────────────────────────────────────────────────────────────
-
-@dataclass
-class EngineResult:
-    """Structured return type for all engine functions."""
-    success: bool
-    data: Any = None
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
+# EngineResult is shared across all engines (engines/result.py); imported below.
 
 
 # ── Internal helpers ──────────────────────────────────────────────────────────
@@ -783,9 +777,26 @@ def _fp_level1(
     if no_action_df.is_empty():
         return df
 
+    # A row in the FP DB must always tag its privilege as FP even when the
+    # "False Positive Reason" cell is blank (the loader maps ""/"NAN" to null);
+    # a null _reason would silently skip the row in _set_fp_where_pending.
+    _missing_reason = (
+        "False Positive – The FP database does not contain a False Positive "
+        "reason for this record."
+    )
     na = no_action_df.select([
         "PRIVILEGE_NAME",
-        pl.col("FALSE POSITIVE REASON").alias("_reason"),
+        pl.when(
+            pl.col("FALSE POSITIVE REASON").is_null()
+            | (pl.col("FALSE POSITIVE REASON").cast(pl.Utf8).str.strip_chars() == "")
+        )
+        .then(pl.lit(_missing_reason))
+        .otherwise(pl.col("FALSE POSITIVE REASON").cast(pl.Utf8))
+        .alias("_reason"),
+    # keep="first" is an arbitrary pick when a privilege has duplicate FP DB
+    # rows — accepted by design: the FP database is guaranteed one row per
+    # privilege (user ruling, C-13 review), so duplicates only arise from a
+    # malformed database and any of its reasons is equally valid.
     ]).unique(subset=["PRIVILEGE_NAME"], keep="first")
 
     # Explode candidate keys, match against the FP DB, collapse one reason per row.
@@ -933,6 +944,11 @@ def _fp_level3(
 
     noun = "user" if entity_col == "USER_NAME" else "role"
 
+    # Business rule: when a True Conflict row carries a _wa_code, the entity actually
+    # holds a work-area privilege that satisfies the gatekeeper (see _fp_level2). That
+    # work-area wording takes precedence over the generic multi-leg reason so the
+    # reviewer can see BOTH the base privilege and the work-area privilege co-exist —
+    # confirming it is a genuine conflict, not a gatekeeper-blocked false positive.
     if is_sod and "_GROUP_ID" in df.columns:
         # Group-aware (3-leg): count surviving AND-groups per control & entity
         pending_counted = pending.with_columns(
@@ -999,17 +1015,18 @@ def _fp_level3(
         df = _set_fp_where_pending(df.join(sl_reasons, on="_row_nr", how="left"), "SL")
         return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "TC")
     else:
-        # SA: all pending rows are True Conflict
+        # SA: all pending rows are True Conflict. SA controls have exactly one
+        # entitlement, so the wording differs from the SOD (two-leg) branch.
         if "_wa_code" in pending.columns:
             tc_reasons = pending.select(["_row_nr", "_wa_code"]).with_columns(
                 pl.when(pl.col("_wa_code").is_not_null())
                   .then(pl.lit(f"True Conflict - The {noun} has ") + pl.col("_wa_code") + pl.lit(" work area privilege to perform this activity."))
-                  .otherwise(pl.lit("True Conflict — Both entitlements required by the control are present."))
+                  .otherwise(pl.lit("True Conflict — The entitlement required by the control is present."))
                   .alias("_reason")
             ).drop("_wa_code")
         else:
             tc_reasons = pending.select("_row_nr").with_columns(
-                pl.lit("True Conflict — Both entitlements required by the control are present.").alias("_reason")
+                pl.lit("True Conflict — The entitlement required by the control is present.").alias("_reason")
             )
         return _set_fp_where_pending(df.join(tc_reasons, on="_row_nr", how="left"), "TC")
 

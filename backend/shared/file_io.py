@@ -1,7 +1,7 @@
 """File loading utilities — CSV and Excel to Polars/Pandas DataFrames.
 
 Consolidates loading patterns from all four source tools:
-  - Encoding detection for CSV (utf-8, utf-8-sig, latin1, cp1252, iso-8859-1)
+  - Encoding detection for CSV (utf-8, utf-8-sig, cp1252, latin1)
   - Pandas ↔ Polars bridge for Excel files
   - Whitespace stripping and uppercase normalisation on all string columns
   - Empty row removal
@@ -16,11 +16,16 @@ import polars as pl
 from exceptions import FileFormatError
 
 
-_CSV_ENCODINGS = ["utf-8", "utf-8-sig", "latin1", "cp1252", "iso-8859-1"]
+# Order matters: cp1252 must come before latin1 — latin1 decodes ANY byte
+# sequence, so anything after it is unreachable, and real cp1252 files (smart
+# quotes, €) would load as mojibake. latin1 stays last as the never-fail
+# fallback so no file that previously loaded is ever rejected. iso-8859-1 is
+# an alias of latin1 and was removed.
+_CSV_ENCODINGS = ["utf-8", "utf-8-sig", "cp1252", "latin1"]
 
 
 def _normalise_polars(df: pl.DataFrame) -> pl.DataFrame:
-    """Strip whitespace, uppercase all string columns, drop fully-null rows."""
+    """Strip whitespace, uppercase all string columns, drop fully-null and exact-duplicate rows."""
     exprs = []
     for col_name in df.columns:
         if df[col_name].dtype == pl.Utf8 or df[col_name].dtype == pl.String:
@@ -38,16 +43,20 @@ def _normalise_polars(df: pl.DataFrame) -> pl.DataFrame:
             )
         else:
             has_data = has_data | pl.col(col_name).is_not_null()
-    return df.filter(has_data)
+    return df.filter(has_data).unique(maintain_order=True)
 
 
 def _normalise_pandas(df: pd.DataFrame) -> pd.DataFrame:
-    """Strip whitespace, uppercase all string columns, drop fully-null rows."""
+    """Strip whitespace, uppercase all string columns, drop fully-null and exact-duplicate rows."""
     for col in df.columns:
-        if df[col].dtype == object:
+        # is_string_dtype catches both `object` and the pandas `str`/`string`
+        # dtype that pd.read_excel(dtype=str) produces — the plain `== object`
+        # check silently skipped the latter, leaving Excel values un-normalised.
+        if pd.api.types.is_string_dtype(df[col].dtype):
             df[col] = df[col].astype(str).str.strip().str.upper()
             df[col] = df[col].replace({"NAN": None, "NONE": None, "": None})
     df = df.dropna(how="all")
+    df = df.drop_duplicates()
     return df
 
 
@@ -56,8 +65,11 @@ def load_csv_to_polars(
     filename: str,
     logger: Logger,
 ) -> pl.DataFrame:
-    """Load CSV with encoding detection. Try: utf-8, utf-8-sig, latin1, cp1252, iso-8859-1.
+    """Load CSV with encoding detection. Try: utf-8, utf-8-sig, cp1252, latin1.
 
+    All columns are loaded as text (infer_schema_length=0), matching the Excel
+    loaders' dtype=str — inferred numeric dtypes broke engine joins and column
+    filtering downstream.
     Strips whitespace and uppercases all string columns.
     Removes completely empty rows.
     Raises FileFormatError on failure.
@@ -68,10 +80,15 @@ def load_csv_to_polars(
             text = file_bytes.decode(encoding)
             df = pl.read_csv(
                 io.StringIO(text),
-                infer_schema_length=10_000,
+                infer_schema_length=0,
                 ignore_errors=True,
                 null_values=["", "N/A", "n/a", "NA"],
             )
+            if encoding == "latin1":
+                logger.warning(
+                    "'%s' decoded only with the latin1 fallback — special "
+                    "characters may be garbled.", filename,
+                )
             logger.debug("Loaded '%s' as CSV with encoding=%s, shape=%s", filename, encoding, df.shape)
             return _normalise_polars(df)
         except Exception as exc:
@@ -146,7 +163,7 @@ def load_excel_to_pandas(
     sheet_name: str | None,
     logger: Logger,
 ) -> pd.DataFrame:
-    """Load Excel and return a Pandas DataFrame. Used by Tool 1 export."""
+    """Load Excel and return a Pandas DataFrame. Used by the Ruleset Mapping upload."""
     try:
         kwargs: dict = {
             "io": io.BytesIO(file_bytes),

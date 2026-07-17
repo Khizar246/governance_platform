@@ -16,13 +16,19 @@ control/SA mapping keys off.
 Pure Python/Pandas — no FastAPI, no Pydantic, no HTTP.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Callable
 
+import logging
 import re
 
 import pandas as pd
 from rapidfuzz import fuzz
+
+from engines.result import EngineResult
+
+# stdlib-only module logger (engines stay framework-free); preserves the traceback
+# when an exception is converted into EngineResult(success=False).
+_log = logging.getLogger("governance.entitlement_mapping_engine")
 
 # Minimum blended confidence (%) for an entitlement to count as mapped. Below this,
 # the match column reads "Not Mapped". Downstream SoD/SA control mapping depends on
@@ -114,15 +120,6 @@ def _normalize_module(value: object) -> str:
     return s.lower()
 
 
-@dataclass
-class EngineResult:
-    """Structured return type for all engine functions."""
-    success: bool
-    data: Any = None
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
-
-
 def _find_col(df: pd.DataFrame, target: str) -> str:
     """Case-insensitive column name lookup. Returns the actual column name."""
     t = target.strip().upper()
@@ -164,6 +161,15 @@ def run_mapping(
         e_priv_col = _find_col(ey_df, "Privilege Code")
         c_mod_col  = _find_col(client_df, "Module")
         e_mod_col  = _find_col(ey_df, "Module")
+
+        # A blank Privilege Code is not a privilege — there is nothing to match
+        # on, so the row is ignored entirely (an entitlement whose rows are ALL
+        # blank therefore never enters the mapping). Without this, None survives
+        # into the privilege sets and two entitlements "sharing" a blank cell
+        # score as a real match. Mirrors _build_priv_groups' dropna() in
+        # ruleset_mapping_engine.
+        client_df = client_df[client_df[c_priv_col].notna()]
+        ey_df     = ey_df[ey_df[e_priv_col].notna()]
 
         # Group privileges per entitlement — groupby+set auto-deduplicates
         client_groups: dict[str, set] = (
@@ -310,4 +316,5 @@ def run_mapping(
         return EngineResult(success=True, data=result_df)
 
     except Exception as exc:
+        _log.error("run_mapping failed", exc_info=True)
         return EngineResult(success=False, errors=[str(exc)])

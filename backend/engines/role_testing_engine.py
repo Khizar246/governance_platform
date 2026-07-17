@@ -20,8 +20,10 @@ Refactor of the original hardcoded script:
 
 import os
 import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from dataclasses import dataclass
+from typing import Callable, Optional
+
+from engines.result import EngineResult
 
 
 # ── Selector / timing configuration (config-driven; was hardcoded in Code_v2) ──
@@ -90,7 +92,19 @@ class OracleSelectors:
 DEFAULT_SELECTORS = OracleSelectors()
 
 
-# ── Result types (mirror the other engines' EngineResult shape) ────────────────
+# ── Login failure types ──────────────────────────────────────────────────────────
+# Distinguished so the run can report the actual cause: an unreachable/invalid URL
+# vs. the login page loading fine but the credentials being rejected.
+
+class UrlUnreachableError(Exception):
+    """The Oracle URL could not be reached or the login form never loaded."""
+
+
+class InvalidCredentialsError(Exception):
+    """Login page reached, but sign-in did not succeed after every attempt."""
+
+
+# ── Result types ────────────────────────────────────────────────────────────────
 
 @dataclass
 class ElementResult:
@@ -100,15 +114,6 @@ class ElementResult:
     screenshot: Optional[str] = None       # filename within screenshot_dir, or None
     status: str = "error"                  # captured | captured_no_task | skipped | error
     message: str = ""
-
-
-@dataclass
-class EngineResult:
-    """Structured return type for all engine functions."""
-    success: bool
-    data: Any = None
-    errors: list[str] = field(default_factory=list)
-    warnings: list[str] = field(default_factory=list)
 
 
 # ── WebDriver factory (the only place real Selenium is constructed) ────────────
@@ -217,30 +222,63 @@ class _Interactor:
 
 def _login(driver, url: str, username: str, password: str,
            sel: OracleSelectors, logger) -> None:
-    """Log into Oracle Cloud. Raises on failure. Credentials are never logged."""
+    """Log into Oracle Cloud. Credentials are never logged.
+
+    Two failure modes are raised distinctly:
+      - UrlUnreachableError: the URL would not load or the login form never
+        appeared (bad/unreachable URL) — not retried, it cannot succeed.
+      - InvalidCredentialsError: the login page loaded but sign-in did not
+        succeed after ``sel.max_retries`` attempts (wrong username/password).
+    """
     from selenium.webdriver.common.by import By
     from selenium.webdriver.common.keys import Keys
     from selenium.webdriver.support.ui import WebDriverWait
     from selenium.webdriver.support import expected_conditions as EC
 
-    driver.get(url)
-    logger.info("Opened Oracle URL; submitting credentials")
+    # ── Phase 1: reach the Oracle login page ──────────────────────────────────
+    # A failure to load the page or find the login form means the URL is wrong or
+    # unreachable — retrying the same URL cannot help, so fail fast.
+    try:
+        driver.get(url)
+        user_field = WebDriverWait(driver, sel.default_wait).until(
+            EC.presence_of_element_located((By.ID, sel.username_id))
+        )
+    except Exception as exc:  # noqa: BLE001 — driver.get / wait raise many types
+        logger.error(f"Could not reach the Oracle login page: {exc}")
+        raise UrlUnreachableError(str(exc)) from exc
 
-    user_field = WebDriverWait(driver, sel.default_wait).until(
-        EC.presence_of_element_located((By.ID, sel.username_id))
-    )
-    user_field.send_keys(username)
+    logger.info("Reached Oracle login page; submitting credentials")
 
-    pwd_field = WebDriverWait(driver, sel.default_wait).until(
-        EC.presence_of_element_located((By.ID, sel.password_id))
-    )
-    pwd_field.send_keys(password + Keys.RETURN)
+    # ── Phase 2: submit credentials, up to max_retries attempts ───────────────
+    for attempt in range(1, sel.max_retries + 1):
+        try:
+            user_field = WebDriverWait(driver, sel.default_wait).until(
+                EC.presence_of_element_located((By.ID, sel.username_id))
+            )
+            user_field.clear()
+            user_field.send_keys(username)
 
-    # Navigator icon present == login succeeded
-    WebDriverWait(driver, sel.login_wait).until(
-        EC.presence_of_element_located((By.XPATH, sel.navigator_icon_xpath))
+            pwd_field = WebDriverWait(driver, sel.default_wait).until(
+                EC.presence_of_element_located((By.ID, sel.password_id))
+            )
+            pwd_field.clear()
+            pwd_field.send_keys(password + Keys.RETURN)
+
+            # Navigator icon present == login succeeded
+            WebDriverWait(driver, sel.login_wait).until(
+                EC.presence_of_element_located((By.XPATH, sel.navigator_icon_xpath))
+            )
+            logger.info(f"Login successful on attempt {attempt}")
+            return
+        except Exception as exc:  # noqa: BLE001 — timeout / stale form / etc.
+            logger.warning(f"Login attempt {attempt}/{sel.max_retries} failed: {exc}")
+            if attempt < sel.max_retries:
+                time.sleep(sel.retry_delay)
+                driver.get(url)  # reload a fresh login form for the next attempt
+
+    raise InvalidCredentialsError(
+        f"Sign-in failed after {sel.max_retries} attempts."
     )
-    logger.info("Login successful")
 
 
 def _open_navigator_popup(driver, interactor: _Interactor, sel: OracleSelectors, logger):
@@ -491,12 +529,16 @@ def run(
         _emit(2, "Launching browser…")
         try:
             _login(driver, url, username, password, selectors, logger)
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Login failed: {exc}")
+        except UrlUnreachableError:
             return EngineResult(
                 success=False,
-                errors=["Login failed. Check the Oracle URL and credentials, "
-                        "then try again."],
+                errors=["The provided URL is invalid or cannot be reached."],
+            )
+        except InvalidCredentialsError:
+            return EngineResult(
+                success=False,
+                errors=["The username or password provided is incorrect. "
+                        "Please verify your credentials and try again."],
             )
 
         # Capture the landing/home page that appears right after login.

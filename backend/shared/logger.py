@@ -7,6 +7,8 @@ Usage:
 
 import logging
 import logging.handlers
+import multiprocessing
+import os
 from datetime import datetime
 
 from config import LOG_DIR
@@ -33,7 +35,11 @@ def get_logger(name: str) -> logging.Logger:
 
     if not logger.handlers:
         LOG_DIR.mkdir(exist_ok=True)
-        log_file = LOG_DIR / f"{name}_{datetime.now():%Y%m%d}.log"
+        # Analysis-pool workers must not share the web process's file: on
+        # Windows, RotatingFileHandler's rollover rename fails with
+        # PermissionError while another process holds the same file open.
+        pid_suffix = "" if multiprocessing.current_process().name == "MainProcess" else f"_pid{os.getpid()}"
+        log_file = LOG_DIR / f"{name}_{datetime.now():%Y%m%d}{pid_suffix}.log"
 
         file_handler = logging.handlers.RotatingFileHandler(
             log_file, maxBytes=10 * 1024 * 1024, backupCount=5, encoding="utf-8"
